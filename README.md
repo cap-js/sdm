@@ -1,6 +1,6 @@
-# cap-js Repository Template
+# CAP plugin for SAP Document Management Service
 
-Default templates for cap-js open source repositories, including LICENSE, .reuse/dep5, Code of Conduct, etc... All repositories on github.com/cap-js will be created based on this template.
+The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) for SAP Document Management service.
 
 ## To-Do
 
