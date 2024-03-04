@@ -107,4 +107,30 @@ service SDMService {
         typePropertyId       : String;
         propertyValue        : String;
   }
+
+  @cds.persistence.skip
+  entity CmisRepository {
+    repositoryId          : String;
+    repositoryName        : String;
+    repositoryDescription : String;
+    vendorName            : String;
+    productName           : String;
+    productVersion        : String;
+    rootFolderId          : String;
+    latestChangeLogToken  : String;
+    cmisVersionSupported  : Boolean;
+    changesIncomplete     : Boolean;
+    changesOnType         : String;
+    principalIdAnonymous  : String;
+    principalIdAnyone     : String;
+    repositoryUrl         : String;
+    rootFolderUrl         : String;
+    cmisRepositoryId      : String;
+    repositoryCategory    : String;
+    externalId            : String;
+    connectionType        : String;
+    extendedFeatures      : String;
+    aclCapabilities       : String;
+    capabilities          : String;
+  }
 }
