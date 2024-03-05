@@ -1,8 +1,7 @@
 service SDMService {
   @cds.persistence.skip
   entity CmisObject {
-    key id                        : String;
-        objectId                  : String;
+    key objectId                  : String;
         baseTypeId                : String;
         versionSeriesId           : String;
         versionSeriesCheckedOutId : String;
