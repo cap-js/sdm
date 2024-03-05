@@ -19,13 +19,21 @@
     "@sap/cds-lsp": "^7.6.1",
     "@sap/xssec": "^3.6.1",
     "dotenv": "^16.3.1",
-    "express": "^4"
+    "express": "^4",
+    "@sap-cloud-sdk/core": "^1.54.2",
+    "@sap-cloud-sdk/openapi": "^3.7.0",
+    "form-data": "^4.0.0",
+    "mime": "^3.0.0",
+    "odata-v4-parser": "^0.1.29"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1",
     "@sap/cds-dk": "^7",
     "eslint": "^8.57.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "@sap-cloud-sdk/openapi-generator": "^3.7.0",
+    "semantic-release": "^22.0.5",
+    "sqlite3": "^5.1.6"
   },
   "scripts": {
     "start": "cds-serve",
