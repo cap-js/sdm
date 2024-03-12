@@ -70,23 +70,19 @@ module.exports = class CmisClient extends cds.Service {
     return this._buildRequest(request, config);
   }
 
-  createDocument(repositoryId, name, objectId, description, content, contentStreamType) {
+  createDocument(repositoryId, name, content, contentStreamType) {
     const cmisProperties = {};
-    if (description !== undefined && description !== null) {
-      cmisProperties['cmis:description'] = description;
-    }
     cmisProperties['cmis:name'] = name;
     cmisProperties['cmis:objectTypeId'] = 'cmis:document';
     const allCmisProperties = convertObjectToCmisProperties({...cmisProperties});
 
-    const contentByteArray = this.binaryStringToByteArray(content);
+    //const contentByteArray = this.binaryStringToByteArray(content);
 
     const bodyData = {
       cmisaction: 'createDocument',
       media: 'binary',
       ...allCmisProperties,
-      ...this.globalParameters,
-      ...(objectId !== null ? { 'objectId': objectId } : {})
+      ...this.globalParameters
     };
     
     console.log("ContentStreamType -----------");
@@ -96,7 +92,7 @@ module.exports = class CmisClient extends cds.Service {
     console.log("After Json to Formdata -----------");
     console.log(JSON.stringify(requestBody));
     
-    requestBody.append('filename', contentByteArray, {
+    requestBody.append('filename', content, {
       filename: name,
       contentType: contentStreamType
     });
@@ -110,27 +106,27 @@ module.exports = class CmisClient extends cds.Service {
     return this._buildRequest(request, config);
   }
 
-  binaryStringToByteArray(binaryString) {
-    // Remove spaces and split the binary string into an array of binary digits
-    const binaryDigits = binaryString.replace(/\s/g, '').match(/.{1,8}/g);
+  // binaryStringToByteArray(binaryString) {
+  //   // Remove spaces and split the binary string into an array of binary digits
+  //   const binaryDigits = binaryString.replace(/\s/g, '').match(/.{1,8}/g);
 
-    // Convert each group of 8 binary digits to its corresponding byte value
-    const byteArray = binaryDigits.map(binary => parseInt(binary, 2));
+  //   // Convert each group of 8 binary digits to its corresponding byte value
+  //   const byteArray = binaryDigits.map(binary => parseInt(binary, 2));
 
-    const uint8Array = new Uint8Array(byteArray);
-    console.log('uint8Array -------');
-    console.log(JSON.stringify(uint8Array));
+  //   const uint8Array = new Uint8Array(byteArray);
+  //   console.log('uint8Array -------');
+  //   console.log(JSON.stringify(uint8Array));
 
-    // Create a Buffer from the byte array
-    const buffer = Buffer.from(uint8Array);
+  //   // Create a Buffer from the byte array
+  //   const buffer = Buffer.from(uint8Array);
 
-    // Create a Readable stream from the Buffer
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null); // Mark the end of the stream
+  //   // Create a Readable stream from the Buffer
+  //   const stream = new Readable();
+  //   stream.push(buffer);
+  //   stream.push(null); // Mark the end of the stream
 
-    return stream;
-  }
+  //   return stream;
+  // }
 
   /**
    * Incorporates the provided configuration options into the specified request object.
