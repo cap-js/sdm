@@ -3,6 +3,7 @@ const convertObjectToCmisProperties = require('./converters/object-to-cmis-docum
 const builder = require('./request-builders');
 const middlewares = require('./middlewares');
 const jsonToFormdata = require('./converters/json-to-formdata');
+const { Readable } = require('stream');
 
 /**
  * @typedef {import('./types').BaseCmisOptions} BaseCmisOptions
@@ -38,9 +39,7 @@ module.exports = class CmisClient extends cds.Service {
     }
     cmisProperties['cmis:name'] = name;
     cmisProperties['cmis:objectTypeId'] = 'cmis:folder';
-    const allCmisProperties = convertObjectToCmisProperties({
-      ...cmisProperties
-    });
+    const allCmisProperties = convertObjectToCmisProperties({...cmisProperties});
 
     console.log('allCmisProperties -------');
     console.log(JSON.stringify(allCmisProperties));
@@ -71,58 +70,66 @@ module.exports = class CmisClient extends cds.Service {
     return this._buildRequest(request, config);
   }
 
-  /**
-   * Creates a new document object within the specified location in the repository.
-   *
-   * This method allows for the creation of a document object based on a given type, typically specified by the cmis:objectTypeId property.
-   *
-   * @param {string} repositoryId - Repository ID
-   * @param {string} name - The name that will be assigned to the document object.
-   * @param {any} content - The actual content/data of the document to be stored.
-   * @param {WriteOptions & { folderPath?: string; versioningState?: 'none' | 'checkedout' | 'major' | 'minor'; }} options - Options for document creation.
-   * @property options.folderPath - The path within the repository where the document will be created. If not provided, the default location may be used.
-   *
-   * @returns Promise resolving to the created document object with its metadata and other relevant details.
-   */
-  createDocument(
-    repositoryId,
-    name,
-    content,
-    options = { versioningState: 'major' },
-  ) {
-    const { cmisProperties, config = {}, ...optionalParameters } = options;
+  createDocument(repositoryId, name, objectId, description, content, contentStreamType) {
+    const cmisProperties = {};
+    if (description !== undefined && description !== null) {
+      cmisProperties['cmis:description'] = description;
+    }
+    cmisProperties['cmis:name'] = name;
+    cmisProperties['cmis:objectTypeId'] = 'cmis:document';
+    const allCmisProperties = convertObjectToCmisProperties({...cmisProperties});
 
-    const allCmisProperties = convertObjectToCmisProperties({
-      'cmis:name': name,
-      'cmis:objectTypeId': 'cmis:document',
-      ...(cmisProperties || {}),
-    });
+    const contentByteArray = this.binaryStringToByteArray(content);
 
     const bodyData = {
       cmisaction: 'createDocument',
+      media: 'binary',
       ...allCmisProperties,
       ...this.globalParameters,
-      ...optionalParameters,
+      ...(objectId !== null ? { 'objectId': objectId } : {})
     };
-
+    
+    console.log("ContentStreamType -----------");
+    console.log(contentStreamType);
+    
     const requestBody = jsonToFormdata(bodyData);
-    if (content) requestBody.append('content', content, name);
+    console.log("After Json to Formdata -----------");
+    console.log(JSON.stringify(requestBody));
+    
+    requestBody.append('filename', contentByteArray, {
+      filename: name,
+      contentType: contentStreamType
+    });
 
+    console.log("After appending contentStream to Formdata -----------");
+    console.log(JSON.stringify(requestBody));
+    
     let request;
-    if (!options?.folderPath) {
-      request = builder.createBrowserRootByRepositoryId(
-        repositoryId,
-        requestBody,
-      );
-    } else {
-      request = builder.createBrowserRootByRepositoryIdAndDirectoryPath(
-        repositoryId,
-        options.folderPath,
-        requestBody,
-      );
-    }
-
+    request = builder.createBrowserRootByRepositoryId(repositoryId, requestBody);
+    const config = {};
     return this._buildRequest(request, config);
+  }
+
+  binaryStringToByteArray(binaryString) {
+    // Remove spaces and split the binary string into an array of binary digits
+    const binaryDigits = binaryString.replace(/\s/g, '').match(/.{1,8}/g);
+
+    // Convert each group of 8 binary digits to its corresponding byte value
+    const byteArray = binaryDigits.map(binary => parseInt(binary, 2));
+
+    const uint8Array = new Uint8Array(byteArray);
+    console.log('uint8Array -------');
+    console.log(JSON.stringify(uint8Array));
+
+    // Create a Buffer from the byte array
+    const buffer = Buffer.from(uint8Array);
+
+    // Create a Readable stream from the Buffer
+    const stream = new Readable();
+    stream.push(buffer);
+    stream.push(null); // Mark the end of the stream
+
+    return stream;
   }
 
   /**
