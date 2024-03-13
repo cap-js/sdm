@@ -38,5 +38,23 @@
   "scripts": {
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js"
+  },
+  "cds": {
+    "requires": {
+      "kinds": {
+        "=dms": {
+          "impl": "@cap-js/attachments/lib/dms"
+        }
+      },
+      "[development]": {
+        "attachments": { "kind": "dms"}
+      },
+      "[production]": {
+        "attachments": { "kind": "dms"}
+      },
+      "[hybrid]": {
+        "attachments": { "kind": "dms"}
+      }
+    }
   }
 }
