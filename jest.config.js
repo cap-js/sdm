@@ -1,7 +1,7 @@
 const config = {
   verbose: true,
   testTimeout: 100000,
-  testMatch: ['**/test/*.test.js'],
+  testMatch: ['**/test/lib/test.js'],
   collectCoverageFrom: [
     '**/lib/*',
     '**/srv/*',
