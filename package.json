@@ -31,5 +31,28 @@
   "scripts": {
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js"
+  },"cds": {
+  "requires": {
+    "kinds": {
+      "attachments-sdm": {
+        "impl": "@cap-js/attachments-sdm/lib/sdm"
+      }
+    },
+    "[development]": {
+      "attachments": {
+        "kind": "sdm"
+      }
+    },
+    "[production]": {
+      "attachments": {
+        "kind": "sdm"
+      }
+    },
+    "[hybrid]": {
+      "attachments": {
+        "kind": "sdm"
+      }
+    }
   }
+}
 }
