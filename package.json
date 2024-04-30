@@ -21,7 +21,8 @@
     "@sap/xssec": "^3.6.1",
     "dotenv": "^16.3.1",
     "express": "^4",
-    "node-cache": "^5.1.2"
+    "node-cache": "^5.1.2",
+    "request": "^2.88.2"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1",
