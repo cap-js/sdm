@@ -2,7 +2,7 @@ const config = {
   verbose: true,
   testTimeout: 100000,
   testMatch: ["**/test/**/*.test.js"],
-  collectCoverageFrom: ["**/lib/*", "**/srv/*", "**/cds-plugin.js"],
+  collectCoverageFrom: ["**/lib/*", "**/srv/*", "**/lib/handler/index.js", "**/cds-plugin.js"],
   coverageReporters: ["lcov", "text", "text-summary"],
 };
  
