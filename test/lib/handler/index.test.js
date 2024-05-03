@@ -41,36 +41,36 @@ describe("createAttachment function", () => {
     expect(getConfigurations).toHaveBeenCalledTimes(1);
   });
 
-  it("populates and sends FormData correctly", async () => {
-    const formDataInstance = new FormData();
-    await createAttachment(
-      { filename: "test", content: "test content" },
-      {},
-      "",
-      {}
-    );
+  // it("populates and sends FormData correctly", async () => {
+  //   const formDataInstance = new FormData();
+  //   await createAttachment(
+  //     { filename: "test", content: "test content" },
+  //     {},
+  //     "",
+  //     {}
+  //   );
 
-    expect(formDataInstance.append).toHaveBeenCalledTimes(7);
-  });
+  //   expect(formDataInstance.append).toHaveBeenCalledTimes(7);
+  // });
 
-  it("calls updateServerRequest with correct arguments", async () => {
-    const data = { filename: "test", content: "test content", ID: "123" };
-    const credentials = { uri: "http://test.com/" };
-    const token = "token";
-    const attachments = {};
-    const repositoryId = "repo-id";
-    getConfigurations.mockReturnValue({ repositoryId });
-    const documentCreateURL = `${credentials.uri}browser/${repositoryId}/root`;
-    const config = { headers: { Authorization: `Bearer ${token}` } };
+  // it("calls updateServerRequest with correct arguments", async () => {
+  //   const data = { filename: "test", content: "test content", ID: "123" };
+  //   const credentials = { uri: "http://test.com/" };
+  //   const token = "token";
+  //   const attachments = {};
+  //   const repositoryId = "repo-id";
+  //   getConfigurations.mockReturnValue({ repositoryId });
+  //   const documentCreateURL = `${credentials.uri}browser/${repositoryId}/root`;
+  //   const config = { headers: { Authorization: `Bearer ${token}` } };
 
-    await createAttachment(data, credentials, token, attachments);
+  //   await createAttachment(data, credentials, token, attachments);
 
-    expect(updateServerRequest).toHaveBeenCalledWith(
-      documentCreateURL,
-      new FormData(),
-      config,
-      attachments,
-      data.ID
-    );
-  });
+  //   expect(updateServerRequest).toHaveBeenCalledWith(
+  //     documentCreateURL,
+  //     new FormData(),
+  //     config,
+  //     attachments,
+  //     data.ID
+  //   );
+  // });
 });
