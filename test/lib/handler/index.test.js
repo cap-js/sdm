@@ -1,76 +1,111 @@
 const axios = require("axios");
 jest.mock("axios");
+let formDataMockedInstances = [];
+
 jest.mock("form-data", () => {
-  return jest.fn().mockImplementation(() => ({
-    append: jest.fn(),
-    getHeaders: jest.fn().mockReturnValue({}),
-  }));
+  const FormData = function () {
+    const instance = {
+      append: jest.fn(),
+      getHeaders: jest.fn().mockReturnValue({}),
+    };
+    formDataMockedInstances.push(instance);
+    return instance;
+  };
+  return FormData;
 });
 jest.mock("../../../lib/util/index", () => {
   return {
-    getConfigurations: jest.fn().mockReturnValue({ repositoryId: "1234" }),
+    getConfigurations: jest.fn().mockReturnValue({ repositoryId: "123" }),
   };
 });
 const FormData = require("form-data");
 const { getConfigurations } = require("../../../lib/util/index");
 const createAttachment = require("../../../lib/handler/index").createAttachment;
+const deleteAttachment = require("../../../lib/handler/index").deleteAttachment;
 
-describe("createAttachment function", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+describe("handlers", () => {
+  describe("createAttachment function", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it("returns response from updateServerRequest", async () => {
+      const response = { data: "response" };
+      axios.post.mockResolvedValue(response);
+
+      const result = await createAttachment(
+        {},
+        { uri: "http://test.com" },
+        "token",
+        {}
+      );
+
+      expect(result).toBe(response);
+      expect(axios.post).toHaveBeenCalled();
+    });
+
+    it("calls getConfigurations", async () => {
+      await createAttachment({}, {}, "", {});
+
+      expect(getConfigurations).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it("returns response from updateServerRequest", async () => {
-    const response = { data: "response" };
-    axios.post.mockResolvedValue(response);
+  describe("deleteAttachment()", () => {
+    beforeEach(() => {
+      axios.post.mockClear();
+    });
 
-    const result = await createAttachment(
-      {},
-      { uri: "http://test.com" },
-      "token",
-      {}
-    );
+    it("should perform the delete operation for given attachment", async () => {
+      axios.post.mockResolvedValueOnce({ data: "Deleted" });
+      const credentials = { uri: "http://localhost/" };
+      const token = "demo-token";
+      const objectId = "demo-objectId";
+      const attachments = {};
 
-    expect(result).toBe(response);
-    expect(axios.post).toHaveBeenCalled();
+      const response = await deleteAttachment(
+        credentials,
+        token,
+        objectId,
+        attachments
+      );
+      expect(response.data).toBe("Deleted");
+      expect(axios.post).toHaveBeenCalledWith(
+        `${credentials.uri}browser/123/root`,
+        expect.objectContaining({
+          append: expect.any(Function),
+          getHeaders: expect.any(Function),
+        }),
+        { headers: expect.any(Object) }
+      );
+    });
+
+    it("should throw error when delete operation fails", async () => {
+      const error = new Error("Delete operation failed");
+      axios.post.mockRejectedValueOnce(error);
+      const credentials = { uri: "http://localhost/" };
+      const token = "demo-token";
+      const objectId = "demo-objectId";
+      const attachments = {};
+
+      const response = await deleteAttachment(
+        credentials,
+        token,
+        objectId,
+        attachments
+      );
+
+      expect(response).toBeInstanceOf(Error);
+      expect(response.message).toBe(error.message);
+
+      expect(axios.post).toHaveBeenCalledWith(
+        `${credentials.uri}browser/123/root`,
+        expect.objectContaining({
+          append: expect.any(Function),
+          getHeaders: expect.any(Function),
+        }),
+        { headers: expect.any(Object) }
+      );
+    });
   });
-
-  it("calls getConfigurations", async () => {
-    await createAttachment({}, {}, "", {});
-
-    expect(getConfigurations).toHaveBeenCalledTimes(1);
-  });
-
-  // it("populates and sends FormData correctly", async () => {
-  //   const formDataInstance = new FormData();
-  //   await createAttachment(
-  //     { filename: "test", content: "test content" },
-  //     {},
-  //     "",
-  //     {}
-  //   );
-
-  //   expect(formDataInstance.append).toHaveBeenCalledTimes(7);
-  // });
-
-  // it("calls updateServerRequest with correct arguments", async () => {
-  //   const data = { filename: "test", content: "test content", ID: "123" };
-  //   const credentials = { uri: "http://test.com/" };
-  //   const token = "token";
-  //   const attachments = {};
-  //   const repositoryId = "repo-id";
-  //   getConfigurations.mockReturnValue({ repositoryId });
-  //   const documentCreateURL = `${credentials.uri}browser/${repositoryId}/root`;
-  //   const config = { headers: { Authorization: `Bearer ${token}` } };
-
-  //   await createAttachment(data, credentials, token, attachments);
-
-  //   expect(updateServerRequest).toHaveBeenCalledWith(
-  //     documentCreateURL,
-  //     new FormData(),
-  //     config,
-  //     attachments,
-  //     data.ID
-  //   );
-  // });
 });
