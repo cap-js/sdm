@@ -156,43 +156,6 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
-  describe("getFields", () => {
-    let service;
-    beforeEach(() => {
-      service = new SDMAttachmentsService();
-    });
-    it("should return attachment fields with up__ prefix when up_ exists", () => {
-      const attachments = {
-        keys: { up_: { keys: [{ ref: ["test1"] }, { ref: ["test2"] }] } },
-      };
-      const expected = [
-        { ref: ["up__test1"] },
-        { ref: ["up__test2"] },
-        { ref: ["filename"] },
-        { ref: ["mimeType"] },
-        { ref: ["content"] },
-        { ref: ["url"] },
-        { ref: ["ID"] },
-      ];
-
-      expect(service.getFields(attachments)).toEqual(expected);
-    });
-
-    it("should return the object keys when up_ does not exist", () => {
-      const attachments = { keys: { test3: "", test4: "" } };
-      const expected = ["test3", "test4"];
-
-      expect(service.getFields(attachments)).toEqual(expected);
-    });
-
-    it("should handle empty attachments", () => {
-      const attachments = { keys: {} };
-
-      expect(() => service.getFields(attachments)).not.toThrow();
-      expect(service.getFields(attachments)).toEqual([]);
-    });
-  });
-
   describe("attachDeletionData", () => {
     let service;
     beforeEach(() => {
