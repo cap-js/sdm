@@ -74,7 +74,6 @@ describe('readDocument function', () => {
   });
 
   it('throws "An Error Occurred" when an error does not contain response.statusText', async () => {
-    // Mock reject error without response.statusText
     axios.get.mockImplementationOnce(() => Promise.reject(new Error()));
     
     await expect(readDocument('123', 'a1b2c3', 'http://example.com/')).rejects.toThrow('An Error Occurred');
