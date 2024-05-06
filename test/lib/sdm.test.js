@@ -1,23 +1,13 @@
 const SDMAttachmentsService = require("../../lib/sdm");
 const { fetchAccessToken } = require("../../lib/util");
 const { readAttachment, readDocument } = require("../../lib/handler/index")
+const { getURLFromAttachments } = require("../../lib/persistence/index")
 const cds = require("@sap/cds");
 
 jest.mock("../../lib/util");
 jest.mock("../../lib/handler");
-jest.mock("@sap/cds", () => {
-  return {
-    debug: jest.fn(),
-    ql: {
-      SELECT: {
-        from: jest.fn().mockReturnThis(),
-        columns: jest.fn().mockResolvedValueOnce({ url: "mockUrl" }),
-      },
-    },
-  };
-});
+jest.mock("../../lib/persistence")
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
-jest.mock("../../lib/util");
 
 describe("Test get method", () => {
   let service;
@@ -30,13 +20,14 @@ describe("Test get method", () => {
     const attachments = ["attachment1", "attachment2"];
     const keys = ["key1", "key2"];
     const token = "dummy_token";
+    const response = {url:'mockUrl'}
 
     fetchAccessToken.mockResolvedValueOnce(token);
+    getURLFromAttachments.mockResolvedValueOnce(response)
 
     await service.get(attachments, keys);
-    
-    expect(cds.ql.SELECT.from).toHaveBeenCalledWith(attachments, keys);
-    expect(cds.ql.SELECT.columns).toHaveBeenCalledWith("url");
+  
+    expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
     expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
     expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
   });
@@ -46,8 +37,7 @@ describe("Test get method", () => {
     const keys = ["key1", "key2"];
     const token = "dummy_token";
   
-    cds.ql.SELECT.columns.mockResolvedValueOnce({});
-  
+    getURLFromAttachments.mockResolvedValueOnce({})
     fetchAccessToken.mockResolvedValueOnce(token);
   
     try {
@@ -57,8 +47,7 @@ describe("Test get method", () => {
       expect(e).toHaveProperty('message', 'Error: Url not found');
     }
   
-    expect(cds.ql.SELECT.from).toHaveBeenCalledWith(attachments, keys);
-    expect(cds.ql.SELECT.columns).toHaveBeenCalledWith('url');
+    expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
     expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
   });
 });
