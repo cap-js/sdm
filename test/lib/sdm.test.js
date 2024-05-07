@@ -8,6 +8,7 @@ const getURLsToDeleteFromAttachments =
 const fetchAccessToken = require("../../lib/util").fetchAccessToken;
 const deleteAttachment = require("../../lib/handler").deleteAttachment;
 const createAttachment = require("../../lib/handler").createAttachment;
+const { duplicateFileErr } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
 jest.mock("../../lib/persistence", () => ({
@@ -62,12 +63,11 @@ describe("SDMAttachmentsService", () => {
     it("should reject if duplicates exist", async () => {
       getDraftAttachments.mockResolvedValue([{ id: 1 }, { id: 2 }]);
       service.onCreate = jest.fn().mockResolvedValue([]);
-      //getConfigurations.mockReturnValue({ repositoryId: "sampleRepoId" });
       service.isFileNameDuplicate = jest.fn().mockResolvedValue("error");
       await service.draftSaveHandler(mockReq);
       expect(mockReq.reject).toHaveBeenCalledWith(
         409,
-        "The files error are already present in the repository. Kindly remove them from drafts,rename and try again."
+        duplicateFileErr("error")
       );
     });
 
