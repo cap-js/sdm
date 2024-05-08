@@ -1,5 +1,5 @@
 {
-  "name": "@cap-js/document-management",
+  "name": "@cap-js/attachments-sdm",
   "version": "1.0.0",
   "description": "CAP plugin for effortless integration of CAP applications with SAP Document Management Service.",
   "main": "cds-plugin.js",
@@ -15,11 +15,14 @@
     "plugin"
   ],
   "dependencies": {
+    "@cap-js/attachments": "^1.0.1",
     "@sap/cds": "^7",
     "@sap/cds-lsp": "^7.6.1",
     "@sap/xssec": "^3.6.1",
     "dotenv": "^16.3.1",
-    "express": "^4"
+    "express": "^4",
+    "node-cache": "^5.1.2",
+    "request": "^2.88.2"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1",
@@ -30,5 +33,29 @@
   "scripts": {
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js"
+  },
+  "cds": {
+    "requires": {
+      "kinds": {
+        "attachments-sdm": {
+          "impl": "@cap-js/attachments-sdm/lib/sdm"
+        }
+      },
+      "[development]": {
+        "attachments": {
+          "kind": "sdm"
+        }
+      },
+      "[production]": {
+        "attachments": {
+          "kind": "sdm"
+        }
+      },
+      "[hybrid]": {
+        "attachments": {
+          "kind": "sdm"
+        }
+      }
+    }
   }
 }
