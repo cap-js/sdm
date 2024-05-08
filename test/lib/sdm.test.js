@@ -61,6 +61,26 @@ describe("SDMAttachmentsService", () => {
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
       expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
     });
+
+    it("should throw error if readAttachment fails", async () => {
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      const token = "dummy_token";
+      const response = {url:'mockUrl'}
+  
+      fetchAccessToken.mockResolvedValueOnce(token);
+      getURLFromAttachments.mockResolvedValueOnce(response);
+      // Make readAttachment to throw error
+      readAttachment.mockImplementationOnce(() => {
+          throw new Error('Error reading attachment');
+      });
+  
+      await expect(service.get(attachments, keys)).rejects.toThrow('Error reading attachment');
+  
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments);
+      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
+      expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
+    });
   
   });
   describe("draftSaveHandler", () => {
