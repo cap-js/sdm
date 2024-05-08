@@ -2,7 +2,8 @@ const config = {
   verbose: true,
   testTimeout: 100000,
   testMatch: ["**/test/**/*.test.js"],
-  collectCoverageFrom: ["**/lib/*", "**/srv/*", "**/lib/handler/index.js", "**/cds-plugin.js"],
+  collectCoverageFrom: ["**/lib/**/*"],
+  coveragePathIgnorePatterns: ["node_modules", "<rootDir>/lib/persistence"],
   coverageReporters: ["lcov", "text", "text-summary"],
 };
  
