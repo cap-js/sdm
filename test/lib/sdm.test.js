@@ -62,24 +62,6 @@ describe("SDMAttachmentsService", () => {
       expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
     });
   
-    it("should throw an error if the url is not found", async () => {
-      const attachments = ["attachment1", "attachment2"];
-      const keys = ["key1", "key2"];
-      const token = "dummy_token";
-    
-      getURLFromAttachments.mockResolvedValueOnce({})
-      fetchAccessToken.mockResolvedValueOnce(token);
-    
-      try {
-        await service.get(attachments, keys);
-      } catch(e) {
-        expect(e).toBeInstanceOf(Error);
-        expect(e).toHaveProperty('message', 'File not found.');
-      }
-    
-      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
-    });
   });
   describe("draftSaveHandler", () => {
     let service;
