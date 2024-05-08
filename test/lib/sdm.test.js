@@ -11,7 +11,6 @@ const fetchAccessToken = require("../../lib/util").fetchAccessToken;
 const deleteAttachment = require("../../lib/handler").deleteAttachment;
 const createAttachment = require("../../lib/handler").createAttachment;
 const readAttachment = require("../../lib/handler").readAttachment;
-const readDocument = require("../../lib/handler").readDocument;
 const { duplicateFileErr } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -28,7 +27,6 @@ jest.mock("../../lib/handler", () => ({
   deleteAttachment: jest.fn(),
   createAttachment: jest.fn(),
   readAttachment: jest.fn(),
-  readDocument: jest.fn()
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -76,7 +74,7 @@ describe("SDMAttachmentsService", () => {
         await service.get(attachments, keys);
       } catch(e) {
         expect(e).toBeInstanceOf(Error);
-        expect(e).toHaveProperty('message', 'Error: Url not found');
+        expect(e).toHaveProperty('message', 'File not found.');
       }
     
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
