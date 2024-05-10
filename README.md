@@ -1,30 +1,92 @@
 # CAP plugin for SAP Document Management Service
 
-The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) for SAP Document Management service.
+The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides out-of-the box asset storage and handling by using an aspect Attachments. It also provides a CAP-level, easy to use integration of the SAP Document Management Repository like SAP Object Store.  
+This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository/external Repository.
 
-## To-Do
+### Table of Contents
 
-In case you are the maintainer of a new cap-js open source project, these are the steps to do with the template files:
+- [Setup](#setup)
+- [Use `Attachments-sdm`](#use-attachments-sdm)
+- [Test-drive Hybrid](#test-drive-hybrid)
+- [Contributing](#contributing)
+- [Code of Conduct](#code-of-conduct)
+- [Licensing](#licensing)
 
-- Check if the default license (Apache 2.0) also applies to your project. A license change should only be required in exceptional cases. If this is the case, please change the [license file](LICENSE).
-- ~~Enter the correct metadata for the REUSE tool. See our [wiki page](https://wiki.wdf.sap.corp/wiki/display/ospodocs/Using+the+Reuse+Tool+of+FSFE+for+Copyright+and+License+Information) for details how to do it. You can find an initial .reuse/dep5 file to build on. Please replace the parts inside the single angle quotation marks < > by the specific information for your repository and be sure to run the REUSE tool to validate that the metadata is correct.~~
-- Adjust the contribution guidelines (e.g. add coding style guidelines, pull request checklists, different license if needed etc.)
-- Add information about your project to this README (name, description, requirements etc). Especially take care for the <your-project> placeholders - those ones need to be replaced with your project name. See the sections below the horizontal line and [our guidelines on our wiki page](https://wiki.wdf.sap.corp/wiki/display/ospodocs/Guidelines+for+README.md+file) what is required and recommended.
-- Remove all content in this README above and including the horizontal line ;)
+## Setup
 
-***
+To enable attachments-sdm, simply add this self-configuring plugin package to your project:
 
-## About this project
+```sh
+ npm add @cap-js/attachments-sdm
+```
 
-CAP plugin for SAP Document Management service
+In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model.
 
-## Requirements and Setup
+> [!Note]
+> To be able to use the Fiori _uploadTable_ feature, you must ensure ^1.121.0 SAPUI5 version is updated in the application's _index.html_
 
-*Insert a short description what is required to get your project running...*
+## Use Attachments-sdm
+
+**To use Attachments-sdm, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), we do so in a separate file _db/attachments.cds_:
+
+```
+using { sap.capire.incidents as my } from './schema';
+using { Attachments } from '@cap-js/attachments';
+
+extend my.Incidents with { attachments: Composition of many Attachments }
+```
+
+**Onboard a repository in SAP Document Management Integration Option and configure repository Id under cds.requires in package.json**
+
+```
+"attachments-sdm": {
+   "settings": {
+   "repositoryId": "<repository-Id>"
+   }
+}
+```
+
+## Test-drive Hybrid
+
+For using SAP Document Management Integration Option as storage option, you must already have a SAP Document Management Integration Option instance and key which you can access. To connect it, follow this setup.
+
+1. Log in to Cloud Foundry space:
+
+   ```sh
+   cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
+   ```
+
+2. To bind to the service continue with the steps below.
+
+   In the project directory, you can generate a new file \_.cdsrc-private.json by running:
+
+   ```sh
+   cds bind attachments -2 <INSTANCE>:<SERVICE-KEY> --kind sdm
+   ```
+
+3. **Start the server**:
+
+- _Default_ scenario (In memory database):
+  ```sh
+  cds watch --profile hybrid
+  ```
+
+4. **Navigate to the object page** of the incident `Solar panel broken`:
+
+   Go to [Object page for incident **Solar panel broken**](<http://localhost:4004/incidents/app/#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
+
+5. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+   <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
+
+6. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
+   <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
+
+7. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Support, Feedback, Contributing
 
-This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/cap-js/<your-project>/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
+This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/cap-js/sdm/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
 
 ## Code of Conduct
 
@@ -32,4 +94,4 @@ We as members, contributors, and leaders pledge to make participation in our com
 
 ## Licensing
 
-Copyright 2024 SAP SE or an SAP affiliate company and <your-project> contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/cap-js/<your-project>).
+Copyright 2024 SAP SE or an SAP affiliate company and <your-project> contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/cap-js/sdm).
