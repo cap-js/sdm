@@ -5,9 +5,12 @@ const getDuplicateAttachments =
   require("../../lib/persistence").getDuplicateAttachments;
 const getURLsToDeleteFromAttachments =
   require("../../lib/persistence").getURLsToDeleteFromAttachments;
+const getURLFromAttachments =
+  require("../../lib/persistence").getURLFromAttachments;
 const fetchAccessToken = require("../../lib/util").fetchAccessToken;
 const deleteAttachment = require("../../lib/handler").deleteAttachment;
 const createAttachment = require("../../lib/handler").createAttachment;
+const readAttachment = require("../../lib/handler").readAttachment;
 const { duplicateFileErr } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -15,6 +18,7 @@ jest.mock("../../lib/persistence", () => ({
   getDraftAttachments: jest.fn(),
   getDuplicateAttachments: jest.fn(),
   getURLsToDeleteFromAttachments: jest.fn(),
+  getURLFromAttachments: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
@@ -22,6 +26,7 @@ jest.mock("../../lib/util", () => ({
 jest.mock("../../lib/handler", () => ({
   deleteAttachment: jest.fn(),
   createAttachment: jest.fn(),
+  readAttachment: jest.fn(),
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -33,6 +38,51 @@ jest.mock("@sap/cds/lib", () => {
 });
 
 describe("SDMAttachmentsService", () => {
+  describe("Test get method", () => {
+    let service;
+    beforeEach(() => {
+      const cds = require("@sap/cds");
+      service = new SDMAttachmentsService();
+      service.creds = { uri: "mock_cred" };
+    });
+  
+    it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      const token = "dummy_token";
+      const response = {url:'mockUrl'}
+  
+      fetchAccessToken.mockResolvedValueOnce(token);
+      getURLFromAttachments.mockResolvedValueOnce(response)
+  
+      await service.get(attachments, keys);
+    
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
+      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
+      expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
+    });
+
+    it("should throw error if readAttachment fails", async () => {
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      const token = "dummy_token";
+      const response = {url:'mockUrl'}
+  
+      fetchAccessToken.mockResolvedValueOnce(token);
+      getURLFromAttachments.mockResolvedValueOnce(response);
+      // Make readAttachment to throw error
+      readAttachment.mockImplementationOnce(() => {
+          throw new Error('Error reading attachment');
+      });
+  
+      await expect(service.get(attachments, keys)).rejects.toThrow('Error reading attachment');
+  
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments);
+      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
+      expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
+    });
+  
+  });
   describe("draftSaveHandler", () => {
     let service;
     let mockReq;

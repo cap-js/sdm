@@ -22,8 +22,55 @@ const FormData = require("form-data");
 const { getConfigurations } = require("../../../lib/util/index");
 const createAttachment = require("../../../lib/handler/index").createAttachment;
 const deleteAttachment = require("../../../lib/handler/index").deleteAttachment;
+const readAttachment = require("../../../lib/handler/index").readAttachment;
 
 describe("handlers", () => {
+  describe('ReadAttachment function', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('returns document on successful read', async () => {
+      const mockKey = '123';
+      const mockToken = 'a1b2c3';
+      const mockCredentials = {uri: 'http://example.com/'};
+      const mockRepositoryId = '123';
+  
+      const mockResponse = {data: 'mock pdf file content'};
+      const mockBuffer = Buffer.from(mockResponse.data, 'binary');
+      
+      axios.get.mockResolvedValue(mockResponse);
+      getConfigurations.mockReturnValue({repositoryId: mockRepositoryId});
+      
+      const document = await readAttachment(mockKey, mockToken, mockCredentials);
+  
+      const expectedUrl = mockCredentials.uri+ "browser/" + mockRepositoryId + "/root?objectID=" + mockKey + "&cmisselector=content";
+      expect(axios.get).toHaveBeenCalledWith(expectedUrl, {
+        headers: {Authorization: `Bearer ${mockToken}`},
+        responseType: 'arraybuffer'
+      });
+      expect(document).toEqual(mockBuffer);
+    });
+  
+    it('throws error on unsuccessful read', async () => {
+      axios.get.mockImplementationOnce(() => Promise.reject({
+        response: {
+          statusText: 'something bad happened'
+        }
+      }));
+      
+      await expect(readAttachment('123', 'a1b2c3', {uri: 'http://example.com/'})).rejects.toThrow('something bad happened');
+    });
+
+    it('throws error with "An Error Occurred" message when statusText is missing', async () => {
+      axios.get.mockImplementationOnce(() => Promise.reject({
+        response: {}
+      }));
+      
+      await expect(readAttachment('123', 'a1b2c3', {uri: 'http://example.com/'})).rejects.toThrow('An Error Occurred');
+    });
+  });
+  
   describe("createAttachment function", () => {
     beforeEach(() => {
       jest.clearAllMocks();
