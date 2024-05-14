@@ -1,12 +1,12 @@
 # CAP plugin for SAP Document Management Service
 
 The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides out-of-the box asset storage and handling by using an aspect Attachments. It also provides a CAP-level, easy to use integration of the SAP Document Management Repository like SAP Object Store.  
-This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository/external Repository.
+This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
 ### Table of Contents
 
 - [Setup](#setup)
-- [Use `Attachments-sdm`](#use-attachments-sdm)
+- [Use `attachments-sdm`](#use-attachments-sdm)
 - [Test-drive Hybrid](#test-drive-hybrid)
 - [Contributing](#contributing)
 - [Code of Conduct](#code-of-conduct)
@@ -36,7 +36,7 @@ using { Attachments } from '@cap-js/attachments';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Onboard a repository in SAP Document Management Integration Option and configure repository Id under cds.requires in package.json**
+**Create a SAP Document Management Service instance and key. Using the contents from key onboard a repository and configure the onboarded repositoryId under cds.requires in package.json**
 
 ```
 "attachments-sdm": {
@@ -48,7 +48,7 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 
 ## Test-drive Hybrid
 
-For using SAP Document Management Integration Option as storage option, you must already have a SAP Document Management Integration Option instance and key which you can access. To connect it, follow this setup.
+For using SAP Document Management Service as storage option, use the instance and key values of SAP Document Management Service in the below setup.
 
 1. Log in to Cloud Foundry space:
 
