@@ -1,6 +1,6 @@
 # CAP plugin for SAP Document Management Service
 
-The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides out-of-the box asset storage and handling by using an aspect Attachments. It also provides a CAP-level, easy to use integration of the SAP Document Management Repository like SAP Object Store.  
+The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with SAP Document Management Service. This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
 This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
 ### Table of Contents
@@ -48,7 +48,7 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 
 ## Test-drive Hybrid
 
-For using SAP Document Management Service as storage option, use the instance and key values of SAP Document Management Service in the below setup.
+For using SAP Document Management Service to store attachments, use the instance-name and service-key values of SAP Document Management Service Integration Option in the below setup.
 
 1. Log in to Cloud Foundry space:
 
@@ -61,7 +61,7 @@ For using SAP Document Management Service as storage option, use the instance an
    In the project directory, you can generate a new file \_.cdsrc-private.json by running:
 
    ```sh
-   cds bind attachments -2 <INSTANCE>:<SERVICE-KEY> --kind sdm
+   cds bind attachments -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
    ```
 
 3. **Start the server**:
@@ -83,6 +83,47 @@ For using SAP Document Management Service as storage option, use the instance an
 
 7. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
+
+## Test-drive Cloud
+
+1. Log in to Cloud Foundry space:
+
+   ```sh
+   cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
+   ```
+
+2. Bind your CAP application to SAP Document Management Service Integration Option instance or continue with the steps below.
+
+   In mta.yml of your CAP application add **sdm** as a dependency under srv module:
+
+   ```sh
+   modules:
+      - name: cap-srv
+        type: nodejs
+        path: gen/srv
+        requires:
+          - name: sdm
+   ```
+
+   Under resources of mta.yml add below lines:
+
+   ```sh
+   resources:
+      - name: sdm
+      type: org.cloudfoundry.managed-service
+      parameters:
+         service: sdm
+         service-plan: free
+   ```
+
+3. Build & Deploy the project:
+
+   ```sh
+   mbt build
+   cf deploy <path-to-mtar file>
+   ```
+
+4. Once the deployment is successfull open the HTML5 application and follow steps (4 - 7) mentioned in [Test-drive Hybrid](#test-drive-hybrid) section of this README.
 
 ## Support, Feedback, Contributing
 
