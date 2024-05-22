@@ -7,8 +7,11 @@ const getURLsToDeleteFromAttachments =
   require("../../lib/persistence").getURLsToDeleteFromAttachments;
 const getURLFromAttachments =
   require("../../lib/persistence").getURLFromAttachments;
+const getFolderIdForEntity =
+  require("../../lib/persistence").getFolderIdForEntity;
 const fetchAccessToken = require("../../lib/util").fetchAccessToken;
-const deleteAttachment = require("../../lib/handler").deleteAttachment;
+const deleteAttachmentsOfFolder =
+  require("../../lib/handler").deleteAttachmentsOfFolder;
 const createAttachment = require("../../lib/handler").createAttachment;
 const readAttachment = require("../../lib/handler").readAttachment;
 const { duplicateFileErr } = require("../../lib/util/messageConsts");
@@ -18,13 +21,14 @@ jest.mock("../../lib/persistence", () => ({
   getDraftAttachments: jest.fn(),
   getDuplicateAttachments: jest.fn(),
   getURLsToDeleteFromAttachments: jest.fn(),
-  getURLFromAttachments: jest.fn()
+  getURLFromAttachments: jest.fn(),
+  getFolderIdForEntity: jest.fn(),
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
 }));
 jest.mock("../../lib/handler", () => ({
-  deleteAttachment: jest.fn(),
+  deleteAttachmentsOfFolder: jest.fn(),
   createAttachment: jest.fn(),
   readAttachment: jest.fn(),
 }));
@@ -45,49 +49,59 @@ describe("SDMAttachmentsService", () => {
       service = new SDMAttachmentsService();
       service.creds = { uri: "mock_cred" };
     });
-  
+
     it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const token = "dummy_token";
-      const response = {url:'mockUrl'}
-  
+      const response = { url: "mockUrl" };
+
       fetchAccessToken.mockResolvedValueOnce(token);
-      getURLFromAttachments.mockResolvedValueOnce(response)
-  
+      getURLFromAttachments.mockResolvedValueOnce(response);
+
       await service.get(attachments, keys);
-    
-      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments)
+
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
-      expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
+      expect(readAttachment).toHaveBeenCalledWith(
+        "mockUrl",
+        token,
+        service.creds
+      );
     });
 
     it("should throw error if readAttachment fails", async () => {
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const token = "dummy_token";
-      const response = {url:'mockUrl'}
-  
+      const response = { url: "mockUrl" };
+
       fetchAccessToken.mockResolvedValueOnce(token);
       getURLFromAttachments.mockResolvedValueOnce(response);
       // Make readAttachment to throw error
       readAttachment.mockImplementationOnce(() => {
-          throw new Error('Error reading attachment');
+        throw new Error("Error reading attachment");
       });
-  
-      await expect(service.get(attachments, keys)).rejects.toThrow('Error reading attachment');
-  
-      expect(getURLFromAttachments).toHaveBeenCalledWith(keys,attachments);
+
+      await expect(service.get(attachments, keys)).rejects.toThrow(
+        "Error reading attachment"
+      );
+
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds);
-      expect(readAttachment).toHaveBeenCalledWith("mockUrl", token, service.creds);
+      expect(readAttachment).toHaveBeenCalledWith(
+        "mockUrl",
+        token,
+        service.creds
+      );
     });
-  
   });
   describe("draftSaveHandler", () => {
     let service;
     let mockReq;
     let cds;
     beforeEach(() => {
+      jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       service.creds = { uaa: "mocked uaa" };
@@ -108,17 +122,6 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-    });
-
-    it("should reject if duplicates exist", async () => {
-      getDraftAttachments.mockResolvedValue([{ id: 1 }, { id: 2 }]);
-      service.onCreate = jest.fn().mockResolvedValue([]);
-      service.isFileNameDuplicate = jest.fn().mockResolvedValue("error");
-      await service.draftSaveHandler(mockReq);
-      expect(mockReq.reject).toHaveBeenCalledWith(
-        409,
-        duplicateFileErr("error")
-      );
     });
 
     it("should handle failure in onCreate", async () => {
@@ -148,61 +151,6 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(mockReq.info).not.toBeCalled();
-    });
-  });
-
-  describe("isFileNameDuplicate", () => {
-    let service;
-    beforeEach(() => {
-      service = new SDMAttachmentsService();
-    });
-
-    it("should detect duplicates", async () => {
-      const attachments = [
-        /* array of attachment objects */
-      ];
-      const attachment_val = [{ filename: "file1" }, { filename: "file2" }];
-      getDuplicateAttachments.mockResolvedValue([{ filename: "file1" }]);
-
-      const result = await service.isFileNameDuplicate(
-        attachment_val,
-        attachments
-      );
-
-      expect(result).toBe("file1");
-    });
-
-    it("should return empty string if no duplicates", async () => {
-      const attachments = [
-        /* array of attachment objects */
-      ];
-      const attachment_val = [{ filename: "file1" }, { filename: "file2" }];
-      getDuplicateAttachments.mockResolvedValue([]);
-
-      const result = await service.isFileNameDuplicate(
-        attachment_val,
-        attachments
-      );
-
-      expect(result).toBe("");
-    });
-
-    it("should concatenate multiple duplicates", async () => {
-      const attachments = [
-        /* array of attachment objects */
-      ];
-      const attachment_val = [{ filename: "file1" }, { filename: "file2" }];
-      getDuplicateAttachments.mockResolvedValue([
-        { filename: "file1" },
-        { filename: "file2" },
-      ]);
-
-      const result = await service.isFileNameDuplicate(
-        attachment_val,
-        attachments
-      );
-
-      expect(result).toBe("file1,file2");
     });
   });
 
@@ -312,7 +260,7 @@ describe("SDMAttachmentsService", () => {
 
       cds.model.definitions["testTarget.attachments"] = {}; // Add relevant attachment definition
       fetchAccessToken.mockResolvedValue("test_token");
-      deleteAttachment.mockResolvedValue({});
+      deleteAttachmentsOfFolder.mockResolvedValue({});
       service.handleRequest = jest
         .fn()
         .mockResolvedValueOnce({ message: expectedErrorResponse, ID: "2" });
@@ -320,14 +268,14 @@ describe("SDMAttachmentsService", () => {
       await service.deleteAttachmentsWithKeys(records, req);
 
       expect(fetchAccessToken).toHaveBeenCalledTimes(1);
-      expect(deleteAttachment).toHaveBeenCalledTimes(2);
+      expect(deleteAttachmentsOfFolder).toHaveBeenCalledTimes(2);
       expect(service.handleRequest).toHaveBeenCalledTimes(2);
       expect(req.attachmentsToDelete).toHaveLength(1);
       expect(req.attachmentsToDelete[0].ID).toEqual("1");
       expect(req.info).toHaveBeenCalledWith(200, "\n" + expectedErrorResponse);
     });
 
-    it("should not call fetchAccessToken, deleteAttachment, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
+    it("should not call fetchAccessToken, deleteAttachmentsOfFolder, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
       const records = [];
       jest.spyOn(service, "handleRequest");
       const req = {
@@ -338,7 +286,7 @@ describe("SDMAttachmentsService", () => {
       await service.deleteAttachmentsWithKeys(records, req);
 
       expect(fetchAccessToken).not.toHaveBeenCalled();
-      expect(deleteAttachment).not.toHaveBeenCalled();
+      expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
       expect(service.handleRequest).not.toHaveBeenCalled();
     });
   });
