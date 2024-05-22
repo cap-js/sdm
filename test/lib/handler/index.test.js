@@ -21,56 +21,165 @@ jest.mock("../../../lib/util/index", () => {
 const FormData = require("form-data");
 const { getConfigurations } = require("../../../lib/util/index");
 const createAttachment = require("../../../lib/handler/index").createAttachment;
-const deleteAttachment = require("../../../lib/handler/index").deleteAttachment;
+const deleteAttachmentsOfFolder =
+  require("../../../lib/handler/index").deleteAttachmentsOfFolder;
 const readAttachment = require("../../../lib/handler/index").readAttachment;
+const getFolderIdByPath =
+  require("../../../lib/handler/index").getFolderIdByPath;
+const createFolder = require("../../../lib/handler/index").createFolder;
+const deleteFolderWithAttachments =
+  require("../../../lib/handler/index").deleteFolderWithAttachments;
 
 describe("handlers", () => {
-  describe('ReadAttachment function', () => {
+  describe("ReadAttachment function", () => {
     beforeEach(() => {
       jest.clearAllMocks();
     });
 
-    it('returns document on successful read', async () => {
-      const mockKey = '123';
-      const mockToken = 'a1b2c3';
-      const mockCredentials = {uri: 'http://example.com/'};
-      const mockRepositoryId = '123';
-  
-      const mockResponse = {data: 'mock pdf file content'};
-      const mockBuffer = Buffer.from(mockResponse.data, 'binary');
-      
+    it("returns document on successful read", async () => {
+      const mockKey = "123";
+      const mockToken = "a1b2c3";
+      const mockCredentials = { uri: "http://example.com/" };
+      //const mockRepositoryId = "123";
+
+      const mockResponse = { data: "mock pdf file content" };
+      const mockBuffer = Buffer.from(mockResponse.data, "binary");
+
       axios.get.mockResolvedValue(mockResponse);
-      getConfigurations.mockReturnValue({repositoryId: mockRepositoryId});
-      
-      const document = await readAttachment(mockKey, mockToken, mockCredentials);
-  
-      const expectedUrl = mockCredentials.uri+ "browser/" + mockRepositoryId + "/root?objectID=" + mockKey + "&cmisselector=content";
+      //getConfigurations.mockReturnValue({ repositoryId: mockRepositoryId });
+
+      const document = await readAttachment(
+        mockKey,
+        mockToken,
+        mockCredentials
+      );
+
+      const expectedUrl =
+        mockCredentials.uri +
+        "browser/123/root?objectID=" +
+        mockKey +
+        "&cmisselector=content";
       expect(axios.get).toHaveBeenCalledWith(expectedUrl, {
-        headers: {Authorization: `Bearer ${mockToken}`},
-        responseType: 'arraybuffer'
+        headers: { Authorization: `Bearer ${mockToken}` },
+        responseType: "arraybuffer",
       });
       expect(document).toEqual(mockBuffer);
     });
-  
-    it('throws error on unsuccessful read', async () => {
-      axios.get.mockImplementationOnce(() => Promise.reject({
-        response: {
-          statusText: 'something bad happened'
-        }
-      }));
-      
-      await expect(readAttachment('123', 'a1b2c3', {uri: 'http://example.com/'})).rejects.toThrow('something bad happened');
+
+    it("throws error on unsuccessful read", async () => {
+      axios.get.mockImplementationOnce(() =>
+        Promise.reject({
+          response: {
+            statusText: "something bad happened",
+          },
+        })
+      );
+
+      await expect(
+        readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
+      ).rejects.toThrow("something bad happened");
     });
 
     it('throws error with "An Error Occurred" message when statusText is missing', async () => {
-      axios.get.mockImplementationOnce(() => Promise.reject({
-        response: {}
-      }));
-      
-      await expect(readAttachment('123', 'a1b2c3', {uri: 'http://example.com/'})).rejects.toThrow('An Error Occurred');
+      axios.get.mockImplementationOnce(() =>
+        Promise.reject({
+          response: {},
+        })
+      );
+
+      await expect(
+        readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
+      ).rejects.toThrow("An Error Occurred");
     });
   });
-  
+
+  describe("Test for getFolderIdByPath", () => {
+    let mockedReq, mockedCredentials, mockedToken, mockedAttachments;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockedReq = { data: { idValue: "testValue" } };
+      mockedCredentials = { uri: "mocked_uri/" };
+      mockedToken = "mocked_token";
+      mockedAttachments = {
+        keys: { up_: { keys: [{ $generatedFieldName: "__idValue" }] } },
+      };
+    });
+
+    it("should return a folderId when axios request is success", async () => {
+      const mockedResponse = {
+        data: { properties: { "cmis:objectId": { value: "folderId" } } },
+      };
+      axios.get.mockResolvedValue(mockedResponse);
+      //getConfigurations.mockReturnValue({ repositoryId: "123" });
+
+      const result = await getFolderIdByPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+
+      // assertions
+      expect(result).toEqual("folderId");
+      expect(axios.get).toHaveBeenCalledWith(
+        "mocked_uri/browser/123/root/testValue?cmisselector=object",
+        { headers: { Authorization: "Bearer mocked_token" } }
+      );
+    });
+
+    it("should return null when axios request fails", async () => {
+      axios.get.mockRejectedValue(new Error("Network error"));
+      //getConfigurations.mockReturnValue({ repositoryId: "123" });
+
+      const result = await getFolderIdByPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+
+      // assertions
+      expect(result).toEqual(null);
+      expect(axios.get).toHaveBeenCalledWith(
+        "mocked_uri/browser/123/root/testValue?cmisselector=object",
+        { headers: { Authorization: "Bearer mocked_token" } }
+      );
+    });
+  });
+
+  describe("createFolder", () => {
+    it("should create a folder and return expected response when updateServerRequest is successful", async () => {
+      // arrange
+      const mockResponse = { data: "some_data" };
+      axios.post.mockResolvedValue(mockResponse);
+      const mockedReq = { data: { field1: "value1" } };
+      const mockedCredentials = { uri: "mocked_uri/" };
+      const mockedToken = "mocked_token";
+      const mockedAttachments = {
+        keys: {
+          up_: {
+            keys: [
+              {
+                $generatedFieldName: "field1__123",
+              },
+            ],
+          },
+        },
+      };
+      // act
+      const response = await createFolder(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+      // assert
+      expect(response).toEqual(mockResponse);
+      expect(axios.post).toHaveBeenCalledTimes(1);
+      expect(axios.post).toHaveBeenCalled();
+    });
+  });
+
   describe("createAttachment function", () => {
     beforeEach(() => {
       jest.clearAllMocks();
@@ -98,9 +207,10 @@ describe("handlers", () => {
     });
   });
 
-  describe("deleteAttachment()", () => {
+  describe("deleteAttachmentsOfFolder()", () => {
     beforeEach(() => {
       axios.post.mockClear();
+      jest.clearAllMocks();
     });
 
     it("should perform the delete operation for given attachment", async () => {
@@ -110,7 +220,7 @@ describe("handlers", () => {
       const objectId = "demo-objectId";
       const attachments = {};
 
-      const response = await deleteAttachment(
+      const response = await deleteAttachmentsOfFolder(
         credentials,
         token,
         objectId,
@@ -134,8 +244,7 @@ describe("handlers", () => {
       const token = "demo-token";
       const objectId = "demo-objectId";
       const attachments = {};
-
-      const response = await deleteAttachment(
+      const response = await deleteAttachmentsOfFolder(
         credentials,
         token,
         objectId,
@@ -153,6 +262,33 @@ describe("handlers", () => {
         }),
         { headers: expect.any(Object) }
       );
+    });
+  });
+
+  describe("deleteFolderWithAttachments", () => {
+    beforeEach(() => {
+      axios.post.mockClear();
+      jest.clearAllMocks();
+    });
+    it("should delete a folder and return expected response when updateServerRequest is successful", async () => {
+      // arrange
+      const mockResponse = { data: "some_data" };
+      axios.post.mockResolvedValue(mockResponse);
+      const mockedCredentials = { uri: "mocked_uri/" };
+      const mockedToken = "mocked_token";
+      const parentId = "mocked_parentId";
+
+      // act
+      const response = await deleteFolderWithAttachments(
+        mockedCredentials,
+        mockedToken,
+        parentId
+      );
+
+      // assert
+      expect(response).toEqual(mockResponse);
+      expect(axios.post).toHaveBeenCalledTimes(1);
+      expect(axios.post).toHaveBeenCalled();
     });
   });
 });
