@@ -20,15 +20,14 @@ jest.mock("../../../lib/util/index", () => {
 });
 const FormData = require("form-data");
 const { getConfigurations } = require("../../../lib/util/index");
-const createAttachment = require("../../../lib/handler/index").createAttachment;
-const deleteAttachmentsOfFolder =
-  require("../../../lib/handler/index").deleteAttachmentsOfFolder;
-const readAttachment = require("../../../lib/handler/index").readAttachment;
-const getFolderIdByPath =
-  require("../../../lib/handler/index").getFolderIdByPath;
-const createFolder = require("../../../lib/handler/index").createFolder;
-const deleteFolderWithAttachments =
-  require("../../../lib/handler/index").deleteFolderWithAttachments;
+const {
+  createAttachment,
+  deleteAttachmentsOfFolder,
+  readAttachment,
+  getFolderIdByPath,
+  createFolder,
+  deleteFolderWithAttachments,
+} = require("../../../lib/handler/index");
 
 describe("handlers", () => {
   describe("ReadAttachment function", () => {
@@ -40,13 +39,11 @@ describe("handlers", () => {
       const mockKey = "123";
       const mockToken = "a1b2c3";
       const mockCredentials = { uri: "http://example.com/" };
-      //const mockRepositoryId = "123";
 
       const mockResponse = { data: "mock pdf file content" };
       const mockBuffer = Buffer.from(mockResponse.data, "binary");
 
       axios.get.mockResolvedValue(mockResponse);
-      //getConfigurations.mockReturnValue({ repositoryId: mockRepositoryId });
 
       const document = await readAttachment(
         mockKey,
@@ -110,7 +107,6 @@ describe("handlers", () => {
         data: { properties: { "cmis:objectId": { value: "folderId" } } },
       };
       axios.get.mockResolvedValue(mockedResponse);
-      //getConfigurations.mockReturnValue({ repositoryId: "123" });
 
       const result = await getFolderIdByPath(
         mockedReq,
@@ -129,7 +125,6 @@ describe("handlers", () => {
 
     it("should return null when axios request fails", async () => {
       axios.get.mockRejectedValue(new Error("Network error"));
-      //getConfigurations.mockReturnValue({ repositoryId: "123" });
 
       const result = await getFolderIdByPath(
         mockedReq,
@@ -144,6 +139,44 @@ describe("handlers", () => {
         "mocked_uri/browser/123/root/testValue?cmisselector=object",
         { headers: { Authorization: "Bearer mocked_token" } }
       );
+    });
+
+    it("should log statusText and return null when axios.get throws an error with response.statusText", async () => {
+      // create the mock objects
+      const mockedReq = { data: { field1: "value1" } };
+      const mockedCredentials = { uri: "mocked_uri/" };
+      const mockedToken = "mocked_token";
+      const mockedAttachments = {
+        keys: {
+          up_: {
+            keys: [
+              {
+                $generatedFieldName: "field1__123",
+              },
+            ],
+          },
+        },
+      };
+      const errorResponse = { statusText: "Some error occurred" };
+      axios.get.mockRejectedValue({ response: errorResponse });
+
+      // spy on console.log
+      const logSpy = jest.spyOn(console, "log");
+
+      // call the function
+      const response = await getFolderIdByPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+
+      // assert that the function returned null and printed the statusText
+      expect(response).toBeNull();
+      expect(logSpy).toHaveBeenCalledWith("Some error occurred");
+
+      // restore console.log
+      logSpy.mockRestore();
     });
   });
 
