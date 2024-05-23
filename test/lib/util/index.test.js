@@ -1,8 +1,10 @@
 const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
-const fetchAccessToken = require("../../../lib/util/index").fetchAccessToken;
+const {
+  fetchAccessToken,
+  getConfigurations,
+} = require("../../../lib/util/index");
 const cds = require("@sap/cds");
-const getConfigurations = require("../../../lib/util/index").getConfigurations;
 
 jest.mock("@sap/xssec");
 jest.mock("node-cache");
