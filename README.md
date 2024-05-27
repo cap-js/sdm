@@ -8,7 +8,6 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Setup](#setup)
 - [Use `sdm`](#use-sdm)
 - [Testing the application locally](#testing-the-application-locally)
-- [Testing on Cloud](#testing-on-cloud)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
@@ -17,13 +16,12 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 
 In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model.
 
-> [!Note]
-> To be able to use the Fiori _uploadTable_ feature, you must ensure ^1.121.0 SAPUI5 version is updated in the application's _index.html_
-
 ```sh
-Note: The plugin is yet to be released, post release to enable sdm, simply add this self-configuring plugin package to your project using following command:
+[!Note]
+This plugin is yet to be released. Post-release, to enable sdm simply add this self-configuring plugin package to your project using following command:
 
- npm add @cap-js/sdm
+npm add @cap-js/sdm
+
 ```
 
 Prior to release follow below steps to enable sdm plugin
@@ -51,12 +49,12 @@ Prior to release follow below steps to enable sdm plugin
 4. Copy the path of .tgz file generated in step 3 and in terminal navigate to incidents-app root folder and execute:
 
 ```sh
-   npm install
+   npm install <path-to-.tgz file>
 ```
 
 ## Use sdm
 
-**To use sdm, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), we do so in a separate file _db/attachments.cds_:
+**To use sdm plugin in incidents-app, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), create a separate file _db/attachments.cds_ and paste the below content in it:
 
 ```
 using { sap.capire.incidents as my } from './schema';
@@ -65,7 +63,7 @@ using { Attachments } from '@cap-js/sdm';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Create a SAP Document Management Service instance and key. Using credentials from key [onboard a repository](https://api.sap.com/api/AdminAPI/path/post_rest_v2_repositories) and configure the onboarded repositoryId under cds.requires in package.json**
+**Create a SAP Document Management Service instance and key. Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json**
 
 ```
 "sdm": {
@@ -79,13 +77,19 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 
 For using SAP Document Management Service to store attachments, use the instance-name and service-key values of SAP Document Management Service Integration Option in the below setup.
 
-1. Log in to Cloud Foundry space:
+1. Install cds-dk globally
+
+   ```sh
+   npm i @sap/cds-dk -g
+   ```
+
+2. Log in to Cloud Foundry space:
 
    ```sh
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-2. To bind to the service continue with the steps below.
+3. To bind to the service continue with the steps below.
 
    In the project directory, you can generate a new file \_.cdsrc-private.json by running:
 
@@ -93,66 +97,32 @@ For using SAP Document Management Service to store attachments, use the instance
    cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
    ```
 
-3. **Start the server**:
+4. **Start the server**:
 
 - _Default_ scenario (In memory database):
   ```sh
   cds watch --profile hybrid
   ```
 
-4. **Navigate to the object page** of the incident `Solar panel broken`:
+5. **Navigate to the object page** of the incident `Solar panel broken`:
 
-   Go to [Object page for incident **Solar panel broken**](<http://localhost:4004/incidents/app/#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
+   ```sh
+   * Open http://localhost:4004 in a browser.
+   * If propmted for sign-in, enter alice in username field and click on Sign In button.
+   * Click on /incidents/webapp under Web Applications.
+   * Click on incident with title Solar panel broken.
+   ```
 
-5. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+   Or, directly navigate to [Object page for incident **Solar panel broken.**](<http://localhost:4004/incidents/webapp/index.html#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
+
+6. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
-6. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
+7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
    <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
 
-7. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
+8. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
-
-## Testing on Cloud
-
-1. Log in to Cloud Foundry space:
-
-   ```sh
-   cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
-   ```
-
-2. Bind your CAP application to SAP Document Management Service Integration Option instance or continue with the steps below.
-
-   In mta.yml of your CAP application add **sdm** as a dependency under srv module:
-
-   ```sh
-   modules:
-      - name: cap-srv
-        type: nodejs
-        path: gen/srv
-        requires:
-          - name: sdm
-   ```
-
-   Under resources of mta.yml add below lines:
-
-   ```sh
-   resources:
-      - name: sdm
-      type: org.cloudfoundry.managed-service
-      parameters:
-         service: sdm
-         service-plan: free
-   ```
-
-3. Build & Deploy the project:
-
-   ```sh
-   mbt build
-   cf deploy <path-to-mtar file>
-   ```
-
-4. Once the deployment is successfull open the HTML5 application and follow steps (4 - 7) mentioned in [Test-drive Hybrid](#test-drive-hybrid) section of this README.
 
 ## Support, Feedback, Contributing
 
