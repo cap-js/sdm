@@ -6,47 +6,76 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 ### Table of Contents
 
 - [Setup](#setup)
-- [Use `attachments-sdm`](#use-attachments-sdm)
-- [Test-drive Hybrid](#test-drive-hybrid)
-- [Contributing](#contributing)
+- [Use `sdm`](#use-sdm)
+- [Testing the application locally](#testing-the-application-locally)
+- [Testing on Cloud](#testing-on-cloud)
+- [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
 
 ## Setup
-
-To enable attachments-sdm, simply add this self-configuring plugin package to your project:
-
-```sh
- npm add @cap-js/attachments-sdm
-```
 
 In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model.
 
 > [!Note]
 > To be able to use the Fiori _uploadTable_ feature, you must ensure ^1.121.0 SAPUI5 version is updated in the application's _index.html_
 
-## Use Attachments-sdm
+```sh
+Note: The plugin is yet to be released, post release to enable sdm, simply add this self-configuring plugin package to your project using following command:
 
-**To use Attachments-sdm, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), we do so in a separate file _db/attachments.cds_:
+ npm add @cap-js/sdm
+```
+
+Prior to release follow below steps to enable sdm plugin
+
+1. Clone the incidents-app repository:
+
+```sh
+   git clone https://github.com/cap-js/incidents-app.git
+```
+
+2. Clone the sdm repository:
+
+```sh
+   git clone https://github.com/cap-js/sdm.git
+```
+
+3. Open terminal, navigate to sdm root folder and generate tarball:
+
+```sh
+   npm pack
+
+   This will generate a file with name cap-js-sdm-1.0.0.tgz
+```
+
+4. Copy the path of .tgz file generated in step 3 and in terminal navigate to incidents-app root folder and execute:
+
+```sh
+   npm install
+```
+
+## Use sdm
+
+**To use sdm, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), we do so in a separate file _db/attachments.cds_:
 
 ```
 using { sap.capire.incidents as my } from './schema';
-using { Attachments } from '@cap-js/attachments';
+using { Attachments } from '@cap-js/sdm';
 
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Create a SAP Document Management Service instance and key. Using the contents from key onboard a repository and configure the onboarded repositoryId under cds.requires in package.json**
+**Create a SAP Document Management Service instance and key. Using credentials from key [onboard a repository](https://api.sap.com/api/AdminAPI/path/post_rest_v2_repositories) and configure the onboarded repositoryId under cds.requires in package.json**
 
 ```
-"attachments-sdm": {
+"sdm": {
    "settings": {
    "repositoryId": "<repository-Id>"
    }
 }
 ```
 
-## Test-drive Hybrid
+## Testing the application locally
 
 For using SAP Document Management Service to store attachments, use the instance-name and service-key values of SAP Document Management Service Integration Option in the below setup.
 
@@ -61,7 +90,7 @@ For using SAP Document Management Service to store attachments, use the instance
    In the project directory, you can generate a new file \_.cdsrc-private.json by running:
 
    ```sh
-   cds bind attachments -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
+   cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
    ```
 
 3. **Start the server**:
@@ -84,7 +113,7 @@ For using SAP Document Management Service to store attachments, use the instance
 7. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
-## Test-drive Cloud
+## Testing on Cloud
 
 1. Log in to Cloud Foundry space:
 
