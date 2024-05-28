@@ -106,7 +106,7 @@ For using SAP Document Management Service to store attachments, use the instance
 
    ```sh
    * Open http://localhost:4004 in a browser.
-   * If propmted for sign-in, enter alice in username field and click on Sign In button.
+   * If prompted for sign-in, enter alice in username field and click on Sign In button.
    * Click on /incidents/webapp under Web Applications.
    * Click on incident with title Solar panel broken.
    ```
