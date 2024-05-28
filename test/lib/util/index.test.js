@@ -76,7 +76,7 @@ describe("util", () => {
     it("should return attachments settings if exists", () => {
       cds.env = {
         requires: {
-          "attachments-sdm": {
+          sdm: {
             settings: {
               param1: "value1",
               param2: "value2",

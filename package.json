@@ -1,5 +1,5 @@
 {
-  "name": "@cap-js/attachments-sdm",
+  "name": "@cap-js/sdm",
   "version": "1.0.0",
   "description": "CAP plugin for effortless integration of CAP applications with SAP Document Management Service.",
   "main": "cds-plugin.js",
@@ -39,8 +39,8 @@
   "cds": {
     "requires": {
       "kinds": {
-        "attachments-sdm": {
-          "impl": "@cap-js/attachments-sdm/lib/sdm"
+        "sdm": {
+          "impl": "@cap-js/sdm/lib/sdm"
         }
       },
       "[development]": {
