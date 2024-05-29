@@ -344,10 +344,10 @@ describe("SDMAttachmentsService", () => {
         event: "DELETE",
       };
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdForEntity.mockResolvedValueOnce([{ folderId: "folder" }]);
+      getFolderIdByPath.mockResolvedValueOnce("folder");
       await service.attachDeletionData(mockReq);
       expect(mockReq.parentId).toEqual("folder");
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
@@ -358,10 +358,10 @@ describe("SDMAttachmentsService", () => {
         event: "DELETE",
       };
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdForEntity.mockResolvedValueOnce([]);
+      getFolderIdByPath.mockResolvedValueOnce(null);
       await service.attachDeletionData(mockReq);
       expect(mockReq.parentId).toBeUndefined();
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
@@ -442,22 +442,21 @@ describe("SDMAttachmentsService", () => {
       expect(req.info).toHaveBeenCalledWith(200, "\n" + expectedErrorResponse);
     });
 
-    it("should not call fetchAccessToken, deleteAttachmentsOfFolder, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
+    it("should not call deleteAttachmentsOfFolder, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
       const records = [];
       jest.spyOn(service, "handleRequest");
       const req = {
         query: { target: { name: "testTarget" } },
         attachmentsToDelete: [],
       };
+      fetchAccessToken.mockResolvedValue("test_token");
 
       await service.deleteAttachmentsWithKeys(records, req);
-
-      expect(fetchAccessToken).not.toHaveBeenCalled();
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
       expect(service.handleRequest).not.toHaveBeenCalled();
     });
 
-    test("deleteAttachmentsWithKeys() should delete entire folder when parentId is available", async () => {
+    it("deleteAttachmentsWithKeys() should delete entire folder when parentId is available", async () => {
       const mockReq = {
         query: { target: { name: "testName" } },
         attachmentsToDelete: ["file1", "file2"],
@@ -476,6 +475,28 @@ describe("SDMAttachmentsService", () => {
         mockReq.parentId
       );
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+    });
+    it("should call deleteFolderWithAttachments when there is parentId and attachmentsToDelete is empty", async () => {
+      const service = new SDMAttachmentsService();
+      const records = [];
+      const req = {
+        query: { target: { name: "testTarget" } },
+        parentId: "1234",
+        attachmentsToDelete: [],
+      };
+
+      fetchAccessToken.mockResolvedValueOnce("GeneratedToken");
+      deleteFolderWithAttachments.mockResolvedValueOnce({});
+
+      await service.deleteAttachmentsWithKeys(records, req);
+
+      expect(fetchAccessToken).toHaveBeenCalledTimes(1);
+      expect(deleteFolderWithAttachments).toHaveBeenCalledTimes(1);
+      expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
+        service.creds,
+        "GeneratedToken",
+        req.parentId
+      );
     });
   });
 
