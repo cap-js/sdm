@@ -1,196 +1,260 @@
-const axios = require("axios");
-const fs = require("fs");
-const FormData = require("form-data");
-const credentials = require("./credentials.json");
+const axios = require('axios');
+const credentials = require('./credentials.json');
+const API = require('./api');
 
-describe("Attachments Integration Tests", () => {
-  let token;
-  let sampleAttachmentID;
-  let appUrl = credentials.appUrl;
-  let incidentID = credentials.incidentID;
-  let serviceName = "processor";
-  let entityName = "Incidents";
-  let srvpath = "ProcessorService";
+let token;
+let incidentID;
+let appUrl = credentials.appUrl
+let serviceName = 'processor';
+let entityName = 'Incidents';
+let srvpath = 'ProcessorService';
+let attachments = []
+let incidentToDelete;
+let incidentToDelete_empty;
 
-  //Generating the CAP Application token
-  beforeAll(async () => {
-    try {
-      const authRes = await axios.post(
-        `${credentials.authUrl}`,
-        {},
-        {
-          auth: {
-            username: credentials.clientID,
-            password: credentials.clientSecret,
-          },
-        }
-      );
-
-      token = authRes.data.access_token;
-    } catch (error) {
-      expect(error).toBeUndefined;
-    }
-  });
-
-  it("should create an attachment and check if it has been created", async () => {
-    try {
-      const config = {
-        headers: { Authorization: "Bearer " + token },
-      };
-
-      //Setting draft mode and uploading the attachment
-      await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${srvpath}.draftEdit`,
-        {
-          PreserveChanges: true,
-        },
-        config
-      );
-
-      const postData = {
-        up__ID: incidentID,
-        filename: "sample.pdf",
-        mimeType: "application/pdf",
-        createdAt: new Date(
-          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
-        ).toISOString(),
-        createdBy: "test@test.com",
-        modifiedBy: "test@test.com",
-      };
-
-      response = await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
-        postData,
-        config
-      );
-
-      if (response.data && response.data.ID) {
-        const formDataPut = new FormData();
-        const pdfStream = fs.createReadStream("./sample.pdf");
-        pdfStream.on("error", (error) =>
-          console.log("Error reading file:", error)
-        );
-        formDataPut.append("content", pdfStream);
-        sampleAttachmentID = response.data.ID;
-
-        //Uploading the actual content into the created attachment
-        await axios.put(
-          `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${sampleAttachmentID},IsActiveEntity=false)/content`,
-          formDataPut,
-          config
-        );
+beforeAll(async () => {
+  authRes = await axios.get(
+    `${credentials.authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
+    {
+      auth: {
+        username: credentials.clientID,
+        password: credentials.clientSecret
       }
-
-      await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftPrepare`,
-        {
-          SideEffectsQualifier: "",
-        },
-        config
-      );
-
-      config.headers["Content-Type"] = "application/json";
-      response = await axios.post(
-        `
-        https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
-        {},
-        config
-      );
-
-      //Checking to see whether the attachment was created
-      response = await axios.get(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${sampleAttachmentID},IsActiveEntity=true)/content`,
-        config
-      );
-      expect(response.status).toBe(200);
-      expect(response.data).toNotBeUndefined;
-      expect(response.headers["content-type"]).toBe("application/pdf");
-    } catch (error) {
-      expect(error).toBeUndefined;
     }
-  });
+  );
+  token = authRes.data.access_token;
+  config = {
+    headers: { 'Authorization': "Bearer " + token }
+  };
+  api = new API(config);
+});
 
-  it("should read the created attachment", async () => {
-    try {
-      const config = {
-        headers: { Authorization: "Bearer " + token },
-      };
+describe('Attachments Integration Tests --CREATE', () => {
+  //When an attachment is created, the function also attempts to read it from drafts. If this attempt fails, an error is thrown and the attachment is not created.
+  it('should create an entity and check if it has been created', async () => { 
+    let response = await api.createEntity(appUrl, serviceName, entityName, srvpath);
+    incidentID = response.incidentID;
+    incidentToDelete_empty = incidentID;
+    expect(response.status).toBe("OK");
+    expect(response.incidentID).toBeDefined();
+  });   
 
-      const response = await axios.get(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${sampleAttachmentID},IsActiveEntity=true)/content`,
-        config
-      );
+  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => { 
+    const files = [
+      { 
+        filename: "sample.pdf", 
+        filepath: "./sample.pdf" 
+      }
+    ]
 
-      expect(response.status).toBe(200);
-      expect(response.headers["content-type"]).toBe("application/pdf");
-    } catch (error) {
-      console.error(error);
-    }
-  });
-
-  it("should respond with 400 when the attachment is not found", async () => {
-    let nonExistentincidentID = "Incorrect Incident ID";
-    let nonExistentID = "Incorrect attachment ID";
-
-    try {
-      const config = {
-        headers: { Authorization: "Bearer " + token },
-      };
-
-      await axios.get(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${nonExistentincidentID},IsActiveEntity=true)/attachments(up__ID=${nonExistentincidentID},ID=${nonExistentID},IsActiveEntity=true)/content`,
-        config
-      );
-
-      throw new Error("Expected request to fail but it succeeded"); // This line will be executed if the previous line does not throw an error.
-    } catch (error) {
-      expect(error.response.status).toBe(400);
-    }
-  });
-
-  it("should delete an attachment and make sure it doesnt exist", async () => {
-    const config = {
-      headers: { Authorization: "Bearer " + token },
+    const postData = {
+      up__ID: incidentID,
+      mimeType: "application/pdf",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
     };
 
-    try {
-      //Setting draft mode and uploading the attachment
-      await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${srvpath}.draftEdit`,
-        {
-          PreserveChanges: true,
-        },
-        config
-      );
+    const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
+    for(let i = 0; i < files.length; i++){
+      expect(response.status[i]).toBe("OK")
+      attachments.push(response.attachmentID[i])
+    }
+  });
 
-      await axios.delete(
-        `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${sampleAttachmentID},IsActiveEntity=false)`,
-        config
-      );
+  it('should upload a single attachment and check if it has been uploaded with content --exe', async () => { 
+    //A separate test case is formed for exe as the postData will vary, and unlike pdf it can't be viewed in browser
+    const files = [
+      { 
+        filename: "sample.exe", 
+        filepath: "./sample.exe" 
+      }
+    ]
 
-      await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftPrepare`,
-        {
-          SideEffectsQualifier: "",
-        },
-        config
-      );
+    const postData = {
+      up__ID: incidentID,
+      mimeType: "application/exe",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
 
-      config.headers["Content-Type"] = "application/json";
+    const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
+    for(let i = 0; i < files.length; i++){
+      expect(response.status[i]).toBe("OK")
+      attachments.push(response.attachmentID[i])
+    }
+  });
 
-      await axios.post(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
-        {},
-        config
-      );
+  it('should batch upload', async () => {
+    //It should upload multiple attachments (varying size) and check if it has been uploaded with content. One invalid file in the batch will fail 
+    const files = [
+      { 
+        filename: "sample1.pdf", 
+        filepath: "./sample1.pdf" 
+      },
+      { 
+        filename: "samplebig.pdf", 
+        filepath: "./samplebig.pdf" 
+      },
+      { 
+        filename: "invalid.pdf", 
+        filepath: "./invalid.pdf" 
+      }
+    ];
 
-      //Making sure the attachment doesn't exist
-      response = await axios.get(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${sampleAttachmentID},IsActiveEntity=true)/content`,
-        config
-      );
-    } catch (error) {
-      expect(error.response.status).toBe(404);
+    const postData = {
+      up__ID: incidentID,
+      mimeType: "application/pdf",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
+    for(let i = 0; i < files.length; i++){
+      if(i==2){
+        expect(response.status[i]).toBe("An error occured. Attachment not found") //As the invalid.pdf is never saved, the read fails
+      }
+      else{
+        expect(response.status[i]).toBe("OK")
+        attachments.push(response.attachmentID[i])
+      }
+    }
+      
+    
+  });
+
+  it('should not allow upload of duplicate files in same entity', async () => { 
+    const files = [
+      { 
+        filename: "sample.pdf", 
+        filepath: "./sample.pdf" 
+      }
+    ]
+
+    const postData = {
+      up__ID: incidentID,
+      mimeType: "application/pdf",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
+    for(let i = 0; i < files.length; i++){
+      expect(response.status[i]).toBe("An error occured. Attachment not found") //As the error comes from the plugin itself and not the DI, none of the api calls will fail
+    }
+  });
+
+  it('should not allow upload of duplicate files in same entity --draft', async () => { 
+    const files = [
+      { 
+        filename: "sample2.pdf", 
+        filepath: "./sample2.pdf" 
+      },
+      {
+        filename: "sample2.pdf", 
+        filepath: "./sample2.pdf" 
+      }
+    ]
+
+    const postData = {
+      up__ID: incidentID,
+      mimeType: "application/pdf",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
+    expect(response).toBe("An error occured") //Fails in draftActivate call
+  });
+
+  it('should allow upload of a duplicate file in a different entity', async () => { 
+    let response = await api.createEntity(appUrl, serviceName, entityName, srvpath);
+    expect(response.status).toBe("OK");
+    expect(response.incidentID).toBeDefined();
+    incidentToDelete = response.incidentID;
+
+    const files = [
+      { 
+        filename: "sample.pdf", 
+        filepath: "./sample.pdf" 
+      }
+    ]
+
+    const postData = {
+      up__ID: response.incidentID,
+      mimeType: "application/pdf",
+      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, response.incidentID, srvpath, postData, files);
+    for(let i = 0; i < files.length; i++){
+      expect(response.status[i]).toBe("OK")
     }
   });
 });
+
+describe('Attachments Integration Tests --READ', () => {
+  it('should read the created attachment', async () => {
+    //This test case also reads files not supported by browser (.exe)
+    const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, attachments);
+    for(let i = 0; i < attachments.length; i++){
+      expect(response[i]).toBe("OK")
+    }
+  });
+
+  it('should not read an attachment that doesnt exist', async () => {
+    invalidAttachment = ['invalid-attachment-id']
+    const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, invalidAttachment);
+    for(let i = 0; i < 1; i++){
+      expect(response[i]).toBe("An error occured. Attachment not found")
+    }
+  });
+});
+
+describe('Attachments Integration Tests --DELETE', () => {
+  it('should handle errors in batch delete request', async () => {
+    //This test case makes sure the files which are deleted don't exist and vice-versa
+    const response = await api.deleteAttachmentNeg(appUrl, serviceName, entityName, incidentID, srvpath, attachments);
+    for(let i = 0; i < attachments.length; i++){
+      if(i>1){
+        expect(response[i]).toBe("OK")
+      }
+      else{
+        expect(response[i]).toBe("An error occured. Attachment not found")
+      }
+    }
+  });
+  it('should delete the attachments of an entity', async () => {
+    //This test case also performs a read operation to make sure the attachment has been deleted
+    const response = await api.deleteAttachment(appUrl, serviceName, entityName, incidentID, srvpath, [attachments[2],attachments[3]]);
+    for(let i = 0; i < 2; i++){
+      expect(response[i]).toBe("An error occured. Attachment not found")
+    }
+  });
+
+  it('should delete an attachment that doesnt exist in repository', async () => {
+    const response = await api.deleteAttachment(appUrl, serviceName, entityName, incidentToDelete, srvpath, ['invalid_attachment']);
+    for(let i = 0; i < 1; i++){
+      expect(response[i]).toBe("An error occured. Attachment not found")
+    }
+  });
+
+  it('should delete an entity and all its attachments', async () => {
+    const response = await api.deleteEntity(appUrl, serviceName, entityName, incidentToDelete);
+    expect(response).toBe("OK")
+  });
+
+  it('should delete an entity after all its attachments have been deleted', async () => {
+    const response = await api.deleteEntity(appUrl, serviceName, entityName, incidentToDelete_empty);
+    expect(response).toBe("OK")
+  });
+});
+
+
+
