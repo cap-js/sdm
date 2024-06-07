@@ -56,7 +56,6 @@ jobs:
             -Dsonar.projectKey=cap-js-sdm
             -Dsonar.sources=lib
             -Dsonar.exclusions=**/node_modules/**
-            -Dsonar.tests=test/
             -Dsonar.js.file.suffixes=.js,.jsx
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.qualitygate.wait=true
