@@ -39,13 +39,22 @@ permissions:
 jobs:
   Analysis:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        node_version: ['20.x']
+        
     steps:
+
+      - name: npm install and test
+        run: |
+          npm install
+          npm run test
+        
       - name: Analyze with SonarQube
 
         # You can pin the exact commit or the version.
         # uses: SonarSource/sonarqube-scan-action@v1.1.0
-        uses: SonarSource/sonarqube-scan-action@7295e71c9583053f5bf40e9d4068a0c974603ec8
+        uses: SonarSource/sonarqube-scan-action@v1.1.0
         env:
           GITHUB_TOKEN: 5f00e34e-2186-4fad-9668-8ef15af3b6b1  # Needed to get PR information
           SONAR_TOKEN: squ_d48999c121b577436aa15e362bafba7590ba473a   # Generate a token on SonarQube, add it to the secrets of this repo with the name SONAR_TOKEN (Settings > Secrets > Actions > add new repository secret)
@@ -54,8 +63,9 @@ jobs:
           # Additional arguments for the sonarcloud scanner
           args:
             -Dsonar.projectKey=cap-js-sdm
+            -Dsonar.sources=lib
             -Dsonar.exclusions=**/node_modules/**
             -Dsonar.js.file.suffixes=.js,.jsx
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
             -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
