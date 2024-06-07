@@ -51,7 +51,6 @@ describe("SDMAttachmentsService", () => {
   describe("Test get method", () => {
     let service;
     beforeEach(() => {
-      const cds = require("@sap/cds");
       service = new SDMAttachmentsService();
       service.creds = { uri: "mock_cred" };
     });
@@ -60,26 +59,29 @@ describe("SDMAttachmentsService", () => {
       const req = {
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
       };
-    
+
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const token = "mocked_token";
       const response = { url: "mockUrl" };
-    
+
       // set req in service instance
-    
+
       getURLFromAttachments.mockResolvedValueOnce(response);
       fetchAccessToken.mockResolvedValueOnce(token);
-      readAttachment.mockResolvedValueOnce('dummy_content');
-    
-      await service.get(attachments, keys,req); // call get method
-    
+      readAttachment.mockResolvedValueOnce("dummy_content");
+
+      await service.get(attachments, keys, req); // call get method
+
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'tokenValue');
+      expect(fetchAccessToken).toHaveBeenCalledWith(
+        service.creds,
+        "tokenValue"
+      );
       expect(readAttachment).toHaveBeenCalledWith(
         "mockUrl",
         token,
@@ -87,38 +89,39 @@ describe("SDMAttachmentsService", () => {
       );
     });
 
-   it("should throw error if readAttachment fails", async () => {
-   const req = {
-     user: {
-       tokenInfo: {
-         getTokenValue: jest.fn().mockReturnValue('tokenValue'),
-       },
-     },
-   };
-     const attachments = ["attachment1", "attachment2"];
-     const keys = ["key1", "key2"];
-     const token = "mocked_token";
-     const response = { url: "mockUrl" };
-     fetchAccessToken.mockResolvedValueOnce(token);
-     getURLFromAttachments.mockResolvedValueOnce(response);
-     readAttachment.mockImplementationOnce(() => {
-       throw new Error("Error reading attachment");
-     });
+    it("should throw error if readAttachment fails", async () => {
+      const req = {
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+      };
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      const token = "mocked_token";
+      const response = { url: "mockUrl" };
+      fetchAccessToken.mockResolvedValueOnce(token);
+      getURLFromAttachments.mockResolvedValueOnce(response);
+      readAttachment.mockImplementationOnce(() => {
+        throw new Error("Error reading attachment");
+      });
 
+      await expect(service.get(attachments, keys, req)).rejects.toThrow(
+        "Error reading attachment"
+      );
 
-
-     await expect(service.get(attachments, keys,req)).rejects.toThrow(
-       "Error reading attachment"
-     );
-
-     expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
-     expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'tokenValue');
-     expect(readAttachment).toHaveBeenCalledWith(
-       "mockUrl",
-       token,
-       service.creds
-     );
-   });
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
+      expect(fetchAccessToken).toHaveBeenCalledWith(
+        service.creds,
+        "tokenValue"
+      );
+      expect(readAttachment).toHaveBeenCalledWith(
+        "mockUrl",
+        token,
+        service.creds
+      );
+    });
   });
   describe("draftSaveHandler", () => {
     let service;
@@ -137,7 +140,7 @@ describe("SDMAttachmentsService", () => {
         },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('mocked_token'),
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
           },
         },
         reject: jest.fn(),
@@ -171,7 +174,10 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
       expect(getDraftAttachments).toHaveBeenCalledTimes(1);
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledTimes(1);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'mocked_token');
+      expect(fetchAccessToken).toHaveBeenCalledWith(
+        service.creds,
+        "mocked_token"
+      );
       expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
       expect(getFolderIdByPath).toHaveBeenCalledWith(
         mockReq,
@@ -282,16 +288,15 @@ describe("SDMAttachmentsService", () => {
       service = new SDMAttachmentsService();
     });
     it("should add attachments to delete in req when deletions are present", async () => {
-  
       const mockedReq = {
         query: {
           target: {
             name: "myName",
           },
-          user: {
-            tokenInfo: {
-              getTokenValue: jest.fn().mockReturnValue('tokenValue'),
-            },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
         diff: jest.fn().mockResolvedValue({
@@ -327,10 +332,10 @@ describe("SDMAttachmentsService", () => {
           target: {
             name: "myName",
           },
-          user: {
-            tokenInfo: {
-              getTokenValue: jest.fn().mockReturnValue('tokenValue'),
-            },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
         diff: jest.fn().mockResolvedValue({
@@ -351,10 +356,11 @@ describe("SDMAttachmentsService", () => {
         query: {
           target: {
             name: "myName",
-          },user: {
-            tokenInfo: {
-              getTokenValue: jest.fn().mockReturnValue('tokenValue'),
-            },
+          },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
         diff: jest.fn().mockResolvedValue({
@@ -372,57 +378,61 @@ describe("SDMAttachmentsService", () => {
 
     it("attachDeletionData() should set req.parentId if event is DELETE and getFolderIdForEntity() returns non-empty array", async () => {
       const mockReq = {
-        query: { target: { name: "testName" },
+        query: { target: { name: "testName" } },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
-        }, },
+        },
         diff: () =>
           Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
-     
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdForEntity.mockResolvedValueOnce([{ folderId: "folder" }]);
+      getFolderIdByPath.mockResolvedValueOnce("folder");
       await service.attachDeletionData(mockReq);
       expect(mockReq.parentId).toEqual("folder");
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
       const mockReq = {
-        query: { target: { name: "testName" },
+        query: {
+          target: { name: "testName" },
+        },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
-        }, },
+        },
         diff: () =>
           Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
-      
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdForEntity.mockResolvedValueOnce([]);
+      getFolderIdByPath.mockResolvedValueOnce(null);
       await service.attachDeletionData(mockReq);
       expect(mockReq.parentId).toBeUndefined();
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
       const mockReq = {
-        query: { target: { name: "testName" },
+        query: {
+          target: { name: "testName" },
+        },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
-        }, },
+        },
         diff: () =>
           Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
         event: "CREATE",
       };
-   
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       await service.attachDeletionData(mockReq);
       expect(getFolderIdForEntity).toHaveBeenCalledTimes(0);
@@ -434,7 +444,7 @@ describe("SDMAttachmentsService", () => {
         },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
         diff: jest
@@ -455,7 +465,7 @@ describe("SDMAttachmentsService", () => {
         query: { target: { name: "testName" } },
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
         diff: () =>
@@ -485,11 +495,11 @@ describe("SDMAttachmentsService", () => {
         info: jest.fn(),
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
       };
-     
+
       const expectedErrorResponse = "test_error_response";
 
       cds.model.definitions["testTarget.attachments"] = {}; // Add relevant attachment definition
@@ -508,7 +518,7 @@ describe("SDMAttachmentsService", () => {
       expect(req.info).toHaveBeenCalledWith(200, "\n" + expectedErrorResponse);
     });
 
-    it("should not call fetchAccessToken, deleteAttachmentsOfFolder, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
+    it("should not call deleteAttachmentsOfFolder, and handleRequest methods if req.attachmentsToDelete is empty", async () => {
       const records = [];
       jest.spyOn(service, "handleRequest");
       const req = {
@@ -516,26 +526,25 @@ describe("SDMAttachmentsService", () => {
         attachmentsToDelete: [],
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
       };
+      fetchAccessToken.mockResolvedValue("test_token");
 
       await service.deleteAttachmentsWithKeys(records, req);
-
-      expect(fetchAccessToken).not.toHaveBeenCalled();
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
       expect(service.handleRequest).not.toHaveBeenCalled();
     });
 
-    test("deleteAttachmentsWithKeys() should delete entire folder when parentId is available", async () => {
+    it("deleteAttachmentsWithKeys() should delete entire folder when parentId is available", async () => {
       const mockReq = {
         query: { target: { name: "testName" } },
         attachmentsToDelete: ["file1", "file2"],
         parentId: "some_folder_id",
         user: {
           tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
       };
@@ -545,13 +554,43 @@ describe("SDMAttachmentsService", () => {
 
       await service.deleteAttachmentsWithKeys([], mockReq);
 
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'tokenValue');
+      expect(fetchAccessToken).toHaveBeenCalledWith(
+        service.creds,
+        "tokenValue"
+      );
       expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
         service.creds,
         "mocked_token",
         mockReq.parentId
       );
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+    });
+    it("should call deleteFolderWithAttachments when there is parentId and attachmentsToDelete is empty", async () => {
+      const service = new SDMAttachmentsService();
+      const records = [];
+      const req = {
+        query: { target: { name: "testTarget" } },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+        parentId: "1234",
+        attachmentsToDelete: [],
+      };
+
+      fetchAccessToken.mockResolvedValueOnce("GeneratedToken");
+      deleteFolderWithAttachments.mockResolvedValueOnce({});
+
+      await service.deleteAttachmentsWithKeys(records, req);
+
+      expect(fetchAccessToken).toHaveBeenCalledTimes(1);
+      expect(deleteFolderWithAttachments).toHaveBeenCalledTimes(1);
+      expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
+        service.creds,
+        "GeneratedToken",
+        req.parentId
+      );
     });
   });
 
@@ -566,12 +605,14 @@ describe("SDMAttachmentsService", () => {
       const credentials = {};
       const token = "token";
       const attachments = [];
-      const req = { data: { attachments: [...data] },
-      user: {
-        tokenInfo: {
-          getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+      const req = {
+        data: { attachments: [...data] },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
         },
-      }, };
+      };
 
       createAttachment.mockResolvedValue({
         status: 201,
@@ -595,12 +636,14 @@ describe("SDMAttachmentsService", () => {
       const credentials = {};
       const token = "token";
       const attachments = [];
-      const req = { data: { attachments: [...data] } ,
-      user: {
-        tokenInfo: {
-          getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+      const req = {
+        data: { attachments: [...data] },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
         },
-      },};
+      };
 
       createAttachment
         .mockResolvedValueOnce({
@@ -630,12 +673,14 @@ describe("SDMAttachmentsService", () => {
         { content: "valid_data", filename: "filename2", ID: "id2" },
       ];
       const mockReq = {
-        data: { attachments: [...mockAttachments] ,
+        data: {
+          attachments: [...mockAttachments],
           user: {
             tokenInfo: {
-              getTokenValue: jest.fn().mockReturnValue('tokenValue'),
+              getTokenValue: jest.fn().mockReturnValue("tokenValue"),
             },
-          },},
+          },
+        },
       };
       const token = "mocked_token";
       const credentials = "mocked_credentials";
