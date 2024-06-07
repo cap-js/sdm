@@ -41,6 +41,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: List workspace directory
+        run: ls -la /github/workspace
+        
       - name: Analyze with SonarQube
 
         # You can pin the exact commit or the version.
