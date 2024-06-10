@@ -4,14 +4,13 @@ const FormData = require('form-data');
 
 class API {
     constructor(config) {
+        config = JSON.parse(JSON.stringify(config));
         this.config = config
       }
       
     async createEntity(appUrl, serviceName, entityName, srvpath){
-        let localConfig;
         let response;
         let incidentID;
-        localConfig = JSON.parse(JSON.stringify(this.config));
         //Creating the entity (draft)
         response = await axios.post(
             `https://${appUrl}/odata/v4/${serviceName}/${entityName}`, 
@@ -19,7 +18,7 @@ class API {
             title: 'IntegrationTestEntity',
             status_code: 'N'
             },
-            localConfig
+            this.config
         )
        
         incidentID = response.data.ID
@@ -30,7 +29,7 @@ class API {
         response = await axios.post(`
             https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
             {},
-            localConfig
+            this.config
         );  
         expect(response.status).toBe(201)
         expect(response.data.urgency_code).toBe('M')
@@ -38,7 +37,7 @@ class API {
         //Checking to see if the entity exists
         response = await axios.get(`
             https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)`,
-            localConfig
+            this.config
         );
         incidentID = response.data.ID
 
@@ -54,13 +53,11 @@ class API {
     }
 
     async deleteEntity(appUrl, serviceName, entityName, incidentID){
-        let localConfig;
         let response;
-        localConfig = JSON.parse(JSON.stringify(this.config));
         try{
             response = await axios.delete(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)`,
-                localConfig
+                this.config
             )
             if(response.status == 204){
                 return "OK"
@@ -74,21 +71,18 @@ class API {
     }
 
     async createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files){
-        let localConfig;
         let response;
         let responseStatus = {
             status: [],
             attachmentID: []
         };
-        
-        localConfig = JSON.parse(JSON.stringify(this.config));
         try{
             await axios.post(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${srvpath}.draftEdit`,
                 {
                 PreserveChanges: true,
                 },
-                localConfig
+                this.config
             );
 
             for(let file of files){
@@ -98,7 +92,7 @@ class API {
                     response = await axios.post(
                         `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
                         postData,
-                        localConfig
+                        this.config
                     )
                 } catch (error){
                     continue
@@ -114,11 +108,11 @@ class API {
                         await axios.put(
                         `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`,
                         formDataPut, 
-                        localConfig
+                        this.config
                         );
                         response = await axios.get(
                             `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`,
-                            localConfig
+                            this.config
                         );
                         if (response.status != 200 || !response.data){
                             return "An error occured, draft could not be read"
@@ -135,16 +129,16 @@ class API {
                     {
                         SideEffectsQualifier: ""
                     },
-                    localConfig
+                    this.config
                 );
             }    
         
-            localConfig.headers['Content-Type'] = 'application/json';
+            this.config.headers['Content-Type'] = 'application/json';
 
             response = await axios.post(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
                 {},
-                localConfig
+                this.config
             );    
         
             //Checking to see whether the attachments was created
@@ -155,34 +149,37 @@ class API {
             try{
                 await axios.delete(
                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)`,
-                        localConfig
+                        this.config
                     )
+                delete this.config.headers['Content-Type'];
                 return responseStatus
             } catch (error) {
+                delete this.config.headers['Content-Type'];
                 return responseStatus //If the draft doesn't exist, the delete request will fail. This try-catch block is to handle that scenario
             }
         } catch (error){
             try{
                 await axios.delete(
                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)`,
-                        localConfig
+                        this.config
                     )
+                delete this.config.headers['Content-Type'];
                 return "An error occured"
             } catch (error) {
+                delete this.config.headers['Content-Type'];
                 return "An error occured. Draft doesn't exist" //If the draft doesn't exist, the delete request will fail. This try-catch block is to handle that scenario
             }
         }
     }
 
     async readAttachment(appUrl, serviceName, entityName, incidentID, attachments){
-        let localConfig = JSON.parse(JSON.stringify(this.config));
         let readResponse = []
         for (let i = 0; i < attachments.length; i++) {
             try{
                 let response;
                 response = await axios.get(
                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=true)/content`,
-                    localConfig
+                    this.config
                 );
                 if (response.status === 200 && response.data) {
                     readResponse.push("OK");
@@ -196,17 +193,15 @@ class API {
     }
 
     async deleteAttachment(appUrl, serviceName, entityName, incidentID, srvpath, attachments){
-        let localConfig;
         let response;
-        let responseStatus = []
-        localConfig = JSON.parse(JSON.stringify(this.config));
+        let responseStatus = [];
         try{
             await axios.post(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${srvpath}.draftEdit`,
                 {
                 PreserveChanges: true,
                 },
-                localConfig
+                this.config
             );
         } catch (error) {
             return "An error occured"
@@ -216,7 +211,7 @@ class API {
             try{
                 await axios.delete(
                     `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
-                    localConfig
+                    this.config
                 );
             } catch (error) {
                 continue
@@ -228,14 +223,14 @@ class API {
             {
                 SideEffectsQualifier: ""
             },
-            localConfig
+            this.config
         );    
     
-        localConfig.headers['Content-Type'] = 'application/json';
+        this.config.headers['Content-Type'] = 'application/json';
         response = await axios.post(
             `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
             {},
-            localConfig
+            this.config
         );   
         
         for(let i = 0; i < attachments.length; i++){
@@ -244,33 +239,32 @@ class API {
                 responseStatus.push(response[i])
             }
         }
+        delete this.config.headers['Content-Type'];
         return responseStatus
     }   
 
     async deleteAttachmentNeg(appUrl, serviceName, entityName, incidentID, srvpath, attachments){
-        let localConfig;
         let response;
         let responseStatus = []
-        localConfig = JSON.parse(JSON.stringify(this.config));
         try{
             await axios.post(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${srvpath}.draftEdit`,
                 {
                 PreserveChanges: true,
                 },
-                localConfig
+                this.config
             );
         } catch (error) {
             return "An error occured"
         }
 
-        let localConfigNeg = "invalid config";
+        let configNeg = "invalid config";
         for (let i = 0; i < attachments.length; i++) {
             if(i>1){
                 try{
                     await axios.delete(
                         `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
-                        localConfigNeg
+                        configNeg
                     );
                 } catch (error) {
                     continue
@@ -280,7 +274,7 @@ class API {
                 try{
                     await axios.delete(
                         `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
-                        localConfig
+                        this.config
                     );
                 } catch (error) {
                     continue
@@ -293,14 +287,14 @@ class API {
             {
                 SideEffectsQualifier: ""
             },
-            localConfig
+            this.config
         );    
     
-        localConfig.headers['Content-Type'] = 'application/json';
+        this.config.headers['Content-Type'] = 'application/json';
         response = await axios.post(
             `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
             {},
-            localConfig
+            this.config
         );   
         
         response = await this.readAttachment(appUrl, serviceName, entityName, incidentID, attachments);
@@ -312,6 +306,7 @@ class API {
                 responseStatus.push(response[i])
             }
         }
+        delete this.config.headers['Content-Type'];
         return responseStatus
     }   
 }
