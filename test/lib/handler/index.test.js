@@ -18,7 +18,6 @@ jest.mock("../../../lib/util/index", () => {
     getConfigurations: jest.fn().mockReturnValue({ repositoryId: "123" }),
   };
 });
-const FormData = require("form-data");
 const { getConfigurations } = require("../../../lib/util/index");
 const {
   createAttachment,
