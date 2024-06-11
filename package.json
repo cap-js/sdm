@@ -38,7 +38,7 @@
   "scripts": {
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js",
-    "integration-test": "jest --config jest-integration.config.js"
+    "integration-test": "jest --config jest-integration.config.js",
     "lint": "npx eslint --fix ."
   },
   "cds": {
