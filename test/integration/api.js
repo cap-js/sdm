@@ -2,7 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 
-class API {
+class Api {
     constructor(config) {
         config = JSON.parse(JSON.stringify(config));
         this.config = config
@@ -311,4 +311,4 @@ class API {
     }   
 }
 
-module.exports = API;
+module.exports = Api;
