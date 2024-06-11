@@ -43,7 +43,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample.pdf", 
-        filepath: "./sample.pdf" 
+        filepath: "./test/integration/sample.pdf" 
       }
     ]
 
@@ -67,7 +67,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample.exe", 
-        filepath: "./sample.exe" 
+        filepath: "./test/integration/sample.exe" 
       }
     ]
 
@@ -91,15 +91,15 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample1.pdf", 
-        filepath: "./sample1.pdf" 
+        filepath: "./test/integration/sample1.pdf" 
       },
       { 
         filename: "samplebig.pdf", 
-        filepath: "./samplebig.pdf" 
+        filepath: "./test/integration/samplebig.pdf" 
       },
       { 
         filename: "invalid.pdf", 
-        filepath: "./invalid.pdf" 
+        filepath: "./test/integration/invalid.pdf" 
       }
     ];
 
@@ -129,7 +129,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample.pdf", 
-        filepath: "./sample.pdf" 
+        filepath: "./test/integration/sample.pdf" 
       }
     ]
 
@@ -151,11 +151,11 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample2.pdf", 
-        filepath: "./sample2.pdf" 
+        filepath: "./test/integration/sample2.pdf" 
       },
       {
         filename: "sample2.pdf", 
-        filepath: "./sample2.pdf" 
+        filepath: "./test/integration/sample2.pdf" 
       }
     ]
 
@@ -180,7 +180,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     const files = [
       { 
         filename: "sample.pdf", 
-        filepath: "./sample.pdf" 
+        filepath: "./test/integration/sample.pdf" 
       }
     ]
 
