@@ -1,6 +1,6 @@
 const axios = require('axios');
 const credentials = require('./credentials.json');
-const API = require('./api');
+const Api = require('./api');
 
 let token;
 let incidentID;
@@ -26,7 +26,7 @@ beforeAll(async () => {
   config = {
     headers: { 'Authorization': "Bearer " + token }
   };
-  api = new API(config);
+  api = new Api(config);
 });
 
 describe('Attachments Integration Tests --CREATE', () => {
