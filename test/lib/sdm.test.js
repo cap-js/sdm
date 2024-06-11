@@ -51,7 +51,6 @@ describe("SDMAttachmentsService", () => {
   describe("Test get method", () => {
     let service;
     beforeEach(() => {
-      const cds = require("@sap/cds");
       service = new SDMAttachmentsService();
       service.creds = { uri: "mock_cred" };
     });
