@@ -8,6 +8,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Setup](#setup)
 - [Use `sdm`](#use-sdm)
 - [Testing the application locally](#testing-the-application-locally)
+- [Running the test suites](#running-the-test-suites)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
@@ -122,6 +123,14 @@ For using SAP Document Management Service to store attachments, use the instance
 8. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
+## Running the unit tests
+
+To run the unit tests:
+```sh
+npm run test
+```
+
+
 ## Support, Feedback, Contributing
 
 This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/cap-js/sdm/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
@@ -133,3 +142,4 @@ We as members, contributors, and leaders pledge to make participation in our com
 ## Licensing
 
 Copyright 2024 SAP SE or an SAP affiliate company and <your-project> contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/cap-js/sdm).
+
