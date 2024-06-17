@@ -8,7 +8,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Setup](#setup)
 - [Use `sdm`](#use-sdm)
 - [Testing the application locally](#testing-the-application-locally)
-- [Running the test suites](#running-the-test-suites)
+- [Running the unit tests](#running-the-unit-tests)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
