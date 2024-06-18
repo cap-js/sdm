@@ -7,20 +7,25 @@ on:
   push:
     branches: [ "develop" ]
   pull_request:
+    branches: [ "develop" ]
     types: [opened, synchronize, reopened, auto_merge_enabled]
+    
+permissions:
+  pull-requests: read
 
 jobs:
   unitTests:
-
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [20.x]
-
     steps:
-    - uses: actions/setup-node@v4
     - uses: actions/checkout@v4
     - name: Use Node.js ${{ matrix.node-version }}
-    - run: npm i
-    - run: npm test
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node_version }}
+    - name: npm install and test
+      run: |
+        npm install
+        npm test
