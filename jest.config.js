@@ -5,6 +5,14 @@ const config = {
   collectCoverageFrom: ["**/lib/**/*"],
   coveragePathIgnorePatterns: ["node_modules", "<rootDir>/lib/persistence"],
   coverageReporters: ["lcov", "text", "text-summary"],
+  coverageThreshold: {
+    global: {
+      branches: 95,
+      lines: 90,
+      statements: 90,
+      functions: 90
+    },
+  }
 };
 
 module.exports = config;
