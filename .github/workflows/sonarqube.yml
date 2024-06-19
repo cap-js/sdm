@@ -31,6 +31,7 @@ on:
     branches: [ "develop" ]
   pull_request:
     branches: [ "develop" ]
+    types: [opened, synchronize, reopened, auto_merge_enabled]
   workflow_dispatch:
 
 permissions:
@@ -44,7 +45,6 @@ jobs:
         node_version: ['20.x']
         
     steps:
-    
       - name: Checkout code
         uses: actions/checkout@v2
         
@@ -70,3 +70,13 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
             -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
+     
+      # Check the Quality Gate status.
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        # Force to fail step after specific time.
+        timeout-minutes: 5
+        env:
+         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+         SONAR_HOST_URL: https://sonar.tools.sap #OPTIONAL
