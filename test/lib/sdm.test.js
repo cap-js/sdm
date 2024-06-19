@@ -824,7 +824,12 @@ describe("SDMAttachmentsService", () => {
       const token = "token";
 
       renameAttachment.mockResolvedValueOnce({
-        status: 201,
+        status: 200,
+        response : {
+          data: {
+            message: 'error'
+          }
+        }
       });
 
       const result = await service.onRename(
@@ -854,7 +859,7 @@ describe("SDMAttachmentsService", () => {
     
       renameAttachment
         .mockResolvedValueOnce({
-          status: 201,
+          status: 200,
           data: { succinctProperties: { "cmis:objectId": "url" } },
         })
         .mockResolvedValueOnce({
