@@ -54,7 +54,7 @@ jobs:
           npm run test
         
       - name: Analyze with SonarQube
-        uses: SonarSource/sonarqube-scan-action@v1.1.0
+        uses: SonarSource/sonarqube-scan-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.SDM_CAP_GITHUB_TOKEN }}  # Needed to get PR information
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Generate a token on SonarQube, add it to the secrets of this repo with the name SONAR_TOKEN (Settings > Secrets > Actions > add new repository secret)
@@ -74,7 +74,7 @@ jobs:
       # Check the Quality Gate status.
       - name: SonarQube Quality Gate check
         id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        uses: sonarsource/sonarqube-quality-gate-action@master
         # Force to fail step after specific time.
         timeout-minutes: 5
         env:
