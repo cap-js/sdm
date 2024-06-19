@@ -31,6 +31,7 @@ on:
     branches: [ "develop" ]
   pull_request:
     branches: [ "develop" ]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -46,7 +47,10 @@ jobs:
     steps:
     
       - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
+        with:
+        # Disabling shallow clone is recommended for improving relevancy of reporting.
+          fetch-depth: 0
         
       - name: npm install and test
         run: |
@@ -73,3 +77,18 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
             -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
+         
+      # Check the Quality Gate status.
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        # Force to fail step after specific time.
+        timeout-minutes: 5
+        env:
+         SONAR_TOKEN: squ_d48999c121b577436aa15e362bafba7590ba473a
+         SONAR_HOST_URL: https://sonar.tools.sap #OPTIONAL
+
+      # Optionally you can use the output from the Quality Gate in another step.
+      # The possible outputs of the `quality-gate-status` variable are `PASSED`, `WARN` or `FAILED`.
+      - name: "Example show SonarQube Quality Gate Status value"
+        run: echo "The Quality Gate status is ${{ steps.sonarqube-quality-gate-check.outputs.quality-gate-status }}"
