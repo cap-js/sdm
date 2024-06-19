@@ -14,6 +14,7 @@ annotate Attachments with @UI:{
     {Value: status},
     {Value: createdAt},
     {Value: createdBy},
+    {Value: note}
   ]
 } {
   content
