@@ -29,10 +29,10 @@ name: SonarQube analysis
 on:
   push:
     branches:
-      - sonarcubeConfiguration
+      - develop
   pull_request:
     branches:
-      - sonarcubeConfiguration
+      - develop
     types: [opened, synchronize, reopened]
   workflow_dispatch:
   
