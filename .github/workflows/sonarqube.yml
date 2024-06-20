@@ -29,7 +29,7 @@ name: Build
 on:
   push:
     branches:
-      - develop
+      - sonarcubeConfiguration
   pull_request:
     types: [opened, synchronize, reopened]
 
