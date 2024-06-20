@@ -49,7 +49,7 @@ jobs:
       # following lines. This would typically be used to fail a deployment.
       # We do not recommend to use this in a pull request. Prefer using pull request
       # decoration instead.
-      # - uses: sonarsource/sonarqube-quality-gate-action@master
-      #   timeout-minutes: 5
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      -  uses: sonarsource/sonarqube-quality-gate-action@master
+         timeout-minutes: 5
+         env:
+           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
