@@ -68,7 +68,7 @@ jobs:
             -Dsonar.js.file.suffixes=.js,.jsx
             -Dsonar.qualitygate.wait=true
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js,lib/sdm.js
+            -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
             -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
      
       # Check the Quality Gate status.
