@@ -46,7 +46,10 @@ jobs:
         
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          node-version: ${{ matrix.node_version }}
         
       - name: npm install and test
         run: |
@@ -67,7 +70,6 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**
             -Dsonar.js.file.suffixes=.js,.jsx
             -Dsonar.qualitygate.wait=true
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
             -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
      
