@@ -29,10 +29,10 @@ name: Build
 on:
   push:
     branches:
-      - develop
+      - sonarcubeConfiguration
   pull_request:
     branches:
-      - develop
+      - sonarcubeConfiguration
     types: [opened, synchronize, reopened]
   workflow_dispatch:
   
