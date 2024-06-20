@@ -32,10 +32,10 @@ on:
   pull_request:
     branches: [ "develop" ]
     types: [opened, synchronize, reopened, auto_merge_enabled]
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual triggering of the workflow
 
 permissions:
-  pull-requests: read # allows SonarQube to decorate PRs with analysis results
+  pull-requests: read # Allows SonarQube to decorate PRs with analysis results
 
 jobs:
   Analysis:
@@ -49,35 +49,36 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          node-version: ${{ matrix.node_version }}
         
-      - name: npm install and test
-        run: |
-          npm install
-          npm run test
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node_version }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm run test
         
       - name: Analyze with SonarQube
-        uses: SonarSource/sonarqube-scan-action@master
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Generate a token on SonarQube, add it to the secrets of this repo with the name SONAR_TOKEN (Settings > Secrets > Actions > add new repository secret)
-          SONAR_HOST_URL: https://sonar.tools.sap   # add the URL of your instance to the secrets of this repo with the name SONAR_HOST_URL (Settings > Secrets > Actions > add new repository secret)
-        with:
-          # Additional arguments for the sonarcloud scanner
-          args:
-            -Dsonar.projectKey=cap-js-sdm
-            -Dsonar.sources=.
-            -Dsonar.exclusions=**/node_modules/**
-            -Dsonar.js.file.suffixes=.js
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.exclusions=/dist/,/node_modules/,**/*.spec.js,**/*.test.js
-            -Dsonar.verbose=false # This should generally be set to `false` in a production environment to not clutter logs. Use `true` for debugging.
-     
-      # Check the Quality Gate status.
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # SonarQube token
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}   # SonarQube URL
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=cap-js-sdm \
+            -Dsonar.sources=. \
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/*.spec.js,**/*.test.js \
+            -Dsonar.javascript.file.suffixes=.js \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.verbose=false
+
       - name: SonarQube Quality Gate check
         id: sonarqube-quality-gate-check
         uses: sonarsource/sonarqube-quality-gate-action@master
-        # Force to fail step after specific time.
         timeout-minutes: 5
         env:
-         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-         SONAR_HOST_URL: https://sonar.tools.sap #OPTIONAL
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # Optional
+
