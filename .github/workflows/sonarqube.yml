@@ -69,7 +69,7 @@ jobs:
         with:
           # Additional arguments for the sonarcloud scanner
           args:
-            -Dsonar.projectKey=cap-js-sdm
+            -Dsonar.projectKey=cap-sdm
             -Dsonar.sources=.
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/*.spec.js,**/*.test.js 
             -Dsonar.javascript.file.suffixes=.js 
