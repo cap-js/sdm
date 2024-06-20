@@ -29,9 +29,15 @@ name: Build
 on:
   push:
     branches:
-      - sonarcubeConfiguration
+      - develop
   pull_request:
+    branches:
+      - develop
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  
+permissions:
+  pull-requests: read # allows SonarQube to decorate PRs with analysis results
 
 jobs:
   build:
