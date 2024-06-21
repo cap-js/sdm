@@ -30,16 +30,10 @@ on:
   push:
     branches:
       - develop
-
   pull_request:
     branches:
       - develop
     types: [opened, synchronize, reopened]
-
-  concurrency:
-  group: lint-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
-
   workflow_dispatch:
   
 permissions:
