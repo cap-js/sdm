@@ -11,7 +11,6 @@ annotate Attachments with @UI:{
   LineItem: [
     {Value: filename},
     {Value: content},
-    {Value: status},
     {Value: createdAt},
     {Value: createdBy},
     {Value: note}
