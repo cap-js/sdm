@@ -16,7 +16,7 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "^1.0.1",
+    "@cap-js/attachments": "latest",
     "@sap/cds": "^7",
     "@sap/cds-lsp": "^7.6.1",
     "@sap/xssec": "^3.6.1",
