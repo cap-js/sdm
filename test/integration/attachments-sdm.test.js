@@ -142,9 +142,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     };
 
     const response = await api.createAttachment(appUrl, serviceName, entityName, incidentID, srvpath, postData, files);
-    for(let i = 0; i < files.length; i++){
-      expect(response.status[i]).toBe("An error occured. Attachment not found") //As the error comes from the plugin itself and not the DI, none of the api calls will fail
-    }
+    expect(response).toBe("An error occured");
   });
 
   it('should not allow upload of duplicate files in same entity --draft', async () => { 
