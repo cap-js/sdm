@@ -15,10 +15,7 @@ jobs:
   deploy:
     if: github.event.pull_request.merged == false
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        
+    steps:        
       - name: Use Node.js 14.x
         uses: actions/setup-node@v4
         with:
@@ -33,11 +30,7 @@ jobs:
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
       - name: Clone and prepare projects & Build and deploy
         run: |
-          ls
-          cd ..
-          ls
-          echo "base folder"
-          pwd
+          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
           git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
           cd sdm
           npm pack
