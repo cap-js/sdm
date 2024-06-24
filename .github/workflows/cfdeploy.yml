@@ -42,8 +42,8 @@ jobs:
           npm i cap-js-sdm-1.0.0.tgz
       - name: Build and deploy
         run: |
-          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.1.7/cloud-mta-build-tool_1.1.7_Linux_amd64.tar.gz
-          tar -xvzf /tmp/cloud-mta-build-tool_1.1.7_Linux_amd64.tar.gz
+          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           mbt build
           cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
