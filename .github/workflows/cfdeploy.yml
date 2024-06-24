@@ -46,7 +46,7 @@ jobs:
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
           mbt build
-          cf install-plugin multiapps -f --no-confirm
+          cf install-plugin multiapps -f
           cf deploy mta_archives/sdmincidents_1.0.0.mtar -f 
 
           
