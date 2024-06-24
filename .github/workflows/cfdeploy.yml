@@ -1,0 +1,44 @@
+name: Deploy to Cloud Foundry
+on:
+  pull_request:
+    types: [closed]
+    branches:
+    - develop
+  workflow_dispatch:
+  
+permissions:
+  pull-requests: read
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 14.x  
+          
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+      - name: Clone and prepare projects
+        run: |
+          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
+          cd sdm
+          npm pack
+          mv cap-js-sdm-1.0.0.tgz ../incidents-app
+          cd ../incidents-app
+          npm i cap-js-sdm-1.0.0.tgz
+      - name: Build and deploy
+        run: |
+          mbt build
+          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
+          
+      - name: Install npm in sdm
+        run: |
+          cd ../sdm
+          npm i
