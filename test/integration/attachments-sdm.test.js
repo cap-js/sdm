@@ -13,7 +13,7 @@ let incidentToDelete;
 let incidentToDelete_empty;
 
 beforeAll(async () => {
-  authRes = await axios.get(
+  const authRes = await axios.get(
     `${credentials.authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
     {
       auth: {
@@ -23,7 +23,7 @@ beforeAll(async () => {
     }
   );
   token = authRes.data.access_token;
-  config = {
+  const config = {
     headers: { 'Authorization': "Bearer " + token }
   };
   api = new Api(config);
@@ -207,7 +207,7 @@ describe('Attachments Integration Tests --READ', () => {
   });
 
   it('should not read an attachment that doesnt exist', async () => {
-    invalidAttachment = ['invalid-attachment-id']
+    const invalidAttachment = ['invalid-attachment-id']
     const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, invalidAttachment);
     for(let i = 0; i < 1; i++){
       expect(response[i]).toBe("An error occured. Attachment not found")
