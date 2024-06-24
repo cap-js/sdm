@@ -2,12 +2,19 @@ const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
 const jwt = require('jsonwebtoken');
 
-
 const {
   fetchAccessToken,
   getConfigurations,
+  checkAttachmentsToRename,
 } = require("../../../lib/util/index");
+
 const cds = require("@sap/cds");
+const { getExistingAttachments } = require("../../../lib/persistence");
+
+jest.mock("../../../lib/persistence", () => ({
+  getExistingAttachments: jest.fn(),
+}));
+
 let dummyToken = "";
 
 jest.mock("@sap/xssec");
@@ -164,6 +171,51 @@ describe("util", () => {
       const actualSettings = getConfigurations();
 
       expect(actualSettings).toEqual({});
+    });
+  });
+
+  describe("checkAttachmentsToRename", () => {
+    it("should do nothing if attachment_val_rename is empty", async () => {
+      attachment_val_rename = [];
+      attachmentIDs = [];
+      attachments = [];
+      await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
+      expect(getExistingAttachments).not.toBeCalled();
+    });
+
+    it("should call getExistingAttachments if attachment_val_rename is not empty", async () => {
+      attachment_val_rename = [
+        {
+          ID: 1,
+          filename: "name1",
+          url: "url1",
+        },
+        {
+          ID: 2,
+          filename: "name2",
+          url: "url2",
+        },
+      ];
+      attachmentIDs = ["1", "2"];
+      attachments = ["attachments1", "attachments2"];
+      const existingAttachments = [
+        {
+          ID: 1,
+          filename: "Old_File.pdf",
+          folderId: "folder1",
+        },
+        {
+          ID: 2,
+          filename: "Another_Old_File.pdf",
+          folderId: "folder2",
+        },
+      ];      
+
+      getExistingAttachments.mockResolvedValueOnce(existingAttachments);
+
+      await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
+
+      expect(getExistingAttachments).toBeCalled();
     });
   });
 });
