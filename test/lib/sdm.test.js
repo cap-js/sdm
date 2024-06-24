@@ -7,8 +7,7 @@ const {
   getDraftAttachments,
   getURLsToDeleteFromAttachments,
   getURLFromAttachments,
-  getFolderIdForEntity,
-  getExistingAttachments
+  getFolderIdForEntity
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -23,7 +22,6 @@ const {
   duplicateDraftFileErr,
   emptyFileErr,
 } = require("../../lib/util/messageConsts");
-const { attachment } = require("express/lib/response");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
 jest.mock("../../lib/persistence", () => ({
@@ -964,8 +962,8 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("getParentId should call getFolderIdByPath if getFolderIdForEntity returns empty array", async () => {
-      attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
-      token = "mocked_token"
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce("mocked_folder_id");
 
@@ -980,8 +978,8 @@ describe("SDMAttachmentsService", () => {
     });
   
     it("getParentId should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
-      attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
-      token = "mocked_token"
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce(null);
       createFolder.mockResolvedValueOnce(
@@ -1005,8 +1003,8 @@ describe("SDMAttachmentsService", () => {
     });
   
     it("Success in getParentId", async () => {
-      attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
-      token = "mocked_token"
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
       getFolderIdForEntity.mockResolvedValueOnce(["folderId"]);
 
       await service.getParentId(attachments,mockReq,token)
@@ -1021,7 +1019,7 @@ describe("SDMAttachmentsService", () => {
   describe("isFileNameDuplicateInDrafts", () => {
     let service;
     let mockReq;
-    let cds;
+
     beforeEach(() => {
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
@@ -1044,7 +1042,7 @@ describe("SDMAttachmentsService", () => {
 
     it("Duplicate file case", async () => {
       const duplicateErrMsg = "same_name";
-      data = [
+      let data = [
         {
           filename : "same_name"
         },

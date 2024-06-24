@@ -176,15 +176,15 @@ describe("util", () => {
 
   describe("checkAttachmentsToRename", () => {
     it("should do nothing if attachment_val_rename is empty", async () => {
-      attachment_val_rename = [];
-      attachmentIDs = [];
-      attachments = [];
+      let attachment_val_rename = [];
+      let attachmentIDs = [];
+      let attachments = [];
       await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
       expect(getExistingAttachments).not.toBeCalled();
     });
 
     it("should call getExistingAttachments if attachment_val_rename is not empty", async () => {
-      attachment_val_rename = [
+      let attachment_val_rename = [
         {
           ID: 1,
           filename: "name1",
@@ -196,8 +196,8 @@ describe("util", () => {
           url: "url2",
         },
       ];
-      attachmentIDs = ["1", "2"];
-      attachments = ["attachments1", "attachments2"];
+      let attachmentIDs = ["1", "2"];
+      let attachments = ["attachments1", "attachments2"];
       const existingAttachments = [
         {
           ID: 1,
