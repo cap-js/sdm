@@ -33,7 +33,9 @@ jobs:
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
       - name: Clone and prepare projects & Build and deploy
         run: |
+          ls
           cd ..
+          ls
           echo "base folder"
           pwd
           git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
