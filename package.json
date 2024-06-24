@@ -40,7 +40,7 @@
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js",
     "integration-test": "jest --config jest-integration.config.js",
-    "lint": "npx eslint --fix ."
+    "lint": "npx eslint --fix . --no-cache"
   },
   "cds": {
     "requires": {
