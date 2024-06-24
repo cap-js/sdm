@@ -32,6 +32,7 @@ jobs:
         run: |
           git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
           git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          cd sdm
           npm pack
           mv cap-js-sdm-1.0.0.tgz ../incidents-app
           cd ../incidents-app
