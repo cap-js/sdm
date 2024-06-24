@@ -2,11 +2,11 @@ name: Deploy to Cloud Foundry
 on:
   push:
     branches:
-      - cfdeploy
+      - develop
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
-      - cfdeploy
+      - develop
   workflow_dispatch:
   
 permissions:
