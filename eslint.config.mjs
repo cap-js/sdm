@@ -2,7 +2,10 @@ import globals from "globals";
 import pluginJs from "@eslint/js";
 
 export default [
-  { files: ["**/*.js"], languageOptions: { sourceType: "commonjs" } },
+  { 
+    files: ["**/*.js"], 
+    languageOptions: { sourceType: "commonjs" },
+  },
   {
     languageOptions: {
       globals: {
@@ -13,6 +16,7 @@ export default [
         payload: "writable",
         err: "writable",
         Buffer: "writable",
+        api: "writable"
       },
     },
   },
