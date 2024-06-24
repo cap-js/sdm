@@ -65,7 +65,9 @@ class Api {
             else{
                 return "An error occured"
             }
-        } catch (error) {
+        } 
+        // eslint-disable-next-line no-unused-vars
+        catch (error) {
             return "An error occured. Entity not found"
         }
     }
@@ -94,7 +96,9 @@ class Api {
                         postData,
                         this.config
                     )
-                } catch (error){
+                } 
+                // eslint-disable-next-line no-unused-vars
+                catch (error){
                     continue
                 }
 
@@ -117,7 +121,9 @@ class Api {
                         if (response.status != 200 || !response.data){
                             return "An error occured, draft could not be read"
                         }
-                    } catch (error) {
+                    }
+                    // eslint-disable-next-line no-unused-vars
+                    catch (error) {
                         continue
                     }
                 }   
@@ -153,11 +159,15 @@ class Api {
                     )
                 delete this.config.headers['Content-Type'];
                 return responseStatus
-            } catch (error) {
+            }
+            // eslint-disable-next-line no-unused-vars 
+            catch (error) {
                 delete this.config.headers['Content-Type'];
                 return responseStatus //If the draft doesn't exist, the delete request will fail. This try-catch block is to handle that scenario
             }
-        } catch (error){
+        } 
+        // eslint-disable-next-line no-unused-vars
+        catch (error){
             try{
                 await axios.delete(
                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)`,
@@ -165,7 +175,9 @@ class Api {
                     )
                 delete this.config.headers['Content-Type'];
                 return "An error occured"
-            } catch (error) {
+            }
+            // eslint-disable-next-line no-unused-vars 
+            catch (error) {
                 delete this.config.headers['Content-Type'];
                 return "An error occured. Draft doesn't exist" //If the draft doesn't exist, the delete request will fail. This try-catch block is to handle that scenario
             }
@@ -184,7 +196,9 @@ class Api {
                 if (response.status === 200 && response.data) {
                     readResponse.push("OK");
                 }
-            } catch (error) {
+            }
+            // eslint-disable-next-line no-unused-vars 
+            catch (error) {
                 readResponse.push("An error occured. Attachment not found");
                 continue
             }
@@ -203,7 +217,9 @@ class Api {
                 },
                 this.config
             );
-        } catch (error) {
+        } 
+        // eslint-disable-next-line no-unused-vars 
+        catch (error) {
             return "An error occured"
         }
 
@@ -213,7 +229,9 @@ class Api {
                     `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
                     this.config
                 );
-            } catch (error) {
+            } 
+            // eslint-disable-next-line no-unused-vars 
+            catch (error) {
                 continue
             }
             }
@@ -254,7 +272,9 @@ class Api {
                 },
                 this.config
             );
-        } catch (error) {
+        } 
+        // eslint-disable-next-line no-unused-vars 
+        catch (error) {
             return "An error occured"
         }
 
@@ -266,7 +286,9 @@ class Api {
                         `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
                         configNeg
                     );
-                } catch (error) {
+                } 
+                // eslint-disable-next-line no-unused-vars
+                catch (error) {
                     continue
                 }
             }
@@ -276,7 +298,9 @@ class Api {
                         `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachments[i]},IsActiveEntity=false)`,
                         this.config
                     );
-                } catch (error) {
+                } 
+                // eslint-disable-next-line no-unused-vars
+                catch (error) {
                     continue
                 }
             }
