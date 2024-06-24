@@ -39,11 +39,10 @@ jobs:
           npm pack
           mv cap-js-sdm-1.0.0.tgz ../incidents-app
           cd ../incidents-app
-          echo "Before npm i"
-          pwd
           npm i cap-js-sdm-1.0.0.tgz
       - name: Build and deploy
         run: |
+          cd ../incidents-app
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
