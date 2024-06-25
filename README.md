@@ -3,6 +3,15 @@
 The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with SAP Document Management Service. This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
 This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
+# Key features
+
+- Create attachment : Provides the capability to upload new attachments.
+- Open attachment : Provides the capability to preview attachments.
+- Delete attachment : Provides the capability to remove attachments.
+- Rename attachment : Provides the capability to rename attachments.
+- Virus scanning : Provides the capability to support virus scan for virus scan enabled repositories.
+- Draft functionality : Provides the capability of working with draft attachments.
+
 ### Table of Contents
 
 - [Setup](#setup)
