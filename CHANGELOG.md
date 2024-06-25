@@ -8,4 +8,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ### Added
 
-- Initial release that provides an easy CAP-level integration with SAP Document Management Service. This supports handling of attachments(documents) such as creating the attachment, opening the attachment, renaming the attachment and deleting the attachment.
+Initial release that provides the following features 
+
+- Create attachment : Provides the capability to upload new attachments.
+- Open attachment : Provides the capability to preview attachments.
+- Delete attachment : Provides the capability to remove attachments.
+- Rename attachment : Provides the capability to rename attachments.
+- Virus scanning : Provides the capability to support virus scan for virus scan enabled repositories.
+- Draft functionality : Provides the capability of working with draft attachments.
