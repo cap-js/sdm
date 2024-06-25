@@ -1,10 +1,13 @@
 const SDMAttachmentsService = require("../../lib/sdm");
-const fetchAccessToken = require("../../lib/util").fetchAccessToken;
+const {
+  fetchAccessToken,
+  checkAttachmentsToRename 
+} = require("../../lib/util");
 const {
   getDraftAttachments,
   getURLsToDeleteFromAttachments,
   getURLFromAttachments,
-  getFolderIdForEntity,
+  getFolderIdForEntity
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -13,6 +16,7 @@ const {
   getFolderIdByPath,
   createFolder,
   deleteFolderWithAttachments,
+  renameAttachment
 } = require("../../lib/handler");
 const {
   duplicateDraftFileErr,
@@ -26,9 +30,11 @@ jest.mock("../../lib/persistence", () => ({
   getURLsToDeleteFromAttachments: jest.fn(),
   getURLFromAttachments: jest.fn(),
   getFolderIdForEntity: jest.fn(),
+  getExistingAttachments: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
+  checkAttachmentsToRename: jest.fn()
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -37,6 +43,7 @@ jest.mock("../../lib/handler", () => ({
   getFolderIdByPath: jest.fn(),
   createFolder: jest.fn(),
   deleteFolderWithAttachments: jest.fn(),
+  renameAttachment: jest.fn()
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -128,7 +135,7 @@ describe("SDMAttachmentsService", () => {
     let mockReq;
     let cds;
     beforeEach(() => {
-      jest.clearAllMocks();
+      jest.resetAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       service.creds = { uaa: "mocked uaa" };
@@ -158,125 +165,113 @@ describe("SDMAttachmentsService", () => {
 
     it("draftSaveHandler() should do nothing when getDraftAttachments() returns empty array", async () => {
       getDraftAttachments.mockResolvedValueOnce([]);
+
       await service.draftSaveHandler(mockReq);
+
       expect(getDraftAttachments).toHaveBeenCalledTimes(1);
       expect(fetchAccessToken).toHaveBeenCalledTimes(0);
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(0);
-    });
-
-    it("draftSaveHandler() should call getFolderIdByPath if getFolderIdForEntity returns empty array", async () => {
-      getDraftAttachments.mockResolvedValueOnce(["file1", "file2"]);
-      service.isFileNameDuplicateInDrafts = jest.fn().mockReturnValueOnce("");
-      fetchAccessToken.mockResolvedValueOnce("mocked_token");
-      getFolderIdForEntity.mockResolvedValueOnce([]);
-      getFolderIdByPath.mockResolvedValueOnce("mocked_folder_id");
-      service.onCreate = jest.fn().mockResolvedValueOnce([]);
-      await service.draftSaveHandler(mockReq);
-      expect(getDraftAttachments).toHaveBeenCalledTimes(1);
-      expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledTimes(1);
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "mocked_token"
-      );
-      expect(getFolderIdForEntity).toHaveBeenCalledTimes(1);
-      expect(getFolderIdByPath).toHaveBeenCalledWith(
-        mockReq,
-        service.creds,
-        "mocked_token",
-        cds.model.definitions[mockReq.query.target.name + ".attachments"]
-      );
-    });
-
-    it("draftSaveHandler() should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
-      const attachments = ["file1", "file2"];
-      getDraftAttachments.mockResolvedValueOnce(attachments);
-      service.isFileNameDuplicateInDrafts = jest.fn().mockReturnValueOnce("");
-      fetchAccessToken.mockResolvedValueOnce("mocked_token");
-      getFolderIdForEntity.mockResolvedValueOnce([]);
-      getFolderIdByPath.mockResolvedValueOnce(null);
-      createFolder.mockResolvedValueOnce({
-        data: {
-          succinctProperties: {
-            "cmis:objectId": "new_folder_id",
-          },
-        },
-      });
-      service.onCreate = jest.fn().mockResolvedValueOnce([]);
-      await service.draftSaveHandler(mockReq);
-      expect(createFolder).toHaveBeenCalledWith(
-        mockReq,
-        service.creds,
-        "mocked_token",
-        cds.model.definitions[mockReq.query.target.name + ".attachments"]
-      );
-      expect(service.onCreate).toHaveBeenCalledWith(
-        attachments,
-        service.creds,
-        "mocked_token",
-        cds.model.definitions[mockReq.query.target.name + ".attachments"],
-        mockReq,
-        "new_folder_id"
-      );
-    });
-
-    it("should handle failure in onCreate", async () => {
-      service.isFileNameDuplicate = jest.fn().mockResolvedValue("");
-      service.onCreate = jest.fn().mockResolvedValue(["ChildTest"]);
-
-      getDraftAttachments.mockResolvedValue([{}]);
-
-      await service.draftSaveHandler(mockReq);
-
-      expect(mockReq.info).toHaveBeenCalledWith(200, "\nTest");
     });
 
     it("should not call onCreate if no draft attachments are available", async () => {
-      getDraftAttachments.mockResolvedValue([]);
-      const onCreateSpy = jest.spyOn(service, "onCreate");
+      getDraftAttachments.mockResolvedValueOnce([]);
+      const createSpy = jest.spyOn(service, "create");
       await service.draftSaveHandler(mockReq);
 
-      expect(onCreateSpy).not.toBeCalled();
+      expect(createSpy).not.toBeCalled();
     });
 
-    it("should handle successful onCreate without any issue", async () => {
-      service.isFileNameDuplicate = jest.fn().mockResolvedValue("");
-      service.onCreate = jest.fn().mockResolvedValue([]);
-      getDraftAttachments.mockResolvedValue([{}]);
+    it("should handle successful create without any issue", async () => {
+      //service.isFileNameDuplicate = jest.fn().mockResolvedValueOnce("");
+      service.create = jest.fn().mockResolvedValueOnce([]);
+      const createSpy = jest.spyOn(service, "create");
+      getDraftAttachments.mockResolvedValueOnce([{'HasActiveEntity':false}]);
+      checkAttachmentsToRename.mockResolvedValueOnce([]);
 
       await service.draftSaveHandler(mockReq);
 
-      expect(mockReq.info).not.toBeCalled();
+      expect(createSpy).toBeCalled();
     });
 
-    it("should reject if duplicate draft files exist", async () => {
-      const duplicateErrMsg = "Duplicate Error Message";
-      const mockAttachments = [
-        { name: "Attachment#1" },
-        { name: "Attachment#2" },
-      ];
-      // Mock method return values
-      getDraftAttachments.mockResolvedValue(mockAttachments);
-      service.isFileNameDuplicateInDrafts = jest
-        .fn()
-        .mockReturnValue(duplicateErrMsg);
-      service.onCreate = jest
-        .fn()
-        .mockResolvedValue(["Failed request 1", "Failed request 2"]);
+    it("should handle successful onRename without any issue", async () => {
+      service.rename = jest.fn().mockResolvedValueOnce([]);
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([
+        {
+          'ID': 'id1',
+          'filename': 'nameprev',
+          'HasActiveEntity' : true
+        },
+        {
+          'ID': 'id2',
+          'filename': 'samename',
+          'HasActiveEntity' : true
+        }]);
+      checkAttachmentsToRename.mockResolvedValueOnce([{}]);
 
-      // Method under test
       await service.draftSaveHandler(mockReq);
 
-      // Assert mockReq.reject was called with the right arguments
-      expect(mockReq.reject).toHaveBeenCalledWith(
-        409,
-        duplicateDraftFileErr(duplicateErrMsg)
-      );
+      expect(renameSpy).toBeCalled();
+    });
 
-      // verify if getDraftAttachments was called
-      expect(getDraftAttachments).toHaveBeenCalledWith(
-        expect.anything(),
-        mockReq
-      );
+    it("should not call rename if no draft attachments are available", async () => {
+      getDraftAttachments.mockResolvedValueOnce([]);
+      const renameSpy = jest.spyOn(service, "rename");
+      await service.draftSaveHandler(mockReq);
+
+      expect(renameSpy).not.toBeCalled();
+    });
+
+    it("should call only onCreate if only new attachments are available in draft", async () => {
+      service.create = jest.fn().mockResolvedValueOnce([]);
+      const createSpy = jest.spyOn(service, "create");
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([{'HasActiveEntity' : false}]);
+      checkAttachmentsToRename.mockResolvedValueOnce([]);
+      
+      await service.draftSaveHandler(mockReq);
+
+      expect(createSpy).toBeCalled();
+      expect(renameSpy).not.toBeCalled();
+    });
+
+    it("should call only onRename if only modified attachments are available in draft", async () => {
+      service.rename = jest.fn().mockResolvedValueOnce([]);
+      const createSpy = jest.spyOn(service, "create");
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([
+        {
+          'ID': 'id',
+          'filename': 'nameprev',
+          'HasActiveEntity' : true
+        }]);
+      checkAttachmentsToRename.mockResolvedValueOnce([{}]);
+      
+      await service.draftSaveHandler(mockReq);
+
+      expect(createSpy).not.toBeCalled();
+      expect(renameSpy).toBeCalled();
+    });
+
+    it("should call both onRename and onCreate if both modified and new attachments are available in draft", async () => {
+      service.rename = jest.fn().mockResolvedValueOnce([]);
+      service.create = jest.fn().mockResolvedValueOnce([]);
+      const createSpy = jest.spyOn(service, "create");
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([
+        {
+          'ID': 'id',
+          'filename': 'nameprev',
+          'HasActiveEntity' : true
+        },
+        {
+          'HasActiveEntity' : false
+        }]);
+      checkAttachmentsToRename.mockResolvedValueOnce([{}]);
+      
+      await service.draftSaveHandler(mockReq);
+
+      expect(createSpy).toBeCalled();
+      expect(renameSpy).toBeCalled();
     });
   });
 
@@ -299,7 +294,7 @@ describe("SDMAttachmentsService", () => {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
-        diff: jest.fn().mockResolvedValue({
+        diff: jest.fn().mockResolvedValueOnce({
           attachments: [
             { _op: "delete", ID: "1" },
             { _op: "delete", ID: "2" },
@@ -310,7 +305,7 @@ describe("SDMAttachmentsService", () => {
       };
       const mockedAttachments = ["attachment3", "attachment4"];
       cds.model.definitions["myName.attachments"] = mockedAttachments;
-      getURLsToDeleteFromAttachments.mockResolvedValue([
+      getURLsToDeleteFromAttachments.mockResolvedValueOnce([
         "attachment3",
         "attachment4",
       ]);
@@ -338,7 +333,7 @@ describe("SDMAttachmentsService", () => {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
-        diff: jest.fn().mockResolvedValue({
+        diff: jest.fn().mockResolvedValueOnce({
           attachments: [],
         }),
         attachmentsToDelete: undefined,
@@ -363,7 +358,7 @@ describe("SDMAttachmentsService", () => {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
-        diff: jest.fn().mockResolvedValue({
+        diff: jest.fn().mockResolvedValueOnce({
           attachments: [],
         }),
         attachmentsToDelete: undefined,
@@ -503,8 +498,8 @@ describe("SDMAttachmentsService", () => {
       const expectedErrorResponse = "test_error_response";
 
       cds.model.definitions["testTarget.attachments"] = {}; // Add relevant attachment definition
-      fetchAccessToken.mockResolvedValue("test_token");
-      deleteAttachmentsOfFolder.mockResolvedValue({});
+      fetchAccessToken.mockResolvedValueOnce("test_token");
+      deleteAttachmentsOfFolder.mockResolvedValueOnce({});
       service.handleRequest = jest
         .fn()
         .mockResolvedValueOnce({ message: expectedErrorResponse, ID: "2" });
@@ -530,7 +525,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-      fetchAccessToken.mockResolvedValue("test_token");
+      fetchAccessToken.mockResolvedValueOnce("test_token");
 
       await service.deleteAttachmentsWithKeys(records, req);
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
@@ -594,41 +589,152 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe("create", () => {
+    let service;
+    let mockReq;
+    let cds;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      service.creds = { uaa: "mocked uaa" };
+      mockReq = {
+        query: {
+          target: {
+            name: "testName",
+          },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        reject: jest.fn(),
+        info: jest.fn(),
+      };
+
+      cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
+        keys: {
+          up_: {
+            keys: [{ ref: ["attachment"] }],
+          },
+        },
+      };
+    });
+
+    it("should call onCreate without any issue", async () => {
+      const attachment_val_create = [{}];
+      const token = "token";
+      const attachments = [];
+      const req = {};
+
+      service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
+      service.onCreate = jest.fn().mockResolvedValueOnce([]);
+      const getParentIdSpy = jest.spyOn(service, "getParentId");
+      const onCreateSpy = jest.spyOn(service, "onCreate");
+
+      await service.create(
+        attachment_val_create,
+        attachments,
+        req,
+        token
+      );
+      
+      expect(onCreateSpy).toBeCalled();
+      expect(getParentIdSpy).toBeCalled();
+      expect(mockReq.info).not.toBeCalled();
+    })
+
+    it("should handle failure in onCreate", async () => {
+      const attachment_val_create = [{}];
+      const token = "token";
+      const attachments = [];
+
+      service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
+      service.onCreate = jest.fn().mockResolvedValue(["ChildTest"]);
+
+      await service.create(
+        attachment_val_create,
+        attachments,
+        mockReq,
+        token
+      );
+
+      expect(mockReq.info).toHaveBeenCalledWith(200, "\nAttachment with name Test");
+    })
+  });
+
+  describe("rename", () => {
+    let service;
+    let mockReq;
+    let cds;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      service.creds = { uaa: "mocked uaa" };
+      mockReq = {
+        query: {
+          target: {
+            name: "testName",
+          },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        reject: jest.fn(),
+        info: jest.fn(),
+      };
+
+      cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
+        keys: {
+          up_: {
+            keys: [{ ref: ["attachment"] }],
+          },
+        },
+      };
+    });
+
+    it("should call onRename without any issue", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+
+      service.onRename = jest.fn().mockResolvedValueOnce([]);
+      const onRenameSpy = jest.spyOn(service, "onRename");
+
+      await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+      
+      expect(onRenameSpy).toBeCalled();
+      expect(mockReq.info).not.toBeCalled();
+    })
+
+    it("should handle failure in onRename", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+
+      service.onRename = jest.fn().mockResolvedValue(["ChildTest"]);
+
+      await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+
+      expect(mockReq.info).toHaveBeenCalledWith(200, "\nAttachment with name Test");
+    })
+  });
+
   describe("onCreate", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
-    });
-    it("should return empty array if no attachments fail", async () => {
-      const data = [{ ID: 1 }, { ID: 2 }];
-      const credentials = {};
-      const token = "token";
-      const attachments = [];
-      const req = {
-        data: { attachments: [...data] },
-        user: {
-          tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
-          },
-        },
-      };
-
-      createAttachment.mockResolvedValue({
-        status: 201,
-        data: { succinctProperties: { "cmis:objectId": "url" } },
-      });
-
-      const result = await service.onCreate(
-        data,
-        credentials,
-        token,
-        attachments,
-        req,
-        createAttachment
-      );
-      expect(result).toEqual([]);
-      expect(req.data.attachments).toHaveLength(2);
     });
 
     it("should return failed request messages if some attachments fail", async () => {
@@ -667,6 +773,37 @@ describe("SDMAttachmentsService", () => {
       expect(req.data.attachments).toHaveLength(1);
     });
 
+    it("should return empty array if no attachments fail", async () => {
+      const data = [{ ID: 1 }];
+      const credentials = {};
+      const token = "token";
+      const attachments = [];
+      const req = {
+        data: { attachments: [...data] },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+      };
+
+      createAttachment
+        .mockResolvedValueOnce({
+          status: 201,
+          data: { succinctProperties: { "cmis:objectId": "url" } },
+        })
+
+      const result = await service.onCreate(
+        data,
+        credentials,
+        token,
+        attachments,
+        req,
+        createAttachment
+      );
+      expect(result).toEqual([]);
+    });
+
     it("onCreate() should add error message to failedReq if d.content is null", async () => {
       const mockAttachments = [
         { content: null, filename: "filename1", ID: "id1" },
@@ -687,7 +824,7 @@ describe("SDMAttachmentsService", () => {
       const attachments = "mocked_attachments";
       const parentId = "mocked_parentId";
 
-      createAttachment.mockResolvedValue({
+      createAttachment.mockResolvedValueOnce({
         status: 201,
         data: { succinctProperties: { "cmis:objectId": "some_object_id" } },
       });
@@ -711,6 +848,216 @@ describe("SDMAttachmentsService", () => {
         url: "some_object_id",
       });
     });
+  });
+
+  describe("onRename", () => {
+    let service;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+    it("should return empty array if no attachments fail", async () => {
+      const modifiedAttachments = [{name:"name"}];
+      const credentials = {};
+      const token = "token";
+
+      renameAttachment.mockResolvedValueOnce({
+        status: 200,
+        response : {
+          data: {
+            message: 'error'
+          }
+        }
+      });
+
+      const result = await service.onRename(
+        modifiedAttachments,
+        credentials,
+        token,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it("should return an error if name is empty", async () => {
+      const modifiedAttachments = [{ name: "" }];
+      const credentials = {};
+      const token = "token";
+    
+      await expect(service.onRename(modifiedAttachments, credentials, token))
+        .rejects
+        .toThrow("Filename cannot be empty");
+    
+      expect(renameAttachment).toHaveBeenCalledTimes(0);
+    });
+
+    it("should return failed request messages if rename fails for some attachments", async () => {
+      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2" }];
+      const credentials = {};
+      const token = "token";
+      const req = {
+        data: {
+          attachments: [
+            {
+              id: "id1",
+              filename: "attachment#1"
+            },
+            {
+              id: "id2",
+              filename: "attachment#2"
+            }
+          ]
+        }
+      }
+    
+      renameAttachment
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { succinctProperties: { "cmis:objectId": "url" } },
+        })
+        .mockResolvedValueOnce({
+          response: { data: { message: "Rename failed" } , status: 400},
+        });
+
+      const result = await service.onRename(
+        modifiedAttachments,
+        credentials,
+        token,
+        req
+      );
+      expect(result).toEqual(["Rename failed"]);
+    });
+  });
+
+  describe("getParentId", () => {
+    let service;
+    let mockReq;
+    let cds;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      service.creds = { uaa: "mocked uaa" };
+      mockReq = {
+        query: {
+          target: {
+            name: "testName",
+          },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        reject: jest.fn(),
+        info: jest.fn(),
+      };
+
+      cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
+        keys: {
+          up_: {
+            keys: [{ ref: ["attachment"] }],
+          },
+        },
+      };
+    });
+
+    it("getParentId should call getFolderIdByPath if getFolderIdForEntity returns empty array", async () => {
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
+      getFolderIdForEntity.mockResolvedValueOnce([]);
+      getFolderIdByPath.mockResolvedValueOnce("mocked_folder_id");
+
+      await service.getParentId(attachments,mockReq,token)
+ 
+      expect(getFolderIdByPath).toHaveBeenCalledWith(
+        mockReq,
+        service.creds,
+        "mocked_token",
+        cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      );
+    });
+  
+    it("getParentId should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
+      getFolderIdForEntity.mockResolvedValueOnce([]);
+      getFolderIdByPath.mockResolvedValueOnce(null);
+      createFolder.mockResolvedValueOnce(
+        {
+          data: {
+            succinctProperties: {
+              "cmis:objectId": "mock_object_id"
+            }
+          }
+        }
+      );
+
+      await service.getParentId(attachments,mockReq,token)
+ 
+      expect(createFolder).toHaveBeenCalledWith(
+        mockReq,
+        service.creds,
+        "mocked_token",
+        cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      );
+    });
+  
+    it("Success in getParentId", async () => {
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"]
+      let token = "mocked_token"
+      getFolderIdForEntity.mockResolvedValueOnce(["folderId"]);
+
+      await service.getParentId(attachments,mockReq,token)
+ 
+      expect(getFolderIdForEntity).toHaveBeenCalledWith(
+        cds.model.definitions[mockReq.query.target.name + ".attachments"],
+        mockReq
+      );
+    });  
+  });
+
+  describe("isFileNameDuplicateInDrafts", () => {
+    let service;
+    let mockReq;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      mockReq = {
+        query: {
+          target: {
+            name: "testName",
+          },
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        reject: jest.fn(),
+        info: jest.fn(),
+      };
+    });
+
+    it("Duplicate file case", async () => {
+      const duplicateErrMsg = "same_name";
+      let data = [
+        {
+          filename : "same_name"
+        },
+        {
+          filename : "same_name"
+        }
+      ]
+
+      await service.isFileNameDuplicateInDrafts(data,mockReq)
+      
+      expect(mockReq.reject).toHaveBeenCalledWith(
+        409,
+        duplicateDraftFileErr(duplicateErrMsg)
+      );
+    });    
   });
 
   describe("handleRequest", () => {
