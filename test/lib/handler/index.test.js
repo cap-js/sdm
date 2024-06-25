@@ -26,6 +26,7 @@ const {
   getFolderIdByPath,
   createFolder,
   deleteFolderWithAttachments,
+  renameAttachment
 } = require("../../../lib/handler/index");
 
 describe("handlers", () => {
@@ -321,6 +322,32 @@ describe("handlers", () => {
       expect(response).toEqual(mockResponse);
       expect(axios.post).toHaveBeenCalledTimes(1);
       expect(axios.post).toHaveBeenCalled();
+    });
+  });
+
+  describe("renameAttachment function", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it("returns response from updateServerRequest without error", async () => {
+      const modifiedAttachments = [{name:"name"}];
+      const credentials = {};
+      const token = "token";
+      axios.post.mockResolvedValue({'status' : 201});
+
+      const result = await renameAttachment(
+        modifiedAttachments,
+        credentials,
+        token,
+      );
+      expect(result.status).toEqual(201);
+    });
+
+    it("calls getConfigurations", async () => {
+      await renameAttachment({}, {}, "", {});
+
+      expect(getConfigurations).toHaveBeenCalledTimes(1);
     });
   });
 });
