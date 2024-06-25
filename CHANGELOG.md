@@ -8,4 +8,4 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ### Added
 
-- Initial release that provides an easy CAP-level integration with SAP Document Management Service. This supports handling of attachments(documents) such as creating the attachment, reading the attachment, renaming the attachment and deleting the attachment.
+- Initial release that provides an easy CAP-level integration with SAP Document Management Service. This supports handling of attachments(documents) such as creating the attachment, opening the attachment, renaming the attachment and deleting the attachment.
