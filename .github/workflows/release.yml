@@ -40,4 +40,4 @@ jobs:
         body: '${{ steps.parse-changelog.outputs.body }}'
     - run: npm publish --access public --dry
       env:
-        NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+        NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
