@@ -24,15 +24,23 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 
 ## Setup
 
-In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model.
+In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model. 
 
-> **Note:** This plugin is yet to be released. After the release, to enable SDM, simply add this self-configuring plugin package to your project using the following command:
->
-> ```sh
-> npm add @cap-js/sdm
-> ```
+### Using the released version
 
-Prior to release follow below steps to enable sdm plugin
+1. Clone the incidents-app repository:
+
+```sh
+   git clone https://github.com/cap-js/incidents-app.git
+```
+
+2. Navigate to incidents-app root folder and execute the following command:
+
+```sh
+   npm add @cap-js/sdm
+```
+
+### Using the development version
 
 1. Clone the incidents-app repository:
 
@@ -60,7 +68,7 @@ Prior to release follow below steps to enable sdm plugin
    npm install <path-to-.tgz file>
 ```
 
-## Use sdm
+## Use @cap-js/sdm plugin
 
 **To use sdm plugin in incidents-app, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), create a separate file _db/attachments.cds_ and paste the below content in it:
 
