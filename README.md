@@ -15,7 +15,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 ### Table of Contents
 
 - [Setup](#setup)
-- [Use `sdm`](#use-sdm)
+- [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Testing the application locally](#testing-the-application-locally)
 - [Running the unit tests](#running-the-unit-tests)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
