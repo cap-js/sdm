@@ -59,7 +59,7 @@ In this guide, we use the [Incidents Management reference sample app](https://gi
 ```sh
    npm pack
 
-   This will generate a file with name cap-js-sdm-1.0.0.tgz
+   This will generate a file with name cap-js-sdm-x.y.z.tgz
 ```
 
 4. Copy the path of .tgz file generated in step 3 and in terminal navigate to incidents-app root folder and execute:
