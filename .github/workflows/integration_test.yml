@@ -24,22 +24,14 @@ jobs:
 
       - name: Run integration tests
         run: |
-          appUrl=${Cforg}-${Cfspace}-incidents-srv.cfapps.eu12.hana.ondemand.com
+          appUrl=${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com
           echo "app url: ${appUrl}"
           # JSON file path
           JSON_FILE="test/integration/credentials.json"
           # Modify JSON file
-          jq --arg appUrl "$appUrl" --arg authUrl "$CauthUrl" --arg clientID "$csdmClientid" --arg clientSecret "$csdmClientsecret" --arg username "$cfUser" --arg password "$cfPassword" \
+          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ secrets.CAPSDM_CLIENT_ID }}" --arg clientSecret "${{ secrets.CAPSDM_CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" \
           '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password' $JSON_FILE > "temp.json" \
           && mv "temp.json" $JSON_FILE
           cat $JSON_FILE
           npm i
           npm run integration-test
-        env:
-          Cforg: ${{ secrets.CF_ORG }}
-          Cfspace: ${{ secrets.CF_SPACE }}
-          CapsdmClientid: ${{ secrets.CAPSDM_CLIENT_ID }}
-          CapsdmClientsecret: ${{ secrets.CAPSDM_CLIENT_SECRET }}
-          CapauthUrl: ${{ secrets.CAPAUTH_URL }}
-          CfUser: ${{ secrets.CF_USER }}
-          CfPassword: ${{ secrets.CF_PASSWORD }}
