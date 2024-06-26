@@ -41,3 +41,9 @@ jobs:
     - run: npm publish --access public --dry
       env:
         NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
+
+    - name: Untar package and list contents
+      run: |
+        tar -zxf cap-js-sdm-1.0.0.tgz
+        echo "Contents of the delivery package:"
+        ls -R
