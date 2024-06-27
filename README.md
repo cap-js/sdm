@@ -14,6 +14,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 
 ### Table of Contents
 
+- [Prerequisite](#prerequisite)
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Testing the application locally](#testing-the-application-locally)
@@ -22,11 +23,18 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
 
+## Prerequisite
+Install cds-dk globally by executing below command
+```sh
+   npm i @sap/cds-dk -g
+   ```
+
 ## Setup
 
-In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model. 
+In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to integrate SDM CAP plugin.
 
 ### Using the released version
+If you want to use the released version of SDM CAP plugin follow the below steps:
 
 1. Clone the incidents-app repository:
 
@@ -41,6 +49,7 @@ In this guide, we use the [Incidents Management reference sample app](https://gi
 ```
 
 ### Using the development version
+If you want to use the version under development follow the below steps:
 
 1. Clone the incidents-app repository:
 
@@ -79,7 +88,7 @@ using { Attachments } from '@cap-js/sdm';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Create a SAP Document Management Service instance and key. Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json**
+**Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). For Service instance use the name "sdm-di-instance". Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json**
 
 ```
 "sdm": {
@@ -89,38 +98,28 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 }
 ```
 
-## Testing the application locally
+## Deploying the application
 
-For using SAP Document Management Service to store attachments, use the instance-name and service-key values of SAP Document Management Service Integration Option in the below setup.
-
-1. Install cds-dk globally
-
-   ```sh
-   npm i @sap/cds-dk -g
-   ```
-
-2. Log in to Cloud Foundry space:
+1. Log in to Cloud Foundry space:
 
    ```sh
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-3. To bind to the service continue with the steps below.
+2. Add mta to CAP project use [_example/mta.yaml_](./example/mta.yaml)
 
-   In the project directory, you can generate a new file \_.cdsrc-private.json by running:
-
+3. Build the project by running following command from root folder of incidents-app.
    ```sh
-   cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
+   mbt build
+   ```
+   Above step will generate .mtar file inside mta_archives folder.
+
+4. Deploy the application
+   ```sh
+   cf deploy mta_archives/*.mtar
    ```
 
-4. **Start the server**:
-
-- _Default_ scenario (In memory database):
-  ```sh
-  cds watch --profile hybrid
-  ```
-
-5. **Navigate to the object page** of the incident `Solar panel broken`:
+4. **Navigate to the object page** of the incident `Solar panel broken`:
 
    ```sh
    * Open http://localhost:4004 in a browser.
@@ -131,19 +130,19 @@ For using SAP Document Management Service to store attachments, use the instance
 
    Or, directly navigate to [Object page for incident **Solar panel broken.**](<http://localhost:4004/incidents/webapp/index.html#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
 
-6. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+5. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
-7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
+6. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
    <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
 
-8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
+7. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
 
-9. **Rename a file** by going into Edit mode and setting a new name for the file in the rename box. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
+8. **Rename a file** by going into Edit mode and setting a new name for the file in the rename box. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
 
-10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
+9. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
