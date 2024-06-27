@@ -132,10 +132,22 @@ If package.json is not found create a file named package.json and add the below:
     npm install --prefix app/approuter
 ```
 
-5. In the project folder run:
+## Configuring @cap-js/sdm plugin
+
+1.  Bind to the SDM service
+   ```sh
+   cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
+   ```
+
+2. In the project folder run in one terminal window:
 
 ```sh
     cds bind --exec -- npm start --prefix app/approuter
+```
+3. Run in another terminal window:
+
+```sh
+    cds watch --profile hybrid
 ```
 
 
