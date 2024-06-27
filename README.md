@@ -14,7 +14,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 
 ### Table of Contents
 
-- [Prerequisite](#prerequisite)
+- [Pre-Requisites](#pre-requisites)
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Testing the application locally](#testing-the-application-locally)
@@ -23,11 +23,12 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
 
-## Prerequisite
-Install cds-dk globally by executing below command
-```sh
-   npm i @sap/cds-dk -g
-   ```
+## Pre-Requisites
+* Node.JS 16 or higher
+* CAP Development Kit (`npm install -g @sap/cds-dk`)
+* SAP Build WorkZone should be subscribed to view the HTML5Applications.
+* [MTAR builder](https://www.npmjs.com/package/mbt) (`npm install -g mbt`)
+* [Cloud Foundary CLI](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html), Install cf-cli and run command `cf install-plugin multiapps`.
 
 ## Setup
 
@@ -42,7 +43,13 @@ If you want to use the released version of SDM CAP plugin follow the below steps
    git clone https://github.com/cap-js/incidents-app.git
 ```
 
-2. Navigate to incidents-app root folder and execute the following command:
+2. Navigate to incidents-app root folder and checkout to the branch **incidents-app-deploy**:
+
+```sh
+   git checkout incidents-app-deploy
+```
+
+3. Install SDM CAP plugin by executing the following command:
 
 ```sh
    npm add @cap-js/sdm
@@ -51,19 +58,13 @@ If you want to use the released version of SDM CAP plugin follow the below steps
 ### Using the development version
 If you want to use the version under development follow the below steps:
 
-1. Clone the incidents-app repository:
-
-```sh
-   git clone https://github.com/cap-js/incidents-app.git
-```
-
-2. Clone the sdm repository:
+1. Clone the sdm repository:
 
 ```sh
    git clone https://github.com/cap-js/sdm.git
 ```
 
-3. Open terminal, navigate to sdm root folder and generate tarball:
+2. Open terminal, navigate to sdm root folder and generate tarball:
 
 ```sh
    npm pack
@@ -71,7 +72,19 @@ If you want to use the version under development follow the below steps:
    This will generate a file with name cap-js-sdm-x.y.z.tgz
 ```
 
-4. Copy the path of .tgz file generated in step 3 and in terminal navigate to incidents-app root folder and execute:
+3. Clone the incidents-app repository:
+
+```sh
+   git clone https://github.com/cap-js/incidents-app.git
+```
+
+4. Navigate to incidents-app root folder and checkout to the branch **incidents-app-deploy**:
+
+```sh
+   git checkout incidents-app-deploy
+```
+
+5. Copy the path of .tgz file generated in step 2 and in terminal navigate to incidents-app root folder and execute:
 
 ```sh
    npm install <path-to-.tgz file>
@@ -106,29 +119,22 @@ extend my.Incidents with { attachments: Composition of many Attachments }
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-2. Add mta to CAP project use [_example/mta.yaml_](./example/mta.yaml)
-
-3. Build the project by running following command from root folder of incidents-app.
+2. Build the project by running following command from root folder of incidents-app.
    ```sh
    mbt build
    ```
    Above step will generate .mtar file inside mta_archives folder.
 
-4. Deploy the application
+3. Deploy the application
    ```sh
    cf deploy mta_archives/*.mtar
    ```
 
-4. **Navigate to the object page** of the incident `Solar panel broken`:
-
+4. Launch the application
    ```sh
-   * Open http://localhost:4004 in a browser.
-   * If prompted for sign-in, enter alice in username field and click on Sign In button.
-   * Click on /incidents/webapp under Web Applications.
+   * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
-   ```
-
-   Or, directly navigate to [Object page for incident **Solar panel broken.**](<http://localhost:4004/incidents/webapp/index.html#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
+   ```  
 
 5. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
