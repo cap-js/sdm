@@ -132,13 +132,13 @@ If package.json is not found create a file named package.json and add the below:
     npm install --prefix app/approuter
 ```
 
-## Configuring @cap-js/sdm plugin
+## Configuring @cap-js/sdm plugin and running the application
 
 1.  Bind to the SDM service
    ```sh
    cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
    ```
-
+This generates a new file .cdsrc-private.json in the project folder.
 2. In the project folder run in one terminal window:
 
 ```sh
@@ -150,15 +150,7 @@ If package.json is not found create a file named package.json and add the below:
     cds watch --profile hybrid
 ```
 
-
-
-7. Make sure that the CAP application is running as well with the hybrid profile in another terminal:
-
-```sh
-    cds watch --profile hybrid
-```
-
-8. Open http://localhost:5000 in the browser which redirects to the port 4004 and the application can be accessed locally.
+4. Open http://localhost:5000 in the browser which redirects to the port 4004 and the application can be accessed locally.
 
 
 
