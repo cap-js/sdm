@@ -1,5 +1,6 @@
 # Local testing of @cap-js/sdm plugin
 
+
 XSUAA is required to enforce authentication for any CAP Application. To test the plugin locally, follow the given steps
 
 ## Configuring XSUAA 
@@ -13,7 +14,7 @@ XSUAA is required to enforce authentication for any CAP Application. To test the
 2. Go to the CAP project location and configure your app for XSUAA-based authentication:
 
 ```sh
-   cds add xsuaa --for hybrid
+   cds add xsuaa 
 ```
 
 This command creates the XSUAA configuration file xs-security.json and adds the service and required dependencies to the package.json file
@@ -28,56 +29,26 @@ This command creates the XSUAA configuration file xs-security.json and adds the 
     }
 ```
 
-4. Configure the redirect URI by adding the following OAuth configuration to the xs-security.json file:
 
-```sh
-    "oauth2-configuration": {
-        "redirect-uris": [
-            "http://localhost:5000/"
-        ]
-    }
-```
-
-5. Create an XSUAA service instance with this configuration:
+4. Create an XSUAA service instance with this configuration:
 
 ```sh
     cf create-service xsuaa application bookshop-uaa -c xs-security.json
 ```
 
-6. Create a service key:
+5. Create a service key:
 
 ```sh
     cf create-service-key bookshop-uaa bookshop-uaa-key
 ```
 
-7. Bind to the new service key:
+6. Bind to the new service key:
 
 ```sh
-    cds bind -2 bookshop-uaa
+    cds bind --to bookshop-uaa:bookshop-uaa-key
 ```
 
-8. Add an auth section containing the binding and the kind xsuaa to the .cdsrc-private.json file. 
-
-```sh
-    {
-        "requires": {
-            "[hybrid]": {
-                "auth": {
-                    "kind": "xsuaa",
-                    "binding": { ... }
-                }
-            }
-        }
-    }
-```
-
-9. Verify if the .cds file under srv folder has
-
-```sh
-    @requires: 'authenticated-user'
-```
-
-10. Go to the BTP subaccount and add the required users under the Role collections.
+7. Go to the BTP subaccount and add the required users under the Role collections to allow user authentication and authorization.
 
 
 
@@ -132,46 +103,42 @@ If package.json is not found create a file named package.json and add the below:
 
 ```sh
     {
-        "destinations": [
-            {
-                "name": "srv_api",
+    "PORT": 5000,
+    "destinations": [
+        {
+            "name": "srv_api",
                 "url": "http://localhost:4004",
                 "forwardAuthToken": true,
                 "strictSSL": false
+        }
+    ],
+    "VCAP_SERVICES": {
+        "xsuaa": [
+            {
+                "tags": [
+                    "xsuaa"
+                ],
+                "credentials": { SERVICE KEY VALUE }
             }
         ]
     }
+}
 ```
 
-4. Create default-services.json. Fetch the xsuaa content from the VCAP_SERVICES of the CAP Application and paste the content to file default-services.json: 
 
-```sh
-    { "uaa": {
-            
-        }
-    }
-```
-
-Copy this file to the root directory of our project because in the service, the JWT token needs to be validated. Here rename uaa to xsuaa:  
-
-```sh
-    { "xsuaa": {
-            
-        }
-    }
-```
-
-5. Install npm packages for approuter:
+4. Install npm packages for approuter:
 
 ```sh
     npm install --prefix app/approuter
 ```
 
-6. In the project folder run:
+5. In the project folder run:
 
 ```sh
     cds bind --exec -- npm start --prefix app/approuter
 ```
+
+
 
 7. Make sure that the CAP application is running as well with the hybrid profile in another terminal:
 
