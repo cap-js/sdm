@@ -3,27 +3,39 @@
 The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with SAP Document Management Service. This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
 This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
+# Key features
+
+- Create attachment : Provides the capability to upload new attachments.
+- Open attachment : Provides the capability to preview attachments.
+- Delete attachment : Provides the capability to remove attachments.
+- Rename attachment : Provides the capability to rename attachments.
+- Virus scanning : Provides the capability to support virus scan for virus scan enabled repositories.
+- Draft functionality : Provides the capability of working with draft attachments.
+
 ### Table of Contents
 
+- [Pre-Requisites](#pre-requisites)
 - [Setup](#setup)
-- [Use `sdm`](#use-sdm)
-- [Testing the application locally](#testing-the-application-locally)
+- [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
+- [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
 
+## Pre-Requisites
+* Node.JS 16 or higher
+* CAP Development Kit (`npm install -g @sap/cds-dk`)
+* SAP Build WorkZone should be subscribed to view the HTML5Applications.
+* [MTAR builder](https://www.npmjs.com/package/mbt) (`npm install -g mbt`)
+* [Cloud Foundary CLI](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html), Install cf-cli and run command `cf install-plugin multiapps`.
+
 ## Setup
 
-In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to add `Attachments` type to the CDS model.
+In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to integrate SDM CAP plugin.
 
-> **Note:** This plugin is yet to be released. After the release, to enable SDM, simply add this self-configuring plugin package to your project using the following command:
->
-> ```sh
-> npm add @cap-js/sdm
-> ```
-
-Prior to release follow below steps to enable sdm plugin
+### Using the released version
+If you want to use the released version of SDM CAP plugin follow the below steps:
 
 1. Clone the incidents-app repository:
 
@@ -31,27 +43,54 @@ Prior to release follow below steps to enable sdm plugin
    git clone https://github.com/cap-js/incidents-app.git
 ```
 
-2. Clone the sdm repository:
+2. Navigate to incidents-app root folder and checkout to the branch **incidents-app-deploy**:
+
+```sh
+   git checkout incidents-app-deploy
+```
+
+3. Install SDM CAP plugin by executing the following command:
+
+```sh
+   npm add @cap-js/sdm
+```
+
+### Using the development version
+If you want to use the version under development follow the below steps:
+
+1. Clone the sdm repository:
 
 ```sh
    git clone https://github.com/cap-js/sdm.git
 ```
 
-3. Open terminal, navigate to sdm root folder and generate tarball:
+2. Open terminal, navigate to sdm root folder and generate tarball:
 
 ```sh
    npm pack
 
-   This will generate a file with name cap-js-sdm-1.0.0.tgz
+   This will generate a file with name cap-js-sdm-x.y.z.tgz
 ```
 
-4. Copy the path of .tgz file generated in step 3 and in terminal navigate to incidents-app root folder and execute:
+3. Clone the incidents-app repository:
+
+```sh
+   git clone https://github.com/cap-js/incidents-app.git
+```
+
+4. Navigate to incidents-app root folder and checkout to the branch **incidents-app-deploy**:
+
+```sh
+   git checkout incidents-app-deploy
+```
+
+5. Copy the path of .tgz file generated in step 2 and in terminal navigate to incidents-app root folder and execute:
 
 ```sh
    npm install <path-to-.tgz file>
 ```
 
-## Use sdm
+## Use @cap-js/sdm plugin
 
 **To use sdm plugin in incidents-app, create an element with an `Attachments` type.** Following the [best practice of separation of concerns](https://cap.cloud.sap/docs/guides/domain-modeling#separation-of-concerns), create a separate file _db/attachments.cds_ and paste the below content in it:
 
@@ -62,7 +101,7 @@ using { Attachments } from '@cap-js/sdm';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Create a SAP Document Management Service instance and key. Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json**
+Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json
 
 ```
 "sdm": {
@@ -72,55 +111,62 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 }
 ```
 
-## Testing the application locally
+## Deploying and testing the application
 
-For using SAP Document Management Service to store attachments, use the instance-name and service-key values of SAP Document Management Service Integration Option in the below setup.
-
-1. Install cds-dk globally
-
-   ```sh
-   npm i @sap/cds-dk -g
-   ```
-
-2. Log in to Cloud Foundry space:
+1. Log in to Cloud Foundry space:
 
    ```sh
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-3. To bind to the service continue with the steps below.
+2. Bind CAP application to SAP Document Management Integration Option. Check the following reference from `mta.yaml` of Incidents Management app
 
-   In the project directory, you can generate a new file \_.cdsrc-private.json by running:
-
-   ```sh
-   cds bind sdm -2 <INSTANCE-NAME>:<SERVICE-KEY> --kind sdm
+   ```
+   modules:
+      - name: incidents-srv
+      type: nodejs
+      path: gen/srv
+      requires:
+         - name: sdm-di-instance
+  
+   resources:
+      - name: sdm-di-instance
+      type: org.cloudfoundry.managed-service
+      parameters:
+         service: sdm
+         service-plan: standard
    ```
 
-4. **Start the server**:
-
-- _Default_ scenario (In memory database):
-  ```sh
-  cds watch --profile hybrid
-  ```
-
-5. **Navigate to the object page** of the incident `Solar panel broken`:
-
+3. Build the project by running following command from root folder of incidents-app.
    ```sh
-   * Open http://localhost:4004 in a browser.
-   * If prompted for sign-in, enter alice in username field and click on Sign In button.
-   * Click on /incidents/webapp under Web Applications.
+   mbt build
+   ```
+   Above step will generate .mtar file inside mta_archives folder.
+
+4. Deploy the application
+   ```sh
+   cf deploy mta_archives/*.mtar
+   ```
+
+5. Launch the application
+   ```sh
+   * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
-   ```
+   ```  
 
-   Or, directly navigate to [Object page for incident **Solar panel broken.**](<http://localhost:4004/incidents/webapp/index.html#/Incidents(ID=3583f982-d7df-4aad-ab26-301d4a157cd7,IsActiveEntity=true)>)
-
-6. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
 7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
    <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
 
-8. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report.pdf`
+8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
+
+9. **Rename a file** by going into Edit mode and setting a new name for the file in the filename field. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
+
+10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
