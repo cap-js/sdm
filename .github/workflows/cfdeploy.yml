@@ -1,9 +1,12 @@
 name: Deploy to Cloud Foundry
 on:
+  push:
+    branches:
+      - cfdeploy
   pull_request:
     types: [closed]
     branches:
-      - develop
+      - cfdeploy
   workflow_dispatch:
   
 permissions:
@@ -44,9 +47,4 @@ jobs:
           npm i @sap/cds-dk -g
           mbt build
           cf install-plugin multiapps -f
-          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f 
-
-          
-
-          
-      
+          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f       
