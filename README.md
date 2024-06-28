@@ -119,7 +119,7 @@ Create a SAP Document Management Integration Option [Service instance and key](h
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-2. Bind CAP application to SAP Document Management Integration Option. Check the following reference from `mta.ymal` of Incidents Management app
+2. Bind CAP application to SAP Document Management Integration Option. Check the following reference from `mta.yaml` of Incidents Management app
 
    ```
    modules:
@@ -154,7 +154,7 @@ Create a SAP Document Management Integration Option [Service instance and key](h
    * Click on incident with title Solar panel broken.
    ```  
 
-6. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlited box) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
 7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
@@ -163,7 +163,7 @@ Create a SAP Document Management Integration Option [Service instance and key](h
 8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
 
-9. **Rename a file** by going into Edit mode and setting a new name for the file in the rename box. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
+9. **Rename a file** by going into Edit mode and setting a new name for the file in the filename field. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
 
 10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
