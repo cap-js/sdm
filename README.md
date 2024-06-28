@@ -17,7 +17,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Pre-Requisites](#pre-requisites)
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
-- [Testing the application locally](#testing-the-application-locally)
+- [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
@@ -101,7 +101,7 @@ using { Attachments } from '@cap-js/sdm';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-**Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). For Service instance use the name "sdm-di-instance". Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json**
+Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json
 
 ```
 "sdm": {
@@ -111,7 +111,7 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 }
 ```
 
-## Deploying the application
+## Deploying and testing the application
 
 1. Log in to Cloud Foundry space:
 
@@ -119,36 +119,54 @@ extend my.Incidents with { attachments: Composition of many Attachments }
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
 
-2. Build the project by running following command from root folder of incidents-app.
+2. Bind CAP application to SAP Document Management Integration Option. Check the following reference from `mta.ymal` of Incidents Management app
+
+   ```
+   modules:
+      - name: incidents-srv
+      type: nodejs
+      path: gen/srv
+      requires:
+         - name: sdm-di-instance
+  
+   resources:
+      - name: sdm-di-instance
+      type: org.cloudfoundry.managed-service
+      parameters:
+         service: sdm
+         service-plan: standard
+   ```
+
+3. Build the project by running following command from root folder of incidents-app.
    ```sh
    mbt build
    ```
    Above step will generate .mtar file inside mta_archives folder.
 
-3. Deploy the application
+4. Deploy the application
    ```sh
    cf deploy mta_archives/*.mtar
    ```
 
-4. Launch the application
+5. Launch the application
    ```sh
    * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
    ```  
 
-5. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
+6. The `Attachments` type has generated an out-of-the-box Attachments table (see 1) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
-6. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
+7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
    <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
 
-7. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
+8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
 
-8. **Rename a file** by going into Edit mode and setting a new name for the file in the rename box. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
+9. **Rename a file** by going into Edit mode and setting a new name for the file in the rename box. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
 
-9. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
+10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
