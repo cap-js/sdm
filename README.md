@@ -154,7 +154,7 @@ Create a SAP Document Management Integration Option [Service instance and key](h
    * Click on incident with title Solar panel broken.
    ```  
 
-6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlited box) at the bottom of the Object page:
+6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
 7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. Then click the **Save** button to have that file stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
