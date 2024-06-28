@@ -1,17 +1,17 @@
 name: Integration Test
 
 on:
-  push:
+  workflow_run:
+    workflows: ['Deploy to Cloud Foundry']
+    types: [completed]
     branches:
-      - develop
-  pull_request:
-    branches:
-      - develop
+      - 'cfdeploy'
   workflow_dispatch:
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout repository
