@@ -17,7 +17,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Pre-Requisites](#pre-requisites)
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
-- [Testing the application locally](#testing-the-application-locally)
+- [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
@@ -111,7 +111,7 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 }
 ```
 
-## Deploying the application
+## Deploying and testing the application
 
 1. Log in to Cloud Foundry space:
 
