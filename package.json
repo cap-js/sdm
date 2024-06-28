@@ -1,13 +1,16 @@
 {
   "name": "@cap-js/sdm",
-  "version": "1.0.0",
   "description": "CAP plugin for effortless integration of CAP applications with SAP Document Management Service.",
+  "version": "1.0.2",
+  "repository": "cap-js/sdm",
+  "author": "SAP SE (https://www.sap.com)",
+  "homepage": "https://cap.cloud.sap/",
   "main": "cds-plugin.js",
   "license": "Apache-2.0",
   "files": [
     "lib",
-    "srv",
-    "index.cds"
+    "index.cds",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "sap",
@@ -17,7 +20,7 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "^1.0.1",
+    "@cap-js/attachments": "latest",
     "@sap/cds": "^7",
     "@sap/cds-lsp": "^7.6.1",
     "@sap/xssec": "^3.6.1",
