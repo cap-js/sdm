@@ -1,0 +1,37 @@
+name: Integration Test
+
+on:
+  workflow_run:
+    workflows: ['Deploy to Cloud Foundry']
+    types: [completed]
+    branches:
+      - 'cfdeploy'
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v2.1.5
+        with:
+          node-version: '20'
+
+      - name: Run integration tests
+        run: |
+          appUrl=${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com
+          echo "app url: ${appUrl}"
+          # JSON file path
+          JSON_FILE="test/integration/credentials.json"
+          # Modify JSON file
+          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ secrets.CAPSDM_CLIENT_ID }}" --arg clientSecret "${{ secrets.CAPSDM_CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" \
+          '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password' $JSON_FILE > "temp.json" \
+          && mv "temp.json" $JSON_FILE
+          cat $JSON_FILE
+          npm i
+          npm run integration-test

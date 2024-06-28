@@ -1,0 +1,50 @@
+name: Deploy to Cloud Foundry
+on:
+  push:
+    branches:
+      - cfdeploy
+  pull_request:
+    types: [closed]
+    branches:
+      - cfdeploy
+  workflow_dispatch:
+  
+permissions:
+  pull-requests: read
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:        
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x  
+          
+      - name: Login to Cloud Foundry
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install cf8-cli
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+      - name: Clone and prepare projects & Build and deploy
+        run: |
+          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
+          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          cd sdm
+          npm pack
+          mv cap-js-sdm-1.0.0.tgz ../incidents-app
+          cd ../incidents-app
+          npm i cap-js-sdm-1.0.0.tgz
+
+      - name: Build and deploy
+        run: |
+          cd incidents-app
+          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+          sudo mv mbt /usr/local/bin/
+          npm i @sap/cds-dk -g
+          mbt build
+          cf install-plugin multiapps -f
+          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f       
