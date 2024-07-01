@@ -1,7 +1,7 @@
 {
   "name": "@cap-js/sdm",
   "description": "CAP plugin for effortless integration of CAP applications with SAP Document Management Service.",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "repository": "cap-js/sdm",
   "author": "SAP SE (https://www.sap.com)",
   "homepage": "https://cap.cloud.sap/",
