@@ -34,6 +34,9 @@ jobs:
           git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
           cd sdm
           npm pack
+          echo "Current directory"
+          pwd
+          ls
           mv cap-js-sdm-1.0.0.tgz ../incidents-app
           cd ../incidents-app
           npm i cap-js-sdm-1.0.0.tgz
