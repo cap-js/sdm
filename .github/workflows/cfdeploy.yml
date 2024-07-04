@@ -37,7 +37,7 @@ jobs:
           echo "Current directory"
           pwd
           ls
-          mv cap-js-sdm-1.0.0.tgz ../incidents-app
+          mv *.tgz ../incidents-app
           cd ../incidents-app
           npm i cap-js-sdm-1.0.0.tgz
 
