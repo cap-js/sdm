@@ -1,3 +1,5 @@
+[![REUSE status](https://api.reuse.software/badge/github.com/cap-js/sdm)](https://api.reuse.software/info/github.com/cap-js/sdm)
+
 # CAP plugin for SAP Document Management Service
 
 The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with SAP Document Management Service. This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
