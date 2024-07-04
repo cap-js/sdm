@@ -1,19 +1,16 @@
 name: Deploy to Cloud Foundry
 on:
-  push:
-    branches:
-      - cfdeploy
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [closed]
     branches:
-      - cfdeploy
+      - develop
   workflow_dispatch:
   
 permissions:
   pull-requests: read
 jobs:
   deploy:
-    if: github.event.pull_request.merged == false
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:        
       - name: Use Node.js 20.x
