@@ -39,7 +39,7 @@ jobs:
           ls
           mv *.tgz ../incidents-app
           cd ../incidents-app
-          npm i cap-js-sdm-1.0.0.tgz
+          npm i *.tgz
 
       - name: Build and deploy
         run: |
