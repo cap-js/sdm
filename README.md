@@ -36,6 +36,9 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 
 In this guide, we use the [Incidents Management reference sample app](https://github.com/cap-js/incidents-app) as the base application, to integrate SDM CAP plugin.
 
+> [!Note]
+> To be able to use the Fiori *uploadTable* feature, you must ensure 1.121.0/ 1.122.0/ ^1.125.0 SAPUI5 version is updated in the application's _index.html_
+
 ### Using the released version
 If you want to use the released version of SDM CAP plugin follow the below steps:
 
