@@ -1,4 +1,5 @@
 # This job will run only once PR will get merge under specified branch.
+# Once PR is merged, then this workflow will trigger the deploy-job & if it completes only then the followup job (Integration test) runs.
 
 name: Deploy and Integration Test
 
@@ -6,7 +7,7 @@ on:
   pull_request:
     types: [closed]
     branches:
-      - cfdeploy&integrationtest
+      - develop
   workflow_dispatch:
 
 permissions:
