@@ -25,5 +25,6 @@ jobs:
       - name: npm install
         run: |
           npm install
+          curl --silent -O https://detect.synopsys.com/detect8.sh
           pwd
           ls -lart
