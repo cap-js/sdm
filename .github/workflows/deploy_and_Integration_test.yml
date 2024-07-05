@@ -1,3 +1,5 @@
+# This job will run only once PR will get merge under specified branch.
+
 name: Deploy and Integration Test
 
 on:
