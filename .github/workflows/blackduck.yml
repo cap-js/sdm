@@ -3,10 +3,10 @@ name: Blackduck analysis
 on:
   push:
     branches:
-      - blackduck
+      - develop
   pull_request:
     branches:
-      - blackduck
+      - develop
     types: [opened, synchronize, reopened]
   workflow_dispatch:
   
