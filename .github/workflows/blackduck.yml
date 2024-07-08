@@ -1,0 +1,50 @@
+name: Blackduck analysis
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  
+permissions:
+  pull-requests: read # allows SonarQube to decorate PRs with analysis results
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          
+      - name: npm install
+        run: |
+          npm install
+          curl --silent -O https://detect.synopsys.com/detect8.sh
+
+      - name: Run & analyze BlackDuck Scan
+        run: |
+          bash ./detect8.sh \
+          --logging.level.com.synopsys.integration=DEBUG  \
+          --blackduck.url="https://sap.blackducksoftware.com" \
+          --blackduck.api.token=""${{ secrets.BLACKDUCK_TOKEN }}""   \
+          --detect.blackduck.signature.scanner.arguments="--min-scan-interval=0" \
+          --detect.npm.arguments \
+          --detect.latest.release.version="9.6.0" \
+          --detect.project.version.distribution="SaaS" \
+          --detect.blackduck.signature.scanner.memory=4096  \
+          --detect.timeout=6000 \
+          --blackduck.trust.cert=true \
+          --detect.project.user.groups="SAP_DOC_MGMT_CAP_NODEJS 1.0"  \
+          --detect.project.name="SAP_DOC_MGMT_CAP_NODEJS 1.0" \
+          --detect.project.version.name="1.0" \
+          --detect.code.location.name="SAP_DOC_MGMT_CAP_NODEJS 1.0/1.0" \
+          --detect.source.path="/home/runner/work/sdm/sdm"
+
+
+    
