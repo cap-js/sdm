@@ -25,11 +25,11 @@ jobs:
       - name: npm install
         run: |
           npm install
-          curl --silent -O https://detect.synopsys.com/detect8.sh
+          curl --silent -O https://detect.synopsys.com/detect9.sh
 
       - name: Run & analyze BlackDuck Scan
         run: |
-          bash ./detect8.sh \
+          bash ./detect9.sh \
           --logging.level.com.synopsys.integration=DEBUG  \
           --blackduck.url="https://sap.blackducksoftware.com" \
           --blackduck.api.token=""${{ secrets.BLACKDUCK_TOKEN }}""   \
