@@ -819,7 +819,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-      repoInfo = {
+      const repoInfo = {
         data: {
           "123": {
             capabilities: {

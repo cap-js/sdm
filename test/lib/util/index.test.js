@@ -151,7 +151,7 @@ describe("util", () => {
     
     it("should return true when repotype is pwconly", () => {
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      mockRepoInfo = {
+      const mockRepoInfo = {
         data: {
           "mockedRepoId": {
             capabilities: {
@@ -168,7 +168,7 @@ describe("util", () => {
 
     it("should not set cache and return true when repotype is pwconly", () => {
       NodeCache.prototype.get.mockImplementation(() => "mockedRepoId");
-      mockRepoInfo = {
+      const mockRepoInfo = {
         data: {
           "mockedRepoId": {
             capabilities: {
@@ -185,7 +185,7 @@ describe("util", () => {
 
     it("should return false when repotype is not pwconly", () => {
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      mockRepoInfo = {
+      const mockRepoInfo = {
         data: {
           "mockedRepoId": {
             capabilities: {
