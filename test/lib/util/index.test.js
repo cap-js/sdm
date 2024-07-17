@@ -6,6 +6,7 @@ const {
   fetchAccessToken,
   getConfigurations,
   checkAttachmentsToRename,
+  isRepositoryVersioned,
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -140,6 +141,65 @@ describe("util", () => {
       }
     });
   });
+
+  describe("isRepositoryVersioned", () => {
+    
+    beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
+      NodeCache.prototype.set.mockClear();
+    });
+    
+    it("should return true when repotype is pwconly", () => {
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      mockRepoInfo = {
+        data: {
+          "mockedRepoId": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
+      const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
+      expect(isVersioned).toBe(true);
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
+      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId", "versioned", 60 * 60 * 24 * 60);
+    });
+
+    it("should not set cache and return true when repotype is pwconly", () => {
+      NodeCache.prototype.get.mockImplementation(() => "mockedRepoId");
+      mockRepoInfo = {
+        data: {
+          "mockedRepoId": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
+      const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
+      expect(isVersioned).toBe(true);
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
+      expect(NodeCache.prototype.set).not.toHaveBeenCalled();
+    });
+
+    it("should return false when repotype is not pwconly", () => {
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      mockRepoInfo = {
+        data: {
+          "mockedRepoId": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "random"
+            }
+          }
+        }
+      }
+      const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
+      expect(isVersioned).toBe(false);
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
+      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId", "non-versioned", 60 * 60 * 24 * 60);
+    });
+  })
 
   describe("getConfigurations", () => {
     it("should return attachments settings if exists", () => {
