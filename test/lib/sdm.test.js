@@ -4,7 +4,8 @@ const {
   fetchAccessToken,
   checkAttachmentsToRename,
   getConfigurations,
-  isRepositoryVersioned
+  isRepositoryVersioned,
+  getClientCredentialsToken
 } = require("../../lib/util");
 const {
   getDraftAttachments,
@@ -40,7 +41,8 @@ jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
   checkAttachmentsToRename: jest.fn(),
   getConfigurations: jest.fn(),
-  isRepositoryVersioned: jest.fn()
+  isRepositoryVersioned: jest.fn(),
+  getClientCredentialsToken: jest.fn()
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -67,6 +69,7 @@ describe("SDMAttachmentsService", () => {
     let service;
     let repoInfo
     const token = "mocked_token";
+    const clientCredentialToken = "mocked_client_credential_token";
     beforeEach(() => {
 
       NodeCache.prototype.get.mockClear();
@@ -87,6 +90,7 @@ describe("SDMAttachmentsService", () => {
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
       isRepositoryVersioned.mockResolvedValue(false);
       fetchAccessToken.mockResolvedValue(token);
+      getClientCredentialsToken.mockResolvedValue(clientCredentialToken);
     });
 
     it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
@@ -278,7 +282,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(getDraftAttachments).toHaveBeenCalledTimes(1);
-      expect(fetchAccessToken).toHaveBeenCalledTimes(1);
+      expect(fetchAccessToken).toHaveBeenCalledTimes(0);
     });
 
     it("should not call onCreate if no draft attachments are available", async () => {
