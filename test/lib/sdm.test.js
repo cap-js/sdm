@@ -652,7 +652,7 @@ describe("SDMAttachmentsService", () => {
       const attachments = [];
 
       service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-      service.onCreate = jest.fn().mockResolvedValue(["sample.pdf",{isVirus:true,name:'virus.pdf'}]);
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'}]);
 
       await service.create(
         attachment_val_create,
@@ -661,7 +661,7 @@ describe("SDMAttachmentsService", () => {
         token
       );
 
-      expect(mockReq.warn).toHaveBeenCalledWith(500, "\nsample.pdf\nThe file virus.pdf may contain a virus. Please remove it and try again.");
+      expect(mockReq.warn).toHaveBeenCalledWith(500, "The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf");
     })
   });
 
@@ -851,7 +851,7 @@ describe("SDMAttachmentsService", () => {
         req,
         createAttachment
       );
-      expect(result).toEqual(['Attachment failed', { "isVirus": true, "name": undefined }]);
+      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }]);
       expect(req.data.attachments).toHaveLength(1);
     });
   });
