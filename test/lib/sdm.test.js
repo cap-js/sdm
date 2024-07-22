@@ -611,6 +611,7 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
         info: jest.fn(),
+        warn: jest.fn()
       };
 
       cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
@@ -642,7 +643,7 @@ describe("SDMAttachmentsService", () => {
       
       expect(onCreateSpy).toBeCalled();
       expect(getParentIdSpy).toBeCalled();
-      expect(mockReq.info).not.toBeCalled();
+      expect(mockReq.warn).not.toBeCalled();
     })
 
     it("should handle failure in onCreate", async () => {
@@ -651,7 +652,7 @@ describe("SDMAttachmentsService", () => {
       const attachments = [];
 
       service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-      service.onCreate = jest.fn().mockResolvedValue(["ChildTest"]);
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'}]);
 
       await service.create(
         attachment_val_create,
@@ -660,7 +661,7 @@ describe("SDMAttachmentsService", () => {
         token
       );
 
-      expect(mockReq.info).toHaveBeenCalledWith(200, "\nAttachment with name Test");
+      expect(mockReq.warn).toHaveBeenCalledWith(500, "The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf");
     })
   });
 
@@ -686,6 +687,7 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
         info: jest.fn(),
+        warn: jest.fn()
       };
 
       cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
@@ -726,7 +728,7 @@ describe("SDMAttachmentsService", () => {
         mockReq
       );
 
-      expect(mockReq.info).toHaveBeenCalledWith(200, "\nAttachment with name Test");
+      expect(mockReq.warn).toHaveBeenCalledWith(500, "\nAttachment with name Test");
     })
   });
 
@@ -735,42 +737,6 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
-    });
-
-    it("should return failed request messages if some attachments fail", async () => {
-      const data = [{ ID: 1 }, { ID: 2 }];
-      const credentials = {};
-      const token = "token";
-      const attachments = [];
-      const req = {
-        data: { attachments: [...data] },
-        user: {
-          tokenInfo: {
-            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
-          },
-        },
-      };
-
-      createAttachment
-        .mockResolvedValueOnce({
-          status: 201,
-          data: { succinctProperties: { "cmis:objectId": "url" } },
-        })
-        .mockResolvedValueOnce({
-          status: 400,
-          response: { data: { message: "Attachment failed" } },
-        });
-
-      const result = await service.onCreate(
-        data,
-        credentials,
-        token,
-        attachments,
-        req,
-        createAttachment
-      );
-      expect(result).toEqual(["Attachment failed"]);
-      expect(req.data.attachments).toHaveLength(1);
     });
 
     it("should return empty array if no attachments fail", async () => {
@@ -848,6 +814,46 @@ describe("SDMAttachmentsService", () => {
         url: "some_object_id",
       });
     });
+
+    it("should return failed request messages if some attachments fail", async () => {
+      const data = [{ ID: 1 }, { ID: 2 }, { ID: 3}];
+      const credentials = {};
+      const token = "token";
+      const attachments = [];
+      const req = {
+        data: { attachments: [...data] },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+      };
+
+      createAttachment
+        .mockResolvedValueOnce({
+          status: 201,
+          data: { succinctProperties: { "cmis:objectId": "url" } },
+        })
+        .mockResolvedValueOnce({
+          status: 400,
+          response: { data: { message: "Attachment failed" } },
+        })
+        .mockResolvedValueOnce({
+          status: 500,
+          response: { data: { message: "Malware Service Exception: Virus found in the file!" } }
+        });
+
+      const result = await service.onCreate(
+        data,
+        credentials,
+        token,
+        attachments,
+        req,
+        createAttachment
+      );
+      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }]);
+      expect(req.data.attachments).toHaveLength(1);
+    });
   });
 
   describe("onRename", () => {
@@ -891,7 +897,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should return failed request messages if rename fails for some attachments", async () => {
-      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2" }];
+      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2" }, { name: "attachment#3", id:"id3" }];
       const credentials = {};
       const token = "token";
       const req = {
@@ -904,6 +910,10 @@ describe("SDMAttachmentsService", () => {
             {
               id: "id2",
               filename: "attachment#2"
+            },
+            {
+              id: "id3",
+              filename: "attachment#3"
             }
           ]
         }
@@ -915,7 +925,10 @@ describe("SDMAttachmentsService", () => {
           data: { succinctProperties: { "cmis:objectId": "url" } },
         })
         .mockResolvedValueOnce({
-          response: { data: { message: "Rename failed" } , status: 400},
+          response: { data: { message: "Error occurred with Id null" }, status : 400 }
+        })
+        .mockResolvedValueOnce({
+          response: { data: { message: "Error occurred" }, status : 400 }
         });
 
       const result = await service.onRename(
@@ -924,7 +937,7 @@ describe("SDMAttachmentsService", () => {
         token,
         req
       );
-      expect(result).toEqual(["Rename failed"]);
+      expect(result).toEqual(["Error occurred and Id undefined", "Error occurred"]);
     });
   });
 
