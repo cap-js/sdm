@@ -171,7 +171,7 @@ describe("SDMAttachmentsService", () => {
       await service.get(attachments, keys, req);  
       expect(req.reject).toHaveBeenCalledWith(
         400,
-        "Versioned repositories are not supported"
+        "Attachments are not supported for a versioned repository."
       );
     })
 
@@ -191,7 +191,7 @@ describe("SDMAttachmentsService", () => {
       await service.get(attachments, keys, req);  
       expect(req.reject).toHaveBeenCalledWith(
         400,
-        "Versioned repositories are not supported"
+        "Attachments are not supported for a versioned repository."
       );
     })
 
