@@ -261,6 +261,7 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
         info: jest.fn(),
+        warn: jest.fn()
       };
 
       cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
@@ -302,6 +303,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(createSpy).toBeCalled();
+      expect(mockReq.warn).not.toBeCalled();
     });
 
     it("should handle successful onRename without any issue", async () => {
@@ -323,6 +325,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(renameSpy).toBeCalled();
+      expect(mockReq.warn).not.toBeCalled();
     });
 
     it("should not call rename if no draft attachments are available", async () => {
@@ -779,16 +782,35 @@ describe("SDMAttachmentsService", () => {
       const attachments = [];
 
       service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'}]);
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
 
-      await service.create(
+      let response = await service.create(
         attachment_val_create,
         attachments,
         mockReq,
         token
       );
 
-      expect(mockReq.warn).toHaveBeenCalledWith(500, "The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf");
+      expect(response).toBe("The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
+    })
+
+    it("should handle failure in onCreate after failure in rename", async () => {
+      const attachment_val_create = [{}];
+      const token = "token";
+      const attachments = [];
+
+      service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
+
+      let response = await service.create(
+        attachment_val_create,
+        attachments,
+        mockReq,
+        token,
+        "rename_error\n"
+      );
+
+      expect(response).toBe("rename_error\nThe following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
     })
   });
 
@@ -861,15 +883,15 @@ describe("SDMAttachmentsService", () => {
       const token = "token";
       const modifiedAttachments = [];
 
-      service.onRename = jest.fn().mockResolvedValue(["ChildTest"]);
+      service.onRename = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:"renameduplicate"}]);
 
-      await service.rename(
+      response = await service.rename(
         modifiedAttachments,
         token,
         mockReq
       );
 
-      expect(mockReq.warn).toHaveBeenCalledWith(500, "\nAttachment with name Test");
+      expect(response).toBe("The following files could not be renamed as they already exist:\n• renameduplicate\n");
     })
   });
 
@@ -957,7 +979,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should return failed request messages if some attachments fail", async () => {
-      const data = [{ ID: 1 }, { ID: 2 }, { ID: 3}];
+      const data = [{ ID: 1 }, { ID: 2 }, { ID: 3}, { ID: 4}];
       const credentials = {};
       const token = "token";
       const attachments = [];
@@ -977,11 +999,15 @@ describe("SDMAttachmentsService", () => {
         })
         .mockResolvedValueOnce({
           status: 400,
-          response: { data: { message: "Attachment failed" } },
+          response: { data: { exception: "nameConstraintViolation" } },
         })
         .mockResolvedValueOnce({
           status: 500,
           response: { data: { message: "Malware Service Exception: Virus found in the file!" } }
+        })
+        .mockResolvedValueOnce({
+          status: 500,
+          response: { data: { message: "Invalid file type" } }
         });
 
       const result = await service.onCreate(
@@ -992,7 +1018,7 @@ describe("SDMAttachmentsService", () => {
         req,
         createAttachment
       );
-      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }]);
+      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }, { typeOfError:'other', message: "Invalid file type" }]);
       expect(req.data.attachments).toHaveLength(1);
     });
   });
@@ -1078,7 +1104,7 @@ describe("SDMAttachmentsService", () => {
         token,
         req
       );
-      expect(result).toEqual(["Error occurred and Id undefined", "Error occurred"]);
+      expect(result).toEqual([{ "name": "attachment#2", "typeOfError": "duplicate" },{ "name": "attachment#3", "typeOfError": "duplicate" }]);
     });
   });
 
