@@ -1,7 +1,11 @@
 const SDMAttachmentsService = require("../../lib/sdm");
+const NodeCache = require("node-cache");
 const {
   fetchAccessToken,
-  checkAttachmentsToRename 
+  checkAttachmentsToRename,
+  getConfigurations,
+  isRepositoryVersioned,
+  getClientCredentialsToken
 } = require("../../lib/util");
 const {
   getDraftAttachments,
@@ -16,7 +20,8 @@ const {
   getFolderIdByPath,
   createFolder,
   deleteFolderWithAttachments,
-  renameAttachment
+  renameAttachment,
+  getRepositoryInfo
 } = require("../../lib/handler");
 const {
   duplicateDraftFileErr,
@@ -34,7 +39,10 @@ jest.mock("../../lib/persistence", () => ({
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
-  checkAttachmentsToRename: jest.fn()
+  checkAttachmentsToRename: jest.fn(),
+  getConfigurations: jest.fn(),
+  isRepositoryVersioned: jest.fn(),
+  getClientCredentialsToken: jest.fn()
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -43,7 +51,8 @@ jest.mock("../../lib/handler", () => ({
   getFolderIdByPath: jest.fn(),
   createFolder: jest.fn(),
   deleteFolderWithAttachments: jest.fn(),
-  renameAttachment: jest.fn()
+  renameAttachment: jest.fn(),
+  getRepositoryInfo: jest.fn()
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -53,13 +62,35 @@ jest.mock("@sap/cds/lib", () => {
   };
   return mockCds;
 });
+jest.mock("node-cache");
 
 describe("SDMAttachmentsService", () => {
   describe("Test get method", () => {
     let service;
+    let repoInfo
+    const token = "mocked_token";
+    const clientCredentialToken = "mocked_client_credential_token";
     beforeEach(() => {
+
+      NodeCache.prototype.get.mockClear();
+      jest.resetAllMocks();
       service = new SDMAttachmentsService();
       service.creds = { uri: "mock_cred" };
+      repoInfo = {
+        data: {
+          "123": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
+      getRepositoryInfo.mockResolvedValueOnce(repoInfo);
+      isRepositoryVersioned.mockResolvedValue(false);
+      fetchAccessToken.mockResolvedValue(token);
+      getClientCredentialsToken.mockResolvedValue(clientCredentialToken);
     });
 
     it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
@@ -73,13 +104,10 @@ describe("SDMAttachmentsService", () => {
 
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
-      const token = "mocked_token";
       const response = { url: "mockUrl" };
 
       // set req in service instance
-
       getURLFromAttachments.mockResolvedValueOnce(response);
-      fetchAccessToken.mockResolvedValueOnce(token);
       readAttachment.mockResolvedValueOnce("dummy_content");
 
       await service.get(attachments, keys, req); // call get method
@@ -106,9 +134,7 @@ describe("SDMAttachmentsService", () => {
       };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
-      const token = "mocked_token";
       const response = { url: "mockUrl" };
-      fetchAccessToken.mockResolvedValueOnce(token);
       getURLFromAttachments.mockResolvedValueOnce(response);
       readAttachment.mockImplementationOnce(() => {
         throw new Error("Error reading attachment");
@@ -129,16 +155,99 @@ describe("SDMAttachmentsService", () => {
         service.creds
       );
     });
+
+    it("should throw error if repositoryId is versioned", async () => {
+      const req = {
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+        reject: jest.fn(),
+      };
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      isRepositoryVersioned.mockResolvedValue(true);
+      await service.get(attachments, keys, req);  
+      expect(req.reject).toHaveBeenCalledWith(
+        400,
+        "Attachments are not supported for a versioned repository."
+      );
+    })
+
+    it("should throw error if cache returns repositoryId is versioned", async () => {
+      NodeCache.prototype.get.mockImplementation(() => "versioned");
+      const req = {
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+        reject: jest.fn(),
+      };
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      isRepositoryVersioned.mockResolvedValue(true);
+      await service.get(attachments, keys, req);  
+      expect(req.reject).toHaveBeenCalledWith(
+        400,
+        "Attachments are not supported for a versioned repository."
+      );
+    })
+
+    it("should interact with DB, fetch access token and readAttachment with correct parameters when cache returns non-versioned repo type", async () => {
+      NodeCache.prototype.get.mockImplementation(() => "non-versioned");
+      const req = {
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("tokenValue"),
+          },
+        },
+      };
+
+      const attachments = ["attachment1", "attachment2"];
+      const keys = ["key1", "key2"];
+      const response = { url: "mockUrl" };
+
+      // set req in service instance
+      getURLFromAttachments.mockResolvedValueOnce(response);
+      readAttachment.mockResolvedValueOnce("dummy_content");
+
+      await service.get(attachments, keys, req); // call get method
+
+      expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
+      expect(fetchAccessToken).toHaveBeenCalledWith(
+        service.creds,
+        "tokenValue"
+      );
+      expect(readAttachment).toHaveBeenCalledWith(
+        "mockUrl",
+        token,
+        service.creds
+      );
+    });
   });
+  
   describe("draftSaveHandler", () => {
     let service;
     let mockReq;
     let cds;
+    let repoInfo;
     beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
       jest.resetAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       service.creds = { uaa: "mocked uaa" };
+      repoInfo = {
+        data: {
+          "123": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
       mockReq = {
         query: {
           target: {
@@ -152,6 +261,7 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
         info: jest.fn(),
+        warn: jest.fn()
       };
 
       cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
@@ -161,6 +271,10 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
+      getRepositoryInfo.mockResolvedValueOnce(repoInfo);
+      isRepositoryVersioned.mockResolvedValueOnce(false);
     });
 
     it("draftSaveHandler() should do nothing when getDraftAttachments() returns empty array", async () => {
@@ -181,7 +295,6 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should handle successful create without any issue", async () => {
-      //service.isFileNameDuplicate = jest.fn().mockResolvedValueOnce("");
       service.create = jest.fn().mockResolvedValueOnce([]);
       const createSpy = jest.spyOn(service, "create");
       getDraftAttachments.mockResolvedValueOnce([{'HasActiveEntity':false}]);
@@ -190,6 +303,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(createSpy).toBeCalled();
+      expect(mockReq.warn).not.toBeCalled();
     });
 
     it("should handle successful onRename without any issue", async () => {
@@ -211,6 +325,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(mockReq);
 
       expect(renameSpy).toBeCalled();
+      expect(mockReq.warn).not.toBeCalled();
     });
 
     it("should not call rename if no draft attachments are available", async () => {
@@ -277,10 +392,25 @@ describe("SDMAttachmentsService", () => {
 
   describe("attachDeletionData", () => {
     let service;
+    let repoInfo;
     beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
+      repoInfo = {
+        data: {
+          "123": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
       service = new SDMAttachmentsService();
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
+      getRepositoryInfo.mockResolvedValueOnce(repoInfo);
+      isRepositoryVersioned.mockResolvedValueOnce(false);
     });
     it("should add attachments to delete in req when deletions are present", async () => {
       const mockedReq = {
@@ -652,16 +782,35 @@ describe("SDMAttachmentsService", () => {
       const attachments = [];
 
       service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'}]);
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
 
-      await service.create(
+      let response = await service.create(
         attachment_val_create,
         attachments,
         mockReq,
         token
       );
 
-      expect(mockReq.warn).toHaveBeenCalledWith(500, "The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf");
+      expect(response).toBe("The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
+    })
+
+    it("should handle failure in onCreate after failure in rename", async () => {
+      const attachment_val_create = [{}];
+      const token = "token";
+      const attachments = [];
+
+      service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
+      service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
+
+      let response = await service.create(
+        attachment_val_create,
+        attachments,
+        mockReq,
+        token,
+        "rename_error\n"
+      );
+
+      expect(response).toBe("rename_error\nThe following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
     })
   });
 
@@ -670,6 +819,7 @@ describe("SDMAttachmentsService", () => {
     let mockReq;
     let cds;
     beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
@@ -697,6 +847,19 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
+      const repoInfo = {
+        data: {
+          "123": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
+      NodeCache.prototype.get.mockImplementation(() => undefined);
+      getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
+      getRepositoryInfo.mockResolvedValueOnce(repoInfo);
+      isRepositoryVersioned.mockResolvedValueOnce(false);
     });
 
     it("should call onRename without any issue", async () => {
@@ -720,15 +883,15 @@ describe("SDMAttachmentsService", () => {
       const token = "token";
       const modifiedAttachments = [];
 
-      service.onRename = jest.fn().mockResolvedValue(["ChildTest"]);
+      service.onRename = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:"renameduplicate"}]);
 
-      await service.rename(
+      response = await service.rename(
         modifiedAttachments,
         token,
         mockReq
       );
 
-      expect(mockReq.warn).toHaveBeenCalledWith(500, "\nAttachment with name Test");
+      expect(response).toBe("The following files could not be renamed as they already exist:\n• renameduplicate\n");
     })
   });
 
@@ -816,7 +979,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should return failed request messages if some attachments fail", async () => {
-      const data = [{ ID: 1 }, { ID: 2 }, { ID: 3}];
+      const data = [{ ID: 1 }, { ID: 2 }, { ID: 3}, { ID: 4}];
       const credentials = {};
       const token = "token";
       const attachments = [];
@@ -836,11 +999,15 @@ describe("SDMAttachmentsService", () => {
         })
         .mockResolvedValueOnce({
           status: 400,
-          response: { data: { message: "Attachment failed" } },
+          response: { data: { exception: "nameConstraintViolation" } },
         })
         .mockResolvedValueOnce({
           status: 500,
           response: { data: { message: "Malware Service Exception: Virus found in the file!" } }
+        })
+        .mockResolvedValueOnce({
+          status: 500,
+          response: { data: { message: "Invalid file type" } }
         });
 
       const result = await service.onCreate(
@@ -851,7 +1018,7 @@ describe("SDMAttachmentsService", () => {
         req,
         createAttachment
       );
-      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }]);
+      expect(result).toEqual([{ typeOfError:'duplicate', "name": undefined }, { typeOfError:'virus', "name": undefined }, { typeOfError:'other', message: "Invalid file type" }]);
       expect(req.data.attachments).toHaveLength(1);
     });
   });
@@ -937,7 +1104,7 @@ describe("SDMAttachmentsService", () => {
         token,
         req
       );
-      expect(result).toEqual(["Error occurred and Id undefined", "Error occurred"]);
+      expect(result).toEqual([{ "name": "attachment#2", "typeOfError": "duplicate" },{ "name": "attachment#3", "typeOfError": "duplicate" }]);
     });
   });
 

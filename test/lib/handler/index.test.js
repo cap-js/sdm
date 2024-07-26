@@ -26,7 +26,8 @@ const {
   getFolderIdByPath,
   createFolder,
   deleteFolderWithAttachments,
-  renameAttachment
+  renameAttachment,
+  getRepositoryInfo
 } = require("../../../lib/handler/index");
 
 describe("handlers", () => {
@@ -89,6 +90,45 @@ describe("handlers", () => {
       ).rejects.toThrow("An Error Occurred");
     });
   });
+
+  describe("getRepositoryInfo", () => {
+    let mockedCredentials, mockedToken, mockRepoInfo;
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it("should return repositoryInfo for provided repositoryId", async () => {
+      mockedCredentials = { uri: "mocked_uri/" };
+      mockedToken = "mocked_token";
+      mockRepoInfo = {
+        data: {
+          "123": {
+            capabilities: {
+              "capabilityContentStreamUpdatability": "pwconly"
+            }
+          }
+        }
+      }
+      const mockUrl = mockedCredentials.uri + "browser/" + 123 + "?cmisselector=repositoryInfo";
+      axios.get.mockResolvedValue(mockRepoInfo);
+      const repoInfo = await getRepositoryInfo(mockedCredentials, mockedToken);
+      expect(axios.get).toHaveBeenCalledWith(mockUrl, {
+        headers: { Authorization: `Bearer ${mockedToken}` }
+      });
+      expect(repoInfo).toEqual(mockRepoInfo);
+    });
+
+    it("throws error on unsuccessful getRepositoryInfo", async () => {
+      mockedCredentials = { uri: "mocked_uri/" };
+      mockedToken = "mocked_token";
+      axios.get.mockImplementationOnce(() =>
+        Promise.reject("something bad happened")
+      );
+      await expect(
+        getRepositoryInfo(mockedCredentials, mockedToken)
+      ).rejects.toThrow("something bad happened");
+    });
+  })
 
   describe("Test for getFolderIdByPath", () => {
     let mockedReq, mockedCredentials, mockedToken, mockedAttachments;
