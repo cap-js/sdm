@@ -30,7 +30,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 * CAP Development Kit (`npm install -g @sap/cds-dk`)
 * SAP Build WorkZone should be subscribed to view the HTML5Applications.
 * [MTAR builder](https://www.npmjs.com/package/mbt) (`npm install -g mbt`)
-* [Cloud Foundary CLI](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html), Install cf-cli and run command `cf install-plugin multiapps`.
+* [Cloud Foundry CLI](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html), Install cf-cli and run command `cf install-plugin multiapps`.
 
 ## Setup
 
