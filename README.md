@@ -21,6 +21,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
+- [Known Limitations](#known-limitations)
 - [Support, Feedback, Contributing](#support-feedback-contributing)
 - [Code of Conduct](#code-of-conduct)
 - [Licensing](#licensing)
@@ -181,6 +182,10 @@ To run the unit tests:
 npm run test
 ```
 
+## Known Limitations
+
+- Versioned repository support : This plugin does not support the use of versioned repositories.
+- Maximum file size allowed : Attachments are limited to a maximum size of 100 MB.
 
 ## Support, Feedback, Contributing
 
