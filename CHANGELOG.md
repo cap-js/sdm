@@ -6,8 +6,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ## Version 1.1.0
 
-### Changed
-Create, Read, Rename and Delete of attachments are not supported if repository is versioned.
+### Added
+Added additional validation to check if repository is versioned and show UI message that versioned repository is not supported".
 
 ## Version 1.0.2
 
