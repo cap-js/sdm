@@ -22,7 +22,7 @@
   "dependencies": {
     "@cap-js/attachments": "latest",
     "@sap/xssec": "^3.6.1",
-    "axios": "^1.7.0",
+    "axios": "^1.7.4",
     "dotenv": "^16.3.1",
     "express": "^4",
     "node-cache": "^5.1.2"
@@ -33,7 +33,7 @@
   "devDependencies": {
     "@cap-js/sqlite": "^1",
     "@eslint/js": "^9.4.0",
-    "@sap/cds-dk": "^7",
+    "@sap/cds-dk": "^8.1.2",
     "eslint": "^9.4.0",
     "eslint-plugin-jest": "^28.5.0",
     "globals": "^15.3.0",
