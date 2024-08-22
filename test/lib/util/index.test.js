@@ -48,7 +48,17 @@ describe("util", () => {
       xssec.requests.requestUserToken.mockImplementation(
         (a, b, c, d, e, f, callback) => callback(null, dummyToken)
       );
-
+  cds.context = {
+            user: {
+                tokenInfo: {
+                    getPayload: jest.fn(() => ({
+                        ext_attr: {
+                            zdn: 'subdomain' // simulate the subdomain extraction
+                        }
+                    })),
+                },
+            },
+        };
       const credentials = { uaa: "uaa" };
       const req = {
         user: {
@@ -57,11 +67,11 @@ describe("util", () => {
           },
         },
       };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com");
+      const accessToken =  await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
+      const expectedCacheKey = "example@example.com_subdomain";
       expect(xssec.requests.requestUserToken).toBeCalled();
       expect(NodeCache.prototype.set).toBeCalledWith(
-        "example@example.com",
+        expectedCacheKey,
         dummyToken,
         11 * 3600
       );
@@ -77,9 +87,20 @@ describe("util", () => {
           },
         },
       };
+      cds.context = {
+                  user: {
+                      tokenInfo: {
+                          getPayload: jest.fn(() => ({
+                              ext_attr: {
+                                  zdn: 'subdomain' // simulate the subdomain extraction
+                              }
+                          })),
+                      },
+                  },
+              };
       const credentials = { uaa: "uaa" };
       const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com");
+      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
       expect(xssec.requests.requestUserToken).toBeCalled();
       expect(accessToken).toBe(dummyToken);
     });
@@ -90,7 +111,17 @@ describe("util", () => {
         "email": "example@example.com",
         "exp": 2537353178
       };
-
+      cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       // Please replace 'your_secret_key' with your own secret key
       const secretKey = 'your_secret_key';
 
@@ -106,7 +137,7 @@ describe("util", () => {
       };
       const credentials = { uaa: "uaa" };
       const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com");
+      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
       expect(xssec.requests.requestUserToken).not.toBeCalled();
       expect(accessToken).toBe(dummyToken);
     });
@@ -120,6 +151,17 @@ describe("util", () => {
         (a, b, c, d, e, f, callback) =>
           callback(new Error("test error"), { statusCode: 500 })
       );
+      cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       const req = {
         user: {
           tokenInfo: {
@@ -131,7 +173,7 @@ describe("util", () => {
       try {
         await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
       } catch (err) {
-        expect(NodeCache.prototype.get).toBeCalledWith("example@example.com");
+        expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
         expect(xssec.requests.requestUserToken).toBeCalled();
         expect(consoleErrorSpy).toBeCalledWith(
           "Response error while fetching access token 500"
@@ -153,11 +195,21 @@ describe("util", () => {
     it('returns cached token if available', async () => {
       const cachedToken = 'mockedAccessToken';
       NodeCache.prototype.get.mockImplementation(() => cachedToken);
-  
+      cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       const token = await getClientCredentialsToken({ uaa: 'mockedUaa' });
   
       expect(token).toBe(cachedToken);
-      expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN');
+      expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain');
       expect(xssec.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
     });
   
@@ -168,13 +220,23 @@ describe("util", () => {
       xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
         callback(null, mockResponse);
       });
-  
+      cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       const token = await getClientCredentialsToken(credentials);
   
       expect(token).toBe(mockResponse);
-      expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN', mockResponse, expect.any(Number));
+      expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain', mockResponse, expect.any(Number));
       expect(xssec.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
-        null,
+        "subdomain",
         credentials.uaa,
         null,
         expect.any(Function)
