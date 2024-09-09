@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 ## Version 1.2.0
 
 ### Added
-Added multi tenancy support. Multiple consumers are now allowed to subscribe to a SaaS CAP application using this plugin.
+Added Multitenancy support. Multiple subscribers are now allowed to subscribe to a SaaS CAP application using this plugin.
 
 ## Version 1.1.0
 
