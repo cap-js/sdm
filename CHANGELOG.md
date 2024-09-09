@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.2.0
+
+### Added
+Added Multitenancy support. Multiple subscribers are now allowed to subscribe to a SaaS CAP application using this plugin.
+
 ## Version 1.1.0
 
 ### Added
