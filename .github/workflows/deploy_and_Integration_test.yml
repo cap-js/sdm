@@ -25,8 +25,15 @@ jobs:
           
       - name: Login to Cloud Foundry
         run: |
+          sudo apt-key del 172B5989FCD21EF8
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
+          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
+          echo "deb https://packages.cloudfoundry.org/debian stable main" \
+          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt update
+          sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
-
+       
       - name: Clone and prepare projects & Build and deploy
         run: |
           git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
