@@ -5,9 +5,9 @@ name: Deploy and Integration Test
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened,closed]
     branches:
-      - develop
+      - Build_Deploy
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == false
     runs-on: ubuntu-latest
     steps:        
       - name: Use Node.js 20.x
@@ -25,7 +25,6 @@ jobs:
           
       - name: Login to Cloud Foundry
         run: |
-          sudo apt-key del 172B5989FCD21EF8
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
           | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
           echo "deb https://packages.cloudfoundry.org/debian stable main" \
