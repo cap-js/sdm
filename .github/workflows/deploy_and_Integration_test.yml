@@ -5,9 +5,9 @@ name: Deploy and Integration Test
 
 on:
   pull_request:
-    types: [opened,closed]
+    types: [closed]
     branches:
-      - Build_Deploy
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == false
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:        
       - name: Use Node.js 20.x
