@@ -5,7 +5,7 @@ name: Deploy and Integration Test
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened,closed]
     branches:
       - Build_Deploy
   workflow_dispatch:
