@@ -7,7 +7,7 @@ on:
   pull_request:
     types: [closed]
     branches:
-      - develop
+      - Build_Deploy
   workflow_dispatch:
 
 permissions:
