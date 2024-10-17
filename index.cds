@@ -16,6 +16,7 @@ annotate Attachments with @UI:{
     {Value: note}
   ]
 } {
+  url @readonly;
   content
     @Core.ContentDisposition: { Filename: filename }
     @Core.Immutable
