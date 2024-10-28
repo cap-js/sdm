@@ -1,6 +1,6 @@
 using { Attachments} from '@cap-js/attachments';
 extend aspect Attachments with {
-    folderId : String @title: 'Folder ID';
+    folderId : String @title: 'Folder ID' @readonly;
 };
 
 annotate Attachments with @UI:{
@@ -16,6 +16,7 @@ annotate Attachments with @UI:{
     {Value: note}
   ]
 } {
+  url @readonly;
   content
     @Core.ContentDisposition: { Filename: filename }
     @Core.Immutable
