@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 ## Version 1.2.2
 
 ### Fixed
-App crash issue on upeditdate of fields when no attachments are added.
+App crash issue on update of fields when no attachments are added.
 
 ## Version 1.2.1
 
