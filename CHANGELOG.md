@@ -7,7 +7,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 ## Version 1.2.2
 
 ### Fixed
-App crash issue on update of fields when no attachments are added.
+
+ - App crash issue on update of fields when no attachments are added.
+ - Attachment getting renamed even when duplicate attachment of same name exists.
 
 ## Version 1.2.1
 
