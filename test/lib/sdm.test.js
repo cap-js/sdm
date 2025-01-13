@@ -135,15 +135,19 @@ describe("SDMAttachmentsService", () => {
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
+      const errorMessage = new Error("Attachment not found in the repository");
+      errorMessage.code = 404;
+    
       getURLFromAttachments.mockResolvedValueOnce(response);
+      fetchAccessToken.mockResolvedValueOnce("mockToken");
       readAttachment.mockImplementationOnce(() => {
-        throw new Error("Error reading attachment");
+        throw errorMessage;
       });
-
+  
       await expect(service.get(attachments, keys, req)).rejects.toThrow(
-        "Error reading attachment"
+        errorMessage
       );
-
+  
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
       expect(fetchAccessToken).toHaveBeenCalledWith(
         service.creds,
@@ -151,7 +155,7 @@ describe("SDMAttachmentsService", () => {
       );
       expect(readAttachment).toHaveBeenCalledWith(
         "mockUrl",
-        token,
+        "mockToken", // Passing the mocked token value
         service.creds
       );
     });
