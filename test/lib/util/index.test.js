@@ -276,8 +276,8 @@ describe("util", () => {
       }
       const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
       expect(isVersioned).toBe(true);
-      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
-      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId", "versioned", 60 * 60 * 24 * 60);
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId_subdomain");
+      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId_subdomain", "versioned", 60 * 60 * 24 * 60);
     });
 
     it("should not set cache and return true when repotype is pwconly", () => {
@@ -293,7 +293,7 @@ describe("util", () => {
       }
       const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
       expect(isVersioned).toBe(true);
-      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId_subdomain");
       expect(NodeCache.prototype.set).not.toHaveBeenCalled();
     });
 
@@ -308,10 +308,11 @@ describe("util", () => {
           }
         }
       }
+
       const isVersioned = isRepositoryVersioned(mockRepoInfo, "mockedRepoId");
       expect(isVersioned).toBe(false);
-      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId");
-      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId", "non-versioned", 60 * 60 * 24 * 60);
+      expect(NodeCache.prototype.get).toBeCalledWith("mockedRepoId_subdomain");
+      expect(NodeCache.prototype.set).toBeCalledWith("mockedRepoId_subdomain", "non-versioned", 60 * 60 * 24 * 60);
     });
   })
 
