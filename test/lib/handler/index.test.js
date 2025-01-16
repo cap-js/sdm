@@ -86,7 +86,7 @@ describe("handlers", () => {
   
     it("throws specific error message for 404 status", async () => {
       let actualError = {
-        message: "Error: AxiosError: Request failed with status code 404",
+        message: "Request failed with status code 404",
         code: "AN ERROR OCCURRED",
         status: 404,
       };
