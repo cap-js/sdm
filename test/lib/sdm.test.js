@@ -101,7 +101,18 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-
+  cds = require("@sap/cds/lib");
+cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
@@ -132,6 +143,18 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
+         cds = require("@sap/cds/lib");
+      cds.context = {
+              user: {
+                  tokenInfo: {
+                      getPayload: jest.fn(() => ({
+                          ext_attr: {
+                              zdn: 'subdomain' // simulate the subdomain extraction
+                          }
+                      })),
+                  },
+              },
+          };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
@@ -169,6 +192,18 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
       };
+         cds = require("@sap/cds/lib");
+      cds.context = {
+              user: {
+                  tokenInfo: {
+                      getPayload: jest.fn(() => ({
+                          ext_attr: {
+                              zdn: 'subdomain' // simulate the subdomain extraction
+                          }
+                      })),
+                  },
+              },
+          };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       isRepositoryVersioned.mockResolvedValue(true);
@@ -189,6 +224,18 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn(),
       };
+         cds = require("@sap/cds/lib");
+      cds.context = {
+              user: {
+                  tokenInfo: {
+                      getPayload: jest.fn(() => ({
+                          ext_attr: {
+                              zdn: 'subdomain' // simulate the subdomain extraction
+                          }
+                      })),
+                  },
+              },
+          };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       isRepositoryVersioned.mockResolvedValue(true);
@@ -208,7 +255,18 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-
+         cds = require("@sap/cds/lib");
+cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
+            },
+        },
+    };
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
@@ -267,7 +325,7 @@ describe("SDMAttachmentsService", () => {
         info: jest.fn(),
         warn: jest.fn()
       };
-
+   cds = require("@sap/cds/lib");
       cds.model.definitions[mockReq.query.target.name + ".attachments"] = {
         keys: {
           up_: {
@@ -275,6 +333,17 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
+      cds.context = {
+              user: {
+                  tokenInfo: {
+                      getPayload: jest.fn(() => ({
+                          ext_attr: {
+                              zdn: 'subdomain' // simulate the subdomain extraction
+                          }
+                      })),
+                  },
+              },
+          };
       NodeCache.prototype.get.mockImplementation(() => undefined);
       getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
