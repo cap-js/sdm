@@ -11,7 +11,8 @@ const {
   getDraftAttachments,
   getURLsToDeleteFromAttachments,
   getURLFromAttachments,
-  getFolderIdForEntity
+  getFolderIdForEntity,
+  setRepositoryId
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -35,7 +36,8 @@ jest.mock("../../lib/persistence", () => ({
   getURLsToDeleteFromAttachments: jest.fn(),
   getURLFromAttachments: jest.fn(),
   getFolderIdForEntity: jest.fn(),
-  getExistingAttachments: jest.fn()
+  getExistingAttachments: jest.fn(),
+  setRepositoryId: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
@@ -73,7 +75,7 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
 
       NodeCache.prototype.get.mockClear();
-      jest.resetAllMocks();
+      jest.clearAllMocks();
       service = new SDMAttachmentsService();
       service.creds = { uri: "mock_cred" };
       repoInfo = {
@@ -293,7 +295,7 @@ cds.context = {
     let repoInfo;
     beforeEach(() => {
       NodeCache.prototype.get.mockClear();
-      jest.resetAllMocks();
+      jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       service.creds = { uaa: "mocked uaa" };
@@ -341,7 +343,9 @@ cds.context = {
               },
           };
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
+      getConfigurations.mockReturnValue({
+        repositoryId: 'mockRepositoryId',
+      });
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
       isRepositoryVersioned.mockResolvedValueOnce(false);
     });
@@ -459,6 +463,96 @@ cds.context = {
     });
   });
 
+  describe("Test filterAttachments", () => {
+    let service;
+    let mockReq;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      getConfigurations.mockReturnValue({
+        repositoryId: 'mockRepositoryId',
+      });
+      mockReq = {
+        query: {
+          SELECT: {},
+        },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          }
+        }
+      }
+    });
+
+    it("should add a condition to filter attachments by repositoryId when where clause is empty", async() => {
+      mockReq.query.SELECT.where = [];
+      await service.filterAttachments(mockReq);
+      expect(mockReq.query.SELECT.where).toEqual([
+        { ref: ['repositoryId'] },
+        '=',
+        { val: "mockRepositoryId" }
+      ]); 
+    });
+
+    it("should add a condition to filter attachments by repositoryId when where clause already exists", async() => {
+      mockReq.query.SELECT.where = [{ ref: ['someField'] }, '=', { val: 'someValue' }];
+      await service.filterAttachments(mockReq);
+      expect(mockReq.query.SELECT.where).toEqual([
+        { ref: ['someField'] },
+        '=',
+        { val: 'someValue' },
+        'and',
+        { ref: ['repositoryId'] },
+        '=',
+        { val: "mockRepositoryId" }
+      ]); 
+    });
+
+    it("should add a condition to filter attachments by repositoryId when where clause doesn't exist", async() => {
+      await service.filterAttachments(mockReq);
+      expect(mockReq.query.SELECT.where).toEqual([
+        { ref: ['repositoryId'] },
+        '=',
+        { val: "mockRepositoryId" }
+      ]);
+    });
+  });
+
+  describe("Test setRepository", () => {
+    let service;
+    beforeEach(() => {
+      jest.clearAllMocks();
+  
+      service = new SDMAttachmentsService();
+      cds = require("@sap/cds/lib");
+
+      getConfigurations.mockReturnValue({
+        repositoryId: 'mockRepositoryId',
+      });
+    });
+  
+    it("should call setRepositoryId with correct arguments", async () => {
+      const mockReq = {
+        query: {
+          target: {
+            name: 'Attachments',
+          },
+        },
+      };
+      let mockedAttachments = { entity: 'AttachmentsEntity' };
+      cds.model.definitions = {
+        Attachments: mockedAttachments,
+      };
+      await service.setRepository(mockReq);
+  
+      expect(setRepositoryId).toHaveBeenCalledWith(
+        mockedAttachments,
+        "mockRepositoryId"
+      );
+    });
+  });
+  
+
   describe("attachDeletionData", () => {
     let service;
     let repoInfo;
@@ -571,8 +665,12 @@ cds.context = {
     });
 
     it("attachDeletionData() should set req.parentId if event is DELETE and getFolderIdForEntity() returns non-empty array", async () => {
-      const mockReq = {
-        query: { target: { name: "testName" } },
+      const mockedReq = {
+        query: {
+          target: {
+            name: 'Attachments',
+          },
+        },
         user: {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
@@ -581,19 +679,26 @@ cds.context = {
         diff: () =>
           Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
+      };
+
+      let mockedAttachments = { entity: 'AttachmentsEntity' };
+      cds.model.definitions = {
+        "Attachments.attachments": mockedAttachments,
       };
 
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByPath.mockResolvedValueOnce("folder");
-      await service.attachDeletionData(mockReq);
-      expect(mockReq.parentId).toEqual("folder");
+      await service.attachDeletionData(mockedReq);
+      expect(mockedReq.parentId).toEqual("folder");
       expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
-      const mockReq = {
+      const mockedReq = {
         query: {
-          target: { name: "testName" },
+          target: {
+            name: 'Attachments',
+          },
         },
         user: {
           tokenInfo: {
@@ -605,10 +710,15 @@ cds.context = {
         event: "DELETE",
       };
 
+      let mockedAttachments = { entity: 'AttachmentsEntity' };
+      cds.model.definitions = {
+        "Attachments.attachments": mockedAttachments,
+      };
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByPath.mockResolvedValueOnce(null);
-      await service.attachDeletionData(mockReq);
-      expect(mockReq.parentId).toBeUndefined();
+      await service.attachDeletionData(mockedReq);
+      expect(mockedReq.parentId).toBeUndefined();
       expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
     });
 
@@ -1043,6 +1153,7 @@ cds.context = {
         filename: "filename2",
         ID: "id2",
         folderId: parentId,
+        repositoryId: "mockRepositoryId",
         url: "some_object_id",
       });
     });
@@ -1260,7 +1371,8 @@ cds.context = {
  
       expect(getFolderIdForEntity).toHaveBeenCalledWith(
         cds.model.definitions[mockReq.query.target.name + ".attachments"],
-        mockReq
+        mockReq,
+        "mockRepositoryId"
       );
     });  
   });
