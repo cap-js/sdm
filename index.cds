@@ -27,4 +27,5 @@ annotate Attachments with @UI:{
   folderId @UI.Hidden;
   mimeType @UI.Hidden;
   status @UI.Hidden;
+  repositoryId @UI.Hidden;
 }
