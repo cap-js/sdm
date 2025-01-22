@@ -68,27 +68,43 @@ describe("handlers", () => {
       axios.get.mockImplementationOnce(() =>
         Promise.reject({
           response: {
-            statusText: "something bad happened",
-          },
+            code: 500,
+            message: "Could not read the attachment",
+          }
         })
       );
-
+    
       await expect(
         readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
-      ).rejects.toThrow("something bad happened");
-    });
-
-    it('throws error with "An Error Occurred" message when statusText is missing', async () => {
+      ).rejects.toMatchObject({
+        response: {
+          code: 500,
+            message: "Could not read the attachment",
+        },
+      });
+    });    
+  
+    it("throws specific error message for 404 status", async () => {
+      let actualError = {
+        message: "Request failed with status code 404",
+        code: "AN ERROR OCCURRED",
+        status: 404,
+      };
+      
+      let checkError = {
+        message: "Attachment not found in the repository",
+        code: 404,
+        status: 404,
+      };
+      
       axios.get.mockImplementationOnce(() =>
-        Promise.reject({
-          response: {},
-        })
+        Promise.reject(actualError)
       );
-
+    
       await expect(
         readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
-      ).rejects.toThrow("An Error Occurred");
-    });
+      ).rejects.toMatchObject(checkError);
+    });    
   });
 
   describe("getRepositoryInfo", () => {
