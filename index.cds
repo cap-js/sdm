@@ -1,8 +1,8 @@
 using { Attachments} from '@cap-js/attachments';
 extend aspect Attachments with {
     folderId : String @title: 'Folder ID' @readonly;
+    repositoryId : String @title: 'Repository ID' @readonly default null;
 };
-
 annotate Attachments with @UI:{
   HeaderInfo: {
     $Type         : 'UI.HeaderInfoType',
@@ -27,4 +27,5 @@ annotate Attachments with @UI:{
   folderId @UI.Hidden;
   mimeType @UI.Hidden;
   status @UI.Hidden;
+  repositoryId @UI.Hidden;
 }
