@@ -465,6 +465,68 @@ cds.context = {
       expect(createSpy).toBeCalled();
       expect(renameSpy).toBeCalled();
     });
+
+    // it("should throw correct error message for all rename scenarios in DI", async () => {
+    //   service.rename = jest.fn().mockResolvedValueOnce([]);
+    //   const renameSpy = jest.spyOn(service, "rename");
+    //   getDraftAttachments.mockResolvedValueOnce([
+    //     {
+    //       'ID': 'id1',
+    //       'filename': 'attachment1',
+    //       'HasActiveEntity' : true
+    //     },
+    //     {
+    //       'ID': 'id2',
+    //       'filename': 'attachment2',
+    //       'HasActiveEntity' : true
+    //     },
+    //     {
+    //       'ID': 'id3',
+    //       'filename': 'attachment3',
+    //       'HasActiveEntity' : true
+    //     },
+    //   ]);
+    //   const modifiedAttachments = [
+    //     {
+    //       ID: 'id1',
+    //       url: 'url1',
+    //       name: 'attachment1new',
+    //       prevname: 'attachment1',
+    //       folderId: 'folder1'
+    //     },
+    //     {
+    //       ID: 'id2',
+    //       url: 'url2',
+    //       name: 'attachment2new',
+    //       prevname: 'attachment2',
+    //       folderId: 'folder1'
+    //     },
+    //     {
+    //       ID: 'id3',
+    //       url: 'url3',
+    //       name: 'attachment3new',
+    //       prevname: 'attachment3',
+    //       folderId: 'folder1'
+    //     }
+    //   ];
+    //   checkAttachmentsToRename.mockResolvedValueOnce(modifiedAttachments);
+    //   renameAttachment
+    //     .mockResolvedValueOnce({
+    //       status: 404,
+    //       message: "File not found"
+    //     })
+    //     .mockResolvedValueOnce({
+    //       status: 409,
+    //       message: "File already exists"
+    //     })
+    //     .mockResolvedValueOnce({
+    //       status: 403,
+    //       message: "Unauthorized"
+    //     })
+    //   await service.draftSaveHandler(mockReq);
+
+    //   expect(renameSpy).toBeCalled();
+    // });
   });
 
   describe("Test filterAttachments", () => {
@@ -1248,7 +1310,7 @@ cds.context = {
     });
 
     it("should return failed request messages if rename fails for some attachments", async () => {
-      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2" }, { name: "attachment#3", id:"id3" }];
+      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2", prevname: "attachment#2prev" }, { name: "attachment#3", id:"id3" }, { name: "attachment#4", id:"id4" }];
       const credentials = {};
       const token = "token";
       const req = {
@@ -1256,15 +1318,20 @@ cds.context = {
           attachments: [
             {
               id: "id1",
-              filename: "attachment#1"
+              name: "attachment#1"
             },
             {
               id: "id2",
-              filename: "attachment#2"
+              name: "attachment#2",
+              prevname: "attachment#2prev"
             },
             {
               id: "id3",
-              filename: "attachment#3"
+              name: "attachment#3"
+            },
+            {
+              id: "id4",
+              name: "attachment#4"
             }
           ]
         }
@@ -1276,11 +1343,17 @@ cds.context = {
           data: { succinctProperties: { "cmis:objectId": "url" } },
         })
         .mockResolvedValueOnce({
-          response: { data: { message: "Error occurred with Id null" }, status : 400 }
+          status: 404,
+          message: "File not found"
         })
         .mockResolvedValueOnce({
-          response: { data: { message: "Error occurred" }, status : 400 }
-        });
+          status: 409,
+          message: "File already exists"
+        })
+        .mockResolvedValueOnce({
+          status: 403,
+          message: "Unauthorized"
+        })
 
       const result = await service.onRename(
         modifiedAttachments,
@@ -1288,7 +1361,7 @@ cds.context = {
         token,
         req
       );
-      expect(result).toEqual([{ "name": "attachment#2", "typeOfError": "duplicate" },{ "name": "attachment#3", "typeOfError": "duplicate" }]);
+      expect(result).toEqual([{ "name": "attachment#2prev", "typeOfError": "not found" },{ "name": "attachment#3", "typeOfError": "duplicate" },{ "name": "attachment#4", "typeOfError": "Unauthorized" }]);
     });
   });
 
