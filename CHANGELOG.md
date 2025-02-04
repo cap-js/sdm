@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.3.0
+
+## Added
+Implemented repository-specific display for attachments. Attachments created within a specific repository will now only be visible within that same repository.
+
+## Fixed
+- Issue with repositoryId caching in multitenant scenario.
+- Error message on read of attachment when it is deleted from DI.
+
 ## Version 1.2.2
 
 ### Fixed
