@@ -7,11 +7,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 ## Version 1.3.0
 
 ## Added
-Implemented repository-specific display for attachments. Attachments created within a specific repository will now only be visible within that same repository.
+Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
 
 ## Fixed
 - Issue with repositoryId caching in multitenant scenario.
-- Error message on read of attachment when it is deleted from DI.
+- Error message on read of attachment when attachment is deleted from DI.
 
 ## Version 1.2.2
 
