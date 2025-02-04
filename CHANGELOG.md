@@ -6,10 +6,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ## Version 1.3.0
 
-## Added
+### Added
 Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
 
-## Fixed
+### Fixed
 - Issue with repositoryId caching in multitenant scenario.
 - Error message on read of attachment when attachment is deleted from DI.
 
