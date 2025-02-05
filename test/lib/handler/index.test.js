@@ -26,6 +26,7 @@ const {
   getFolderIdByPath,
   createFolder,
   deleteFolderWithAttachments,
+  getAttachment,
   renameAttachment,
   getRepositoryInfo
 } = require("../../../lib/handler/index");
@@ -381,7 +382,55 @@ describe("handlers", () => {
     });
   });
 
-  describe("renameAttachment function", () => {
+  describe('getAttachment', () => {
+    const uri = 'http://example.com/';
+    const token = 'test-token';
+    const objectId = 'test-object-id';
+  
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+  
+    it('should fetch attachment successfully', async () => {
+      const mockResponse = { data: 'some data' };
+      axios.get.mockResolvedValueOnce(mockResponse);
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      const expectedUrl =`${uri}browser/123/root?cmisselector=object&objectId=${objectId}&succinct=true`;
+      expect(axios.get).toHaveBeenCalledWith(expectedUrl, { headers: { Authorization: `Bearer ${token}` } });
+      expect(response).toBe(mockResponse);
+    });
+  
+    it('should return null and log status text on error', async () => {
+      const errorMessage = 'Not Found';
+      const mockError = {
+        response: {
+          statusText: errorMessage,
+        },
+      };
+      axios.get.mockRejectedValueOnce(mockError);
+      console.log = jest.fn(); // Mock console.log
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      expect(console.log).toHaveBeenCalledWith(errorMessage);
+      expect(response).toBeNull();
+    });
+  
+    it('should return null and log a default error message when there is no status text', async () => {
+      const mockError = {};
+      axios.get.mockRejectedValueOnce(mockError);
+      console.log = jest.fn(); // Mock console.log
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      expect(console.log).toHaveBeenCalledWith('An Error Occurred');
+      expect(response).toBeNull();
+    });
+  });
+
+  describe("renameAttachment", () => {
     beforeEach(() => {
       jest.clearAllMocks();
     });
