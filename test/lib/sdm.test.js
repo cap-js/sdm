@@ -1349,7 +1349,7 @@ describe("SDMAttachmentsService", () => {
       try {
         await service.getParentId(attachments, mockReq, token);
       } catch (err) {
-        // Ensure that we correctly reject within the method
+        console.error("Error in getParentId:", err);
       }
 
       expect(mockReq.reject).toHaveBeenCalledWith(403, userNotAuthorisedError);
