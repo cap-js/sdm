@@ -33,7 +33,8 @@ const {
   duplicateFileErr,
   otherFileErr,
   userNotAuthorisedError,
-  userDoesNotHaveScopeMessage
+  userDoesNotHaveScopeMessage,
+  versionedRepositoryErr
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -494,9 +495,40 @@ describe("SDMAttachmentsService", () => {
       expect(service.create).not.toHaveBeenCalled();
       expect(req.data.content).toBeNull();
     });
+
+    test('should skip when no attachments are found', async () => {
+      const draftAttachments = [];
+      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+      const attachment_val = [];
+  
+      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+  
+      await service.draftSaveHandler(req);
+  
+      expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
+      expect(service.create).not.toHaveBeenCalled();
+      expect(req.data.content).toBeNull();
+    });
+
+    test('should skip processing when req.data.content is null after initial check', async () => {
+      const draftAttachments = [];
+      const req = { data: { content: null, ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+      const attachment_val = [
+        { HasActiveEntity: false, ID: '12345' },
+        { HasActiveEntity: true, ID: '67890' },
+      ];
+      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+  
+      req.data.content = null; // simulating content being reset to null after initial check
+  
+      await service.draftSaveHandler(req);
+  
+      expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
+      expect(service.create).not.toHaveBeenCalled();
+    });
   });
 
-  describe("Test filterAttachments", () => {
+  describe("filterAttachments", () => {
     let service;
     let mockedReq;
     beforeEach(() => {
@@ -551,7 +583,7 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
-  describe("Test setRepository", () => {
+  describe("setRepository", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
@@ -986,43 +1018,6 @@ describe("SDMAttachmentsService", () => {
       expect(onCreateSpy).toBeCalled();
       expect(getParentIdSpy).toBeCalled();
     })
-
-    // it("should handle failure in onCreate", async () => {
-    //   const attachment_val_create = [{}];
-    //   const token = "token";
-    //   const attachments = [];
-
-    //   service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-    //   service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
-
-    //   let response = await service.create(
-    //     attachment_val_create,
-    //     attachments,
-    //     mockReq,
-    //     token
-    //   );
-
-    //   expect(response).toBe("The following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
-    // })
-
-    // it("should handle failure in onCreate after failure in rename", async () => {
-    //   const attachment_val_create = [{}];
-    //   const token = "token";
-    //   const attachments = [];
-
-    //   service.getParentId = jest.fn().mockResolvedValueOnce("parentId");
-    //   service.onCreate = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:'sample.pdf'},{typeOfError:'virus',name:'virus.pdf'},{typeOfError:'other',message:'Child invalid.pdf with Id abc is not a valid file type'}]);
-
-    //   let response = await service.create(
-    //     attachment_val_create,
-    //     attachments,
-    //     mockReq,
-    //     token,
-    //     "rename_error\n"
-    //   );
-
-    //   expect(response).toBe("rename_error\nThe following files contain potential malware and cannot be uploaded:\n• virus.pdf\nThe following files could not be uploaded as they already exist:\n• sample.pdf\nChild invalid.pdf with Id abc is not a valid file type\n");
-    // })
   });
 
   describe("rename", () => {
@@ -1354,6 +1349,25 @@ describe("SDMAttachmentsService", () => {
 
       expect(mockReq.reject).toHaveBeenCalledWith(403, userNotAuthorisedError);
     });
+
+    it("getParentId should return parentId if folderId is not null in folderIds", async () => {
+      let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"];
+      let token = "mocked_token";
+
+      const folderIds = [
+        { folderId: null },
+        { folderId: "mock_folder_id_1" },
+        { folderId: "mock_folder_id_2" }
+      ];
+      
+      getFolderIdForEntity.mockResolvedValueOnce(folderIds);
+
+      const parentId = await service.getParentId(attachments, mockReq, token);
+
+      expect(parentId).toEqual("mock_folder_id_1");
+      expect(getFolderIdByPath).not.toHaveBeenCalled();
+      expect(createFolder).not.toHaveBeenCalled();
+    });
   });
 
   describe("isFileNameDuplicateInDrafts", () => {
@@ -1452,6 +1466,20 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('getStatus', () => {
+    let service;
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+  
+    it('should return the status as "Clean"', async () => {
+      const status = await service.getStatus();
+      expect(status).toBe("Clean");
+    });
+  });
+
   describe("registerUpdateHandlers", () => {
     let mockSrv;
     let service;
@@ -1488,6 +1516,25 @@ describe("SDMAttachmentsService", () => {
       expect(mockSrv.after).toHaveBeenCalledWith(
         ["DELETE", "UPDATE"],
         "entity",
+        expect.any(Function)
+      );
+    });
+    it("should call srv.before for PUT with correct target.drafts and callback", () => {
+      const target = { drafts: "drafts" };
+      service.registerUpdateHandlers(mockSrv, "entity", target);
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "PUT",
+        target.drafts,
+        expect.any(Function)
+      );
+    });
+
+    it("should not call srv.before for PUT when target.drafts is not defined", () => {
+      const target = {};
+      service.registerUpdateHandlers(mockSrv, "entity", target);
+      expect(mockSrv.before).not.toHaveBeenCalledWith(
+        "PUT",
+        undefined,
         expect.any(Function)
       );
     });
