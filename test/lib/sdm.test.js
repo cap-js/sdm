@@ -78,6 +78,72 @@ jest.mock("@sap/cds/lib", () => {
 jest.mock("node-cache");
 
 describe("SDMAttachmentsService", () => {
+  describe("checkRepositoryType", () => {
+    let service;
+    let cache;
+    let cds;
+  
+    beforeEach(() => {
+      cds = require("@sap/cds/lib");
+      cache = new NodeCache();
+      NodeCache.mockImplementation(() => cache);
+      service = new SDMAttachmentsService();
+      service.creds = { clientId: "client-id", clientSecret: "client-secret" };
+    });
+  
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+  
+    it("should fetch repository info and check versioned status if not found in cache", async () => {
+      const mockReq = { reject: jest.fn() };
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "test-subdomain" } })
+          }
+        }
+      };
+  
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+      cache.get.mockReturnValue(undefined);
+      getClientCredentialsToken.mockResolvedValue("mock-token");
+      getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
+      isRepositoryVersioned.mockResolvedValue(false);
+  
+      await service.checkRepositoryType(mockReq);
+  
+      expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
+      expect(getRepositoryInfo).toHaveBeenCalledWith(service.creds, "mock-token");
+      expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
+      expect(mockReq.reject).not.toHaveBeenCalled();
+    });
+  
+    it("should reject the request if the repository is versioned", async () => {
+      const mockReq = { reject: jest.fn() };
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "test-subdomain" } })
+          }
+        }
+      };
+  
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+      cache.get.mockReturnValue(undefined);
+      getClientCredentialsToken.mockResolvedValue("mock-token");
+      getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
+      isRepositoryVersioned.mockResolvedValue(true);
+  
+      await service.checkRepositoryType(mockReq);
+  
+      expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
+      expect(getRepositoryInfo).toHaveBeenCalledWith(service.creds, "mock-token");
+      expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
+      expect(mockReq.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+  });
+
   describe("Test get method", () => {
     let service;
     let repoInfo
@@ -156,7 +222,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-         cds = require("@sap/cds/lib");
+      let cds = require("@sap/cds/lib");
       cds.context = {
               user: {
                   tokenInfo: {
@@ -205,7 +271,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-      cds = require("@sap/cds/lib");
+      let cds = require("@sap/cds/lib");
       cds.context = {
         user: {
             tokenInfo: {
@@ -247,6 +313,7 @@ describe("SDMAttachmentsService", () => {
   
     beforeEach(() => {
       jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
       service.creds = {
@@ -589,7 +656,6 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
   
       service = new SDMAttachmentsService();
-      cds = require("@sap/cds/lib");
 
       getConfigurations.mockReturnValue({
         repositoryId: 'mockRepositoryId',
@@ -850,7 +916,6 @@ describe("SDMAttachmentsService", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
-      cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
     });
     it("should delete attachments if req.attachmentsToDelete has records to delete", async () => {
@@ -1376,7 +1441,6 @@ describe("SDMAttachmentsService", () => {
 
     beforeEach(() => {
       jest.clearAllMocks();
-      cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
       mockReq = {
         query: {
