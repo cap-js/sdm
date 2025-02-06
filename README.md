@@ -13,6 +13,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Rename attachment : Provides the capability to rename attachments.
 - Virus scanning : Provides the capability to support virus scan for virus scan enabled repositories.
 - Draft functionality : Provides the capability of working with draft attachments.
+- Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
 
 ### Table of Contents
 
