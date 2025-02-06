@@ -30,6 +30,7 @@ const {
   renameAttachment,
   getRepositoryInfo
 } = require("../../../lib/handler/index");
+const { errorMessage } = require("../../../lib/util/messageConsts");
 
 describe("handlers", () => {
   describe("ReadAttachment function", () => {
@@ -425,7 +426,7 @@ describe("handlers", () => {
   
       const response = await getAttachment(uri, token, objectId);
   
-      expect(console.log).toHaveBeenCalledWith('An Error Occurred');
+      expect(console.log).toHaveBeenCalledWith(errorMessage);
       expect(response).toBeNull();
     });
   });
