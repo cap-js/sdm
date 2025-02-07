@@ -466,67 +466,67 @@ cds.context = {
       expect(renameSpy).toBeCalled();
     });
 
-    // it("should throw correct error message for all rename scenarios in DI", async () => {
-    //   service.rename = jest.fn().mockResolvedValueOnce([]);
-    //   const renameSpy = jest.spyOn(service, "rename");
-    //   getDraftAttachments.mockResolvedValueOnce([
-    //     {
-    //       'ID': 'id1',
-    //       'filename': 'attachment1',
-    //       'HasActiveEntity' : true
-    //     },
-    //     {
-    //       'ID': 'id2',
-    //       'filename': 'attachment2',
-    //       'HasActiveEntity' : true
-    //     },
-    //     {
-    //       'ID': 'id3',
-    //       'filename': 'attachment3',
-    //       'HasActiveEntity' : true
-    //     },
-    //   ]);
-    //   const modifiedAttachments = [
-    //     {
-    //       ID: 'id1',
-    //       url: 'url1',
-    //       name: 'attachment1new',
-    //       prevname: 'attachment1',
-    //       folderId: 'folder1'
-    //     },
-    //     {
-    //       ID: 'id2',
-    //       url: 'url2',
-    //       name: 'attachment2new',
-    //       prevname: 'attachment2',
-    //       folderId: 'folder1'
-    //     },
-    //     {
-    //       ID: 'id3',
-    //       url: 'url3',
-    //       name: 'attachment3new',
-    //       prevname: 'attachment3',
-    //       folderId: 'folder1'
-    //     }
-    //   ];
-    //   checkAttachmentsToRename.mockResolvedValueOnce(modifiedAttachments);
-    //   renameAttachment
-    //     .mockResolvedValueOnce({
-    //       status: 404,
-    //       message: "File not found"
-    //     })
-    //     .mockResolvedValueOnce({
-    //       status: 409,
-    //       message: "File already exists"
-    //     })
-    //     .mockResolvedValueOnce({
-    //       status: 403,
-    //       message: "Unauthorized"
-    //     })
-    //   await service.draftSaveHandler(mockReq);
+    it("should throw correct error message for all rename scenarios in DI", async () => {
+      service.rename = jest.fn().mockResolvedValueOnce([]);
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([
+        {
+          'ID': 'id1',
+          'filename': 'attachment1',
+          'HasActiveEntity' : true
+        },
+        {
+          'ID': 'id2',
+          'filename': 'attachment2',
+          'HasActiveEntity' : true
+        },
+        {
+          'ID': 'id3',
+          'filename': 'attachment3',
+          'HasActiveEntity' : true
+        },
+      ]);
+      const modifiedAttachments = [
+        {
+          ID: 'id1',
+          url: 'url1',
+          name: 'attachment1new',
+          prevname: 'attachment1',
+          folderId: 'folder1'
+        },
+        {
+          ID: 'id2',
+          url: 'url2',
+          name: 'attachment2new',
+          prevname: 'attachment2',
+          folderId: 'folder1'
+        },
+        {
+          ID: 'id3',
+          url: 'url3',
+          name: 'attachment3new',
+          prevname: 'attachment3',
+          folderId: 'folder1'
+        }
+      ];
+      checkAttachmentsToRename.mockResolvedValueOnce(modifiedAttachments);
+      renameAttachment
+        .mockResolvedValueOnce({
+          status: 404,
+          message: "File not found"
+        })
+        .mockResolvedValueOnce({
+          status: 409,
+          message: "File already exists"
+        })
+        .mockResolvedValueOnce({
+          status: 403,
+          message: "Unauthorized"
+        })
+      await service.draftSaveHandler(mockReq);
 
-    //   expect(renameSpy).toBeCalled();
-    // });
+      expect(renameSpy).toBeCalled();
+    });
   });
 
   describe("Test filterAttachments", () => {
