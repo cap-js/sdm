@@ -2,6 +2,10 @@ name: Integration Test
 
 on:
   workflow_dispatch:
+    inputs:
+      cf_space:
+        description: 'Specify the Cloud Foundry space to run integration tests on'
+        required: true
 
 permissions:
   pull-requests: read
@@ -19,16 +23,75 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
+        id: determine_space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "Space determined for use"
+          echo "space=$space" >> $GITHUB_ENV
+
+      - name: Login to Cloud Foundry
+        run: |
+          echo "Org Name: ${{ secrets.CF_ORG }}"
+          # Do not log space name to avoid unintended exposure
+          cf login -a ${{ secrets.CF_API }} \
+            -u ${{ secrets.CF_USER }} \
+            -p ${{ secrets.CF_PASSWORD }} \
+            -o ${{ secrets.CF_ORG }} \
+            -s ${{ env.space }}
+
+      - name: Fetch and Escape Client Secret
+        id: fetch_secret
+        run: |
+          service_instance_guid=$(cf service sdm-incidents-auth --guid)
+          if [ -z "$service_instance_guid" ]; then
+            echo "Error: Unable to retrieve service instance GUID"; exit 1;
+          fi
+          
+          bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
+          binding_guid=$(echo $bindings_response | jq -r '.resources[0].guid')
+          if [ -z "$binding_guid" ]; then
+            echo "Error: Unable to retrieve binding GUID"; exit 1;
+          fi
+          
+          binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
+          
+          clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
+          if [ -z "$clientSecret" ] || [ "$clientSecret" == "null" ]; then
+            echo "Error: clientSecret is not set or is null"; exit 1;
+          fi
+          escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
+          
+          clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
+          if [ -z "$clientID" ] || [ "$clientID" == "null" ]; then
+            echo "Error: clientID is not set or is null"; exit 1;
+          fi
+          
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_ENV || echo "CLIENT_SECRET=REDACTED" >> $GITHUB_ENV
+          echo "CLIENT_ID=${clientID}" >> $GITHUB_ENV || echo "CLIENT_ID=REDACTED" >> $GITHUB_ENV
+
       - name: Run integration tests
         run: |
-          appUrl=${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com
+          appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
           echo "app url: ${appUrl}"
           # JSON file path
           JSON_FILE="test/integration/credentials.json"
           # Modify JSON file
-          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ secrets.CAPSDM_CLIENT_ID }}" --arg clientSecret "${{ secrets.CAPSDM_CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" \
+          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ env.CLIENT_ID }}" --arg clientSecret "${{ env.CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" \
           '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password' $JSON_FILE > "temp.json" \
           && mv "temp.json" $JSON_FILE
-          cat $JSON_FILE
-          npm i
+          # Redact sensitive fields before printing
+          jq '{ appUrl, authUrl, username, password }' $JSON_FILE | sed 's/"clientID": "[^"]*"/"clientID": "***"/' | sed 's/"clientSecret": "[^"]*"/"clientSecret": "***"/'
+          npm install
           npm run integration-test
