@@ -108,15 +108,7 @@ using { Attachments } from '@cap-js/sdm';
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
-Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId under cds.requires in package.json. Currently only non versioned repositories are supported.
-
-```
-"sdm": {
-   "settings": {
-   "repositoryId": "<repository-Id>"
-   }
-}
-```
+Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository) and configure the onboarded repositoryId in mta.yaml under the [srv module](https://github.com/cap-js/incidents-app/blob/incidents-app-deploy/mta.yaml#L18) and the [resources section](https://github.com/cap-js/incidents-app/blob/incidents-app-deploy/mta.yaml#L132) in the **mta.yaml**. Currently only non versioned repositories are supported.
 
 ## Deploying and testing the application
 
