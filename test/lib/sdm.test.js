@@ -11,6 +11,7 @@ const {
   getDraftAttachments,
   getDraftAttachmentsForUpID,
   getURLsToDeleteFromAttachments,
+  getURLsToDeleteFromDraftAttachments,
   getURLFromAttachments,
   getFolderIdForEntity,
   updateAttachmentInDraft,
@@ -43,6 +44,7 @@ jest.mock("../../lib/persistence", () => ({
   getDraftAttachmentsForUpID: jest.fn(),
   getDuplicateAttachments: jest.fn(),
   getURLsToDeleteFromAttachments: jest.fn(),
+  getURLsToDeleteFromDraftAttachments: jest.fn(),
   getURLFromAttachments: jest.fn(),
   getFolderIdForEntity: jest.fn(),
   updateAttachmentInDraft: jest.fn(),
@@ -1324,6 +1326,7 @@ describe("SDMAttachmentsService", () => {
     let mockReq;
     let cds;
     beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
@@ -1403,14 +1406,15 @@ describe("SDMAttachmentsService", () => {
         status: 403,
         response: {
           data: userDoesNotHaveScopeMessage
+        },
+        data: {
+          succinctProperties: {
+            "cmis:objectId": "mock_object_id"
+          }
         }
       });
 
-      try {
-        await service.getParentId(attachments, mockReq, token);
-      } catch (err) {
-        console.error("Error in getParentId:", err);
-      }
+      await service.getParentId(attachments, mockReq, token);
 
       expect(mockReq.reject).toHaveBeenCalledWith(403, userNotAuthorisedError);
     });
@@ -1544,6 +1548,117 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe("attachDraftDeletionData", () => {
+    let service;
+    let mockReq;
+    let mockDraftAttachments;
+    let cds;
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      jest.spyOn(service, 'checkRepositoryType').mockResolvedValue();
+  
+      mockReq = {
+        query: {
+          target: {
+            name: "testName.drafts",
+          },
+        },
+        event: "DELETE",
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        diff: jest.fn(),
+      };
+  
+      cds.model.definitions["testName.attachments.drafts"] = {};
+    });
+  
+    it("should attach attachments to delete in req when they are present in drafts", async () => {
+      mockDraftAttachments = cds.model.definitions["testName.attachments.drafts"];
+  
+      const attachmentsToDelete = ["attachment1", "attachment2"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      getFolderIdByPath.mockResolvedValueOnce("mock_folder_id");
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      expect(service.checkRepositoryType).toHaveBeenCalledWith(mockReq);
+      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith(mockDraftAttachments);
+      expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
+      expect(mockReq.parentId).toEqual("mock_folder_id");
+    });
+  
+    it("should not set `parentId` if the number of attachments in diff is different from `attachmentsToDelete`", async () => {
+      const attachmentsToDelete = ["attachment1"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2", "attachment3"],
+      });
+  
+      await service.attachDraftDeletionData(mockReq);
+      
+      expect(mockReq.parentId).toBeUndefined();
+    });
+  
+    it("should not attach attachments to delete if no draft attachments are found", async () => {
+      delete cds.model.definitions["testName.attachments.drafts"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]);
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      expect(mockReq.attachmentsToDelete).toBeUndefined();
+    });
+
+    it("should not set attachmentsToDelete if attachmentsToDeleteFromDraft is empty", async () => {
+  
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]); // Empty array to simulate no deletions
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      // Verify that attachmentsToDelete is not set
+      expect(mockReq.attachmentsToDelete).toBeUndefined();
+      // Ensure that with no attachments to delete, parentId is not set
+      expect(mockReq.parentId).toBeUndefined();
+    });
+
+    it("should not set parentId if folderId is not retrieved", async () => {
+      const attachmentsToDelete = ["attachment1", "attachment2"];
+      
+      // Mock behavior to simulate presence of attachments to delete
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+      
+      // Both arrays should be of the same length to trigger folderId fetch logic
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      // Simulate fetching a token, but folder ID fetch returns falsy
+      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      getFolderIdByPath.mockResolvedValueOnce(null); // Falsy value to test this situation
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      // Ensure parentId wasn't set since folderId is falsy
+      expect(mockReq.parentId).toBeUndefined();
+    });
+  });
+
   describe("registerUpdateHandlers", () => {
     let mockSrv;
     let service;
@@ -1579,7 +1694,7 @@ describe("SDMAttachmentsService", () => {
       service.registerUpdateHandlers(mockSrv, "entity", "target");
       expect(mockSrv.after).toHaveBeenCalledWith(
         ["DELETE", "UPDATE"],
-        "entity",
+        ["entity", undefined],
         expect.any(Function)
       );
     });
