@@ -347,6 +347,15 @@ describe("util", () => {
 
       expect(actualSettings).toEqual({});
     });
+    it("should return repositoryId from environment variable", () => {
+          process.env = {
+            REPOSITORY_ID: "repo1",
+          };
+
+          const actualSettings = getConfigurations();
+
+          expect(actualSettings).toEqual({  "repositoryId": "repo1"});
+        });
   });
 
   describe("checkAttachmentsToRename", () => {
