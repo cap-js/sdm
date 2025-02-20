@@ -1202,13 +1202,13 @@ describe("SDMAttachmentsService", () => {
     it('should reject when a virus is found in the file', async () => {
       createAttachment
       .mockResolvedValueOnce({
-        status: 500,
+        status: 403,
         response: { data: { message: "Malware Service Exception: Virus found in the file!" } }
       });
   
       await service.onCreate(data, credentials, token, req, parentId);
   
-      expect(req.reject).toHaveBeenCalledWith(virusFileErr(['file1']));
+      expect(req.reject).toHaveBeenCalledWith(403, virusFileErr(['file1']));
     });
   
     it('should reject when there is a name constraint violation', async () => {
@@ -1220,7 +1220,7 @@ describe("SDMAttachmentsService", () => {
   
       await service.onCreate(data, credentials, token, req, parentId);
   
-      expect(req.reject).toHaveBeenCalledWith(duplicateFileErr(['file1']));
+      expect(req.reject).toHaveBeenCalledWith(409, duplicateFileErr(['file1']));
     });
   
     it('should reject when another error occurs', async () => {
