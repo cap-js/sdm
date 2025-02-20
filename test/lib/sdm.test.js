@@ -34,7 +34,7 @@ const {
   duplicateFileErr,
   otherFileErr,
   userNotAuthorisedError,
-  userDoesNotHaveScopeMessage,
+  userDoesNotHaveRequiredScope,
   versionedRepositoryErr
 } = require("../../lib/util/messageConsts");
 
@@ -1397,7 +1397,7 @@ describe("SDMAttachmentsService", () => {
       );
     });
   
-    it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveScopeMessage", async () => {
+    it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveRequiredScope", async () => {
       let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"];
       let token = "mocked_token";
       getFolderIdForEntity.mockResolvedValueOnce([]);
@@ -1405,7 +1405,7 @@ describe("SDMAttachmentsService", () => {
       createFolder.mockResolvedValueOnce({
         status: 403,
         response: {
-          data: userDoesNotHaveScopeMessage
+          data: userDoesNotHaveRequiredScope
         },
         data: {
           succinctProperties: {
