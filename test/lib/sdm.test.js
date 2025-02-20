@@ -11,6 +11,7 @@ const {
   getDraftAttachments,
   getDraftAttachmentsForUpID,
   getURLsToDeleteFromAttachments,
+  getURLsToDeleteFromDraftAttachments,
   getURLFromAttachments,
   getFolderIdForEntity,
   updateAttachmentInDraft,
@@ -33,7 +34,7 @@ const {
   duplicateFileErr,
   otherFileErr,
   userNotAuthorisedError,
-  userDoesNotHaveScopeMessage,
+  userDoesNotHaveRequiredScope,
   versionedRepositoryErr
 } = require("../../lib/util/messageConsts");
 
@@ -43,6 +44,7 @@ jest.mock("../../lib/persistence", () => ({
   getDraftAttachmentsForUpID: jest.fn(),
   getDuplicateAttachments: jest.fn(),
   getURLsToDeleteFromAttachments: jest.fn(),
+  getURLsToDeleteFromDraftAttachments: jest.fn(),
   getURLFromAttachments: jest.fn(),
   getFolderIdForEntity: jest.fn(),
   updateAttachmentInDraft: jest.fn(),
@@ -1200,13 +1202,13 @@ describe("SDMAttachmentsService", () => {
     it('should reject when a virus is found in the file', async () => {
       createAttachment
       .mockResolvedValueOnce({
-        status: 500,
+        status: 403,
         response: { data: { message: "Malware Service Exception: Virus found in the file!" } }
       });
   
       await service.onCreate(data, credentials, token, req, parentId);
   
-      expect(req.reject).toHaveBeenCalledWith(virusFileErr(['file1']));
+      expect(req.reject).toHaveBeenCalledWith(403, virusFileErr(['file1']));
     });
   
     it('should reject when there is a name constraint violation', async () => {
@@ -1218,7 +1220,7 @@ describe("SDMAttachmentsService", () => {
   
       await service.onCreate(data, credentials, token, req, parentId);
   
-      expect(req.reject).toHaveBeenCalledWith(duplicateFileErr(['file1']));
+      expect(req.reject).toHaveBeenCalledWith(409, duplicateFileErr(['file1']));
     });
   
     it('should reject when another error occurs', async () => {
@@ -1324,6 +1326,7 @@ describe("SDMAttachmentsService", () => {
     let mockReq;
     let cds;
     beforeEach(() => {
+      NodeCache.prototype.get.mockClear();
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
@@ -1394,7 +1397,7 @@ describe("SDMAttachmentsService", () => {
       );
     });
   
-    it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveScopeMessage", async () => {
+    it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveRequiredScope", async () => {
       let attachments = cds.model.definitions[mockReq.query.target.name + ".attachments"];
       let token = "mocked_token";
       getFolderIdForEntity.mockResolvedValueOnce([]);
@@ -1402,15 +1405,16 @@ describe("SDMAttachmentsService", () => {
       createFolder.mockResolvedValueOnce({
         status: 403,
         response: {
-          data: userDoesNotHaveScopeMessage
+          data: userDoesNotHaveRequiredScope
+        },
+        data: {
+          succinctProperties: {
+            "cmis:objectId": "mock_object_id"
+          }
         }
       });
 
-      try {
-        await service.getParentId(attachments, mockReq, token);
-      } catch (err) {
-        console.error("Error in getParentId:", err);
-      }
+      await service.getParentId(attachments, mockReq, token);
 
       expect(mockReq.reject).toHaveBeenCalledWith(403, userNotAuthorisedError);
     });
@@ -1544,6 +1548,117 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe("attachDraftDeletionData", () => {
+    let service;
+    let mockReq;
+    let mockDraftAttachments;
+    let cds;
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      jest.spyOn(service, 'checkRepositoryType').mockResolvedValue();
+  
+      mockReq = {
+        query: {
+          target: {
+            name: "testName.drafts",
+          },
+        },
+        event: "DELETE",
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mocked_token"),
+          },
+        },
+        diff: jest.fn(),
+      };
+  
+      cds.model.definitions["testName.attachments.drafts"] = {};
+    });
+  
+    it("should attach attachments to delete in req when they are present in drafts", async () => {
+      mockDraftAttachments = cds.model.definitions["testName.attachments.drafts"];
+  
+      const attachmentsToDelete = ["attachment1", "attachment2"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      getFolderIdByPath.mockResolvedValueOnce("mock_folder_id");
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      expect(service.checkRepositoryType).toHaveBeenCalledWith(mockReq);
+      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith(mockDraftAttachments);
+      expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
+      expect(mockReq.parentId).toEqual("mock_folder_id");
+    });
+  
+    it("should not set `parentId` if the number of attachments in diff is different from `attachmentsToDelete`", async () => {
+      const attachmentsToDelete = ["attachment1"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2", "attachment3"],
+      });
+  
+      await service.attachDraftDeletionData(mockReq);
+      
+      expect(mockReq.parentId).toBeUndefined();
+    });
+  
+    it("should not attach attachments to delete if no draft attachments are found", async () => {
+      delete cds.model.definitions["testName.attachments.drafts"];
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]);
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      expect(mockReq.attachmentsToDelete).toBeUndefined();
+    });
+
+    it("should not set attachmentsToDelete if attachmentsToDeleteFromDraft is empty", async () => {
+  
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]); // Empty array to simulate no deletions
+  
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      // Verify that attachmentsToDelete is not set
+      expect(mockReq.attachmentsToDelete).toBeUndefined();
+      // Ensure that with no attachments to delete, parentId is not set
+      expect(mockReq.parentId).toBeUndefined();
+    });
+
+    it("should not set parentId if folderId is not retrieved", async () => {
+      const attachmentsToDelete = ["attachment1", "attachment2"];
+      
+      // Mock behavior to simulate presence of attachments to delete
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
+      
+      // Both arrays should be of the same length to trigger folderId fetch logic
+      mockReq.diff.mockResolvedValueOnce({
+        attachments: ["attachment1", "attachment2"],
+      });
+  
+      // Simulate fetching a token, but folder ID fetch returns falsy
+      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      getFolderIdByPath.mockResolvedValueOnce(null); // Falsy value to test this situation
+  
+      await service.attachDraftDeletionData(mockReq);
+  
+      // Ensure parentId wasn't set since folderId is falsy
+      expect(mockReq.parentId).toBeUndefined();
+    });
+  });
+
   describe("registerUpdateHandlers", () => {
     let mockSrv;
     let service;
@@ -1579,7 +1694,7 @@ describe("SDMAttachmentsService", () => {
       service.registerUpdateHandlers(mockSrv, "entity", "target");
       expect(mockSrv.after).toHaveBeenCalledWith(
         ["DELETE", "UPDATE"],
-        "entity",
+        ["entity", undefined],
         expect.any(Function)
       );
     });
