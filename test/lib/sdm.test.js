@@ -495,7 +495,7 @@ describe("SDMAttachmentsService", () => {
           status: 403,
           message: "Unauthorized"
         })
-      await service.draftSaveHandler(mockReq);
+      await service.draftSaveHandler(req);
 
       expect(renameSpy).toBeCalled();
     });
