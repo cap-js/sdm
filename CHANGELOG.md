@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## VERSION 1.3.1
+
+### Changed
+- Attachments usage changed to using { sap.attachments.Attachments } from '@cap-js/attachments'.
+
 ## Version 1.3.0
 
 ### Added
