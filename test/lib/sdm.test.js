@@ -1558,6 +1558,9 @@ describe("SDMAttachmentsService", () => {
             name: "testName.drafts",
           },
         },
+        data: {
+          ID: "mocked_id",
+        },
         event: "DELETE",
         user: {
           tokenInfo: {
@@ -1585,7 +1588,7 @@ describe("SDMAttachmentsService", () => {
   
       await service.attachDraftDeletionData(mockReq);
   
-      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith(mockDraftAttachments);
+      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith("mocked_id", mockDraftAttachments);
       expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
       expect(mockReq.parentId).toEqual("mock_folder_id");
     });
