@@ -20,7 +20,7 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "latest",
+    "@cap-js/attachments": "2.0.0",
     "@sap/xssec": "^3.6.1",
     "axios": "^1.7.4",
     "node-cache": "^5.1.2"
