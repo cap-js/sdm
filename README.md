@@ -103,7 +103,7 @@ If you want to use the version under development follow the below steps:
 
 ```
 using { sap.capire.incidents as my } from './schema';
-using { Attachments } from '@cap-js/sdm';
+using {  sap.attachments.Attachments } from '@cap-js/sdm';
 
 extend my.Incidents with { attachments: Composition of many Attachments }
 ```
