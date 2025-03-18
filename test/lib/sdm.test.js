@@ -343,7 +343,6 @@ describe("SDMAttachmentsService", () => {
     });
   
     it('should rename modified attachments', async () => {
-      service.checkRepositoryType = jest.fn().mockResolvedValue();
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
       service.getAttachementDataInSDM = jest.fn((uri, token, objectId) => {
         if (objectId === 'url2') {
@@ -362,7 +361,6 @@ describe("SDMAttachmentsService", () => {
   
       await service.renameHandler(req);
   
-      expect(service.checkRepositoryType).toHaveBeenCalledWith(req);
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalled();
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.attachments'], req, undefined);
@@ -378,7 +376,6 @@ describe("SDMAttachmentsService", () => {
     });
   
     it('should not rename if no attachments are modified', async () => {
-      service.checkRepositoryType = jest.fn().mockResolvedValue();
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
       service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'fileDraft', folderId: 'folderId' });
       service.rename = jest.fn();
@@ -389,7 +386,6 @@ describe("SDMAttachmentsService", () => {
   
       await service.renameHandler(req);
   
-      expect(service.checkRepositoryType).toHaveBeenCalledWith(req);
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(fetchAccessToken).not.toHaveBeenCalled();
       expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.attachments'], req, undefined);
@@ -400,7 +396,6 @@ describe("SDMAttachmentsService", () => {
     });
 
     it('should not modify attachments if filenameInDraft equals filenameInSDM', async () => {
-      service.checkRepositoryType = jest.fn().mockResolvedValue();
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
       service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'fileDraft', folderId: 'sampleFolderId' });
       service.rename = jest.fn().mockResolvedValue('');
@@ -414,7 +409,6 @@ describe("SDMAttachmentsService", () => {
   
       await service.renameHandler(req);
   
-      expect(service.checkRepositoryType).toHaveBeenCalledWith(req);
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalled();
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.attachments'], req, undefined);
@@ -424,7 +418,6 @@ describe("SDMAttachmentsService", () => {
     });
 
     it('should avoid renaming if there are no modified attachments', async () => {
-      service.checkRepositoryType = jest.fn().mockResolvedValue();
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
       service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'fileDraft', folderId: 'sampleFolderId' });
       service.rename = jest.fn().mockResolvedValue('');
@@ -437,7 +430,6 @@ describe("SDMAttachmentsService", () => {
   
       await service.renameHandler(req);
   
-      expect(service.checkRepositoryType).toHaveBeenCalledWith(req);
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalled();
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(checkAttachmentsToRename).toHaveBeenCalled();
@@ -1793,6 +1785,9 @@ describe("SDMAttachmentsService", () => {
             name: "testName.drafts",
           },
         },
+        data: {
+          ID: "mocked_id",
+        },
         event: "DELETE",
         user: {
           tokenInfo: {
@@ -1820,8 +1815,7 @@ describe("SDMAttachmentsService", () => {
   
       await service.attachDraftDeletionData(mockReq);
   
-      expect(service.checkRepositoryType).toHaveBeenCalledWith(mockReq);
-      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith(mockDraftAttachments);
+      expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith("mocked_id", mockDraftAttachments);
       expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
       expect(mockReq.parentId).toEqual("mock_folder_id");
     });
