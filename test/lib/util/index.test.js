@@ -7,7 +7,8 @@ const {
   getConfigurations,
   checkAttachmentsToRename,
   isRepositoryVersioned,
-  getClientCredentialsToken
+  getClientCredentialsToken,
+  isRestrictedCharactersInName
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -400,6 +401,38 @@ describe("util", () => {
       await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
 
       expect(getExistingAttachments).toBeCalled();
+    });
+  });
+
+  describe("isRestrictedCharactersInName", () => {
+    it("should return true if the filename contains a forward slash", () => {
+      const filename = "file/name";
+      const result = isRestrictedCharactersInName(filename);
+      expect(result).toBe(true);
+    });
+  
+    it("should return true if the filename contains a backslash", () => {
+      const filename = "file\\name";
+      const result = isRestrictedCharactersInName(filename);
+      expect(result).toBe(true);
+    });
+  
+    it("should return false if the filename does not contain restricted characters", () => {
+      const filename = "filename";
+      const result = isRestrictedCharactersInName(filename);
+      expect(result).toBe(false);
+    });
+  
+    it("should return false if the filename is empty", () => {
+      const filename = "";
+      const result = isRestrictedCharactersInName(filename);
+      expect(result).toBe(false);
+    });
+  
+    it("should return false if the filename contains only valid characters", () => {
+      const filename = "valid_filename";
+      const result = isRestrictedCharactersInName(filename);
+      expect(result).toBe(false);
     });
   });
 });
