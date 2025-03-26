@@ -11,8 +11,6 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Attachment stored in SDM as soon as user uploads the attachment.
 - Capability to configure repository id from user provided variables.
 
-## VERSION 1.3.1
-
 ### Changed
 - Attachments usage changed to using { sap.attachments.Attachments } from '@cap-js/attachments'.
 
