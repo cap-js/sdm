@@ -8,7 +8,8 @@ const {
   checkAttachmentsToRename,
   isRepositoryVersioned,
   getClientCredentialsToken,
-  isRestrictedCharactersInName
+  isRestrictedCharactersInName,
+  getStatusCondition,
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -433,6 +434,23 @@ describe("util", () => {
       const filename = "valid_filename";
       const result = isRestrictedCharactersInName(filename);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('getStatusCondition', () => {
+    it('should return "don\'t" for status code 404', () => {
+      const result = getStatusCondition(404);
+      expect(result).toBe("don't");
+    });
+  
+    it('should return "already" for status code 409', () => {
+      const result = getStatusCondition(409);
+      expect(result).toBe("already");
+    });
+  
+    it('should return undefined for unknown status code', () => {
+      const result = getStatusCondition(500); // Example of a status that isn't handled specifically
+      expect(result).toBeUndefined();
     });
   });
 });
