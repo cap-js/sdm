@@ -5,7 +5,9 @@ const {
   checkAttachmentsToRename,
   getConfigurations,
   isRepositoryVersioned,
-  getClientCredentialsToken
+  getClientCredentialsToken,
+  isRestrictedCharactersInName,
+  getStatusCondition
 } = require("../../lib/util");
 const {
   getDraftAttachments,
@@ -35,7 +37,10 @@ const {
   otherFileErr,
   userNotAuthorisedError,
   userDoesNotHaveRequiredScope,
-  versionedRepositoryErr
+  versionedRepositoryErr,
+  nameConstrainErr,
+  renameFileErr,
+  renameOtherFilesErr
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -56,7 +61,9 @@ jest.mock("../../lib/util", () => ({
   checkAttachmentsToRename: jest.fn(),
   getConfigurations: jest.fn(),
   isRepositoryVersioned: jest.fn(),
-  getClientCredentialsToken: jest.fn()
+  getClientCredentialsToken: jest.fn(),
+  isRestrictedCharactersInName: jest.fn(),
+  getStatusCondition: jest.fn()
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -431,6 +438,68 @@ describe("SDMAttachmentsService", () => {
       expect(service.rename).not.toHaveBeenCalled();
       expect(req.warn).not.toHaveBeenCalled();
     });
+
+    it("should throw correct error message for all rename scenarios in DI", async () => {
+      service.rename = jest.fn().mockResolvedValueOnce([]);
+      const renameSpy = jest.spyOn(service, "rename");
+      getDraftAttachments.mockResolvedValueOnce([
+        {
+          'ID': 'id1',
+          'filename': 'attachment1',
+          'HasActiveEntity' : true
+        },
+        {
+          'ID': 'id2',
+          'filename': 'attachment2',
+          'HasActiveEntity' : true
+        },
+        {
+          'ID': 'id3',
+          'filename': 'attachment3',
+          'HasActiveEntity' : true
+        },
+      ]);
+      const modifiedAttachments = [
+        {
+          ID: 'id1',
+          url: 'url1',
+          name: 'attachment1new',
+          prevname: 'attachment1',
+          folderId: 'folder1'
+        },
+        {
+          ID: 'id2',
+          url: 'url2',
+          name: 'attachment2new',
+          prevname: 'attachment2',
+          folderId: 'folder1'
+        },
+        {
+          ID: 'id3',
+          url: 'url3',
+          name: 'attachment3new',
+          prevname: 'attachment3',
+          folderId: 'folder1'
+        }
+      ];
+      checkAttachmentsToRename.mockResolvedValueOnce(modifiedAttachments);
+      renameAttachment
+        .mockResolvedValueOnce({
+          status: 404,
+          message: "File not found"
+        })
+        .mockResolvedValueOnce({
+          status: 409,
+          message: "File already exists"
+        })
+        .mockResolvedValueOnce({
+          status: 403,
+          message: "Unauthorized"
+        })
+      await service.renameHandler(req);
+
+      expect(renameSpy).toBeCalled();
+    });
   });
 
   describe('getAttachementDataInSDM', () => {
@@ -586,6 +655,41 @@ describe("SDMAttachmentsService", () => {
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(service.create).not.toHaveBeenCalled();
+    });
+    test('should reject when filename contains restricted characters', async () => {
+      const draftAttachments = [];
+      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      const token = 'token123';
+      const attachment_val = [
+        { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
+        { HasActiveEntity: true, ID: '67890' },
+      ];
+      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+      fetchAccessToken.mockResolvedValue(token);
+      isRestrictedCharactersInName.mockReturnValue(true);
+  
+      await service.draftSaveHandler(req);
+  
+      expect(req.reject).toHaveBeenCalledWith(409, nameConstrainErr(['invalid/name'], "Upload"));
+    });
+  
+    test('should not reject when filename does not contain restricted characters', async () => {
+      const draftAttachments = [];
+      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      const token = 'token123';
+      const attachment_val = [
+        { HasActiveEntity: false, ID: '12345', filename: 'validname' },
+        { HasActiveEntity: true, ID: '67890' },
+      ];
+      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+      fetchAccessToken.mockResolvedValue(token);
+      isRestrictedCharactersInName.mockReturnValue(false);
+  
+      await service.draftSaveHandler(req);
+  
+      expect(req.reject).not.toHaveBeenCalled();
+      expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
+      expect(req.data.content).toBeNull();
     });
   });
 
@@ -1144,10 +1248,11 @@ describe("SDMAttachmentsService", () => {
       expect(mockReq.info).not.toBeCalled();
     })
 
-    it("should handle failure in onRename", async () => {
+    it("should handle failure in onRename with duplicate error", async () => {
       const token = "token";
       const modifiedAttachments = [];
-
+      
+      getStatusCondition.mockReturnValueOnce("already");
       service.onRename = jest.fn().mockResolvedValue([{typeOfError:'duplicate',name:"renameduplicate"}]);
 
       response = await service.rename(
@@ -1156,8 +1261,89 @@ describe("SDMAttachmentsService", () => {
         mockReq
       );
 
-      expect(response).toBe("The following files could not be renamed as they already exist:\n• renameduplicate\n");
+      expect(response).toBe(renameFileErr(["renameduplicate"], "already"));
     })
+
+    it("should handle failure in onRename with not found error", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+  
+      getStatusCondition.mockReturnValueOnce("don't");
+      service.onRename = jest.fn().mockResolvedValue([{typeOfError:'not found',name:"renameNotFound"}]);
+  
+      const response = await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+  
+      expect(response).toBe(renameFileErr(["renameNotFound"], "don't"));
+    });
+  
+    it("should handle failure in onRename with restricted characters error", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+  
+      service.onRename = jest.fn().mockResolvedValue([{typeOfError:'restricted characters',name:"renameRestricted"}]);
+  
+      const response = await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+  
+      expect(response).toBe(nameConstrainErr(["renameRestricted"], "Rename"));
+    });
+  
+    it("should handle failure in onRename with other errors", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+  
+      service.onRename = jest.fn().mockResolvedValue([{typeOfError:'some other error',name:"renameOtherError"}]);
+  
+      const response = await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+  
+      expect(response).toBe(renameOtherFilesErr(["renameOtherError"],["some other error"]));
+    });
+
+    it("should handle multiple errors in onRename", async () => {
+      const token = "token";
+      const modifiedAttachments = [];
+  
+      // Provide behavior specific to this test
+      getStatusCondition.mockImplementation((statusCode) => {
+        if (statusCode === 404) {
+          return "don't";
+        } else if (statusCode === 409) {
+          return "already";
+        }
+      });
+  
+      service.onRename = jest.fn().mockResolvedValue([
+        { typeOfError: 'duplicate', name: "renameduplicate" },
+        { typeOfError: 'not found', name: "renameNotFound" },
+        { typeOfError: 'restricted characters', name: "renameRestricted" },
+        { typeOfError: 'some other error', name: "renameOtherError" }
+      ]);
+  
+      const response = await service.rename(
+        modifiedAttachments,
+        token,
+        mockReq
+      );
+  
+      const expectedResponse = 
+        nameConstrainErr(["renameRestricted"], "Rename") +
+        renameFileErr(["renameduplicate"], "already") +
+        renameFileErr(["renameNotFound"], "don't") +
+        renameOtherFilesErr(["renameOtherError"], ["some other error"]);
+  
+      expect(response).toBe(expectedResponse);
+    });
   });
 
   describe('onCreate', () => {
@@ -1232,26 +1418,39 @@ describe("SDMAttachmentsService", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
+      jest.resetAllMocks();
       service = new SDMAttachmentsService();
+      service.creds = { uri: 'sampleUri' };
     });
     it("should return empty array if no attachments fail", async () => {
-      const modifiedAttachments = [{name:"name"}];
+      const modifiedAttachments = [{ name: "name", ID: "someID", url: "someURL" }];
       const credentials = {};
       const token = "token";
-
+      const req = {
+        data: {
+          attachments: [
+            {
+              ID: 'someID',
+              filename: 'someFilename'
+            }
+          ]
+        }
+      };
+  
+      isRestrictedCharactersInName.mockReturnValue(false);
       renameAttachment.mockResolvedValueOnce({
         status: 200,
-        response : {
-          data: {
-            message: 'error'
-          }
+        data: {
+          message: 'success'
         }
-      });
-
+      })
+      service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'someFilename' });
+  
       const result = await service.onRename(
         modifiedAttachments,
         credentials,
         token,
+        req
       );
       expect(result).toEqual([]);
     });
@@ -1269,7 +1468,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should return failed request messages if rename fails for some attachments", async () => {
-      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2" }, { name: "attachment#3", id:"id3" }];
+      const modifiedAttachments = [{ name: "attachment#1", id:"id1" }, { name: "attachment#2", id:"id2", prevname: "attachment#2prev" }, { name: "attachment#3", id:"id3" }, { name: "attachment#4", id:"id4" }];
       const credentials = {};
       const token = "token";
       const req = {
@@ -1277,31 +1476,43 @@ describe("SDMAttachmentsService", () => {
           attachments: [
             {
               id: "id1",
-              filename: "attachment#1"
+              name: "attachment#1"
             },
             {
               id: "id2",
-              filename: "attachment#2"
+              name: "attachment#2",
+              prevname: "attachment#2prev"
             },
             {
               id: "id3",
-              filename: "attachment#3"
+              name: "attachment#3"
+            },
+            {
+              id: "id4",
+              name: "attachment#4"
             }
           ]
         }
       }
     
+      isRestrictedCharactersInName.mockReturnValue(false);
       renameAttachment
         .mockResolvedValueOnce({
           status: 200,
           data: { succinctProperties: { "cmis:objectId": "url" } },
         })
         .mockResolvedValueOnce({
-          response: { data: { message: "Error occurred with Id null" }, status : 400 }
+          status: 404,
+          message: "File not found"
         })
         .mockResolvedValueOnce({
-          response: { data: { message: "Error occurred" }, status : 400 }
-        });
+          status: 409,
+          message: "File already exists"
+        })
+        .mockResolvedValueOnce({
+          status: 403,
+          message: "Unauthorized"
+        })
 
       const result = await service.onRename(
         modifiedAttachments,
@@ -1309,7 +1520,37 @@ describe("SDMAttachmentsService", () => {
         token,
         req
       );
-      expect(result).toEqual([{ "name": "attachment#2", "typeOfError": "duplicate" },{ "name": "attachment#3", "typeOfError": "duplicate" }]);
+      expect(result).toEqual([{ "name": "attachment#2prev", "typeOfError": "not found" },{ "name": "attachment#3", "typeOfError": "duplicate" },{ "name": "attachment#4", "typeOfError": "Unauthorized" }]);
+    });
+
+    it("should handle restricted characters in filename and update filename in request", async () => {
+      const modifiedAttachments = [{ name: "invalid/name", ID: "someID", url: "someURL" }];
+      const credentials = {};
+      const token = "token";
+      const req = {
+        data: {
+          attachments: [
+            {
+              ID: 'someID',
+              filename: 'someFilename'
+            }
+          ]
+        }
+      };
+  
+      isRestrictedCharactersInName.mockReturnValue(true);
+      service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'updatedFilename' });
+  
+      const result = await service.onRename(
+        modifiedAttachments,
+        credentials,
+        token,
+        req
+      );
+  
+      expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'invalid/name' }]);
+      expect(service.getAttachementDataInSDM).toHaveBeenCalledWith('sampleUri', token, 'someURL');
+      expect(req.data.attachments[0].filename).toBe('updatedFilename');
     });
   });
 
