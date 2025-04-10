@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.5.0
+
+### Added
+- Handling of special characters in attachments name during upload and rename of attachments.
+
+### Fixed
+- Issue related to entity creation failure when application is deployed with a versioned repository.
+- Error message in case of rename when attachment is deleted from backend SDM repository.
+
 ## Version 1.4.0
 
 ### Added 
