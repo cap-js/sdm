@@ -10,7 +10,6 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Handling of special characters in attachments name during upload and rename of attachments.
 
 ### Fixed
-- Issue related to entity creation failure when application is deployed with a versioned repository.
 - Error message in case of rename when attachment is deleted from backend SDM repository.
 
 ## Version 1.4.0
