@@ -14,6 +14,7 @@ const {
   getDraftAttachmentsForUpID,
   getURLsToDeleteFromAttachments,
   getURLsToDeleteFromDraftAttachments,
+  getURLToDeleteFromDraftAttachments,
   getURLFromAttachments,
   getFolderIdForEntity,
   updateAttachmentInDraft,
@@ -24,6 +25,7 @@ const {
   createAttachment,
   readAttachment,
   getFolderIdByPath,
+  getFolderIdByIDAsPath,
   createFolder,
   deleteFolderWithAttachments,
   getAttachment,
@@ -50,6 +52,7 @@ jest.mock("../../lib/persistence", () => ({
   getDuplicateAttachments: jest.fn(),
   getURLsToDeleteFromAttachments: jest.fn(),
   getURLsToDeleteFromDraftAttachments: jest.fn(),
+  getURLToDeleteFromDraftAttachments: jest.fn(),
   getURLFromAttachments: jest.fn(),
   getFolderIdForEntity: jest.fn(),
   updateAttachmentInDraft: jest.fn(),
@@ -70,6 +73,7 @@ jest.mock("../../lib/handler", () => ({
   createAttachment: jest.fn(),
   readAttachment: jest.fn(),
   getFolderIdByPath: jest.fn(),
+  getFolderIdByIDAsPath: jest.fn(),
   createFolder: jest.fn(),
   deleteFolderWithAttachments: jest.fn(),
   getAttachment: jest.fn(),
@@ -916,10 +920,10 @@ describe("SDMAttachmentsService", () => {
       };
 
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdByPath.mockResolvedValueOnce("folder");
+      getFolderIdByIDAsPath.mockResolvedValueOnce("folder");
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.parentId).toEqual("folder");
-      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
@@ -945,10 +949,10 @@ describe("SDMAttachmentsService", () => {
       };
 
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
-      getFolderIdByPath.mockResolvedValueOnce(null);
+      getFolderIdByIDAsPath.mockResolvedValueOnce(null);
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.parentId).toBeUndefined();
-      expect(getFolderIdByPath).toHaveBeenCalledTimes(1);
+      expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
@@ -1010,14 +1014,87 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('attachURLsToDeleteFromAttachmentsDraft', () => {
+  
+    let service;
+    
+    beforeEach(() => {
+      jest.clearAllMocks();
+      cds = require("@sap/cds/lib");
+      service = new SDMAttachmentsService();
+      
+      // Mock implementation for getURLToDeleteFromDraftAttachments
+      getURLToDeleteFromDraftAttachments.mockResolvedValue([{ url: 'http://example.com/attachment1', ID: '1' }]);
+  
+      // Mock implementation for fetchAccessToken
+      fetchAccessToken.mockImplementation(async (creds, tokenValue) => {
+        return 'mockToken';
+      });
+  
+      // Mock implementation for deleteAttachmentsOfFolder
+      deleteAttachmentsOfFolder.mockImplementation(async (creds, token, url) => {
+        return { status: 200 };
+      });
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+    
+    it('should attach URLs to delete and call deleteAttachmentsWithKeys with correct data', async () => {
+      const req = {
+        query: { target: { name: 'DraftAttachments' } },
+        data: { ID: 'some-id' },
+        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
+      };
+      cds.model.definitions["DraftAttachments"] = {};
+  
+      // Define a mock function on the service instance to observe it being called
+      const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
+      
+      // Call the method
+      await service.attachURLsToDeleteFromAttachmentsDraft(req);
+      
+      expect(req.attachmentsToDelete).toEqual([{ url: 'http://example.com/attachment1', ID: '1' }]);
+      
+      // Validate deleteAttachmentsWithKeys has been called
+      expect(deleteAttachmentsSpy).toHaveBeenCalled();
+      
+      // Validate deleteAttachmentsWithKeys is called with the correct arguments
+      expect(deleteAttachmentsSpy).toHaveBeenCalledWith(req.attachmentsToDelete, req);
+    });
+    
+    it('should not call deleteAttachmentsWithKeys if there are no attachments to delete', async () => {
+      getURLToDeleteFromDraftAttachments.mockImplementationOnce(async () => {
+        return [];
+      });
+  
+      const req = {
+        query: { target: { name: 'DraftAttachments' } },
+        data: { ID: 'some-other-id' },
+        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
+      };
+      cds.model.definitions["DraftAttachments"] = {};
+  
+      const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
+      
+      await service.attachURLsToDeleteFromAttachmentsDraft(req);
+  
+      expect(req.attachmentsToDelete).toBeUndefined();
+    });
+  });
+
   describe("deleteAttachmentsWithKeys", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
     });
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
     it("should delete attachments if req.attachmentsToDelete has records to delete", async () => {
-      const records = []; // Add required records data
+      const records = [];
       const req = {
         query: { target: { name: "testTarget" } },
         attachmentsToDelete: [
@@ -1034,7 +1111,7 @@ describe("SDMAttachmentsService", () => {
 
       const expectedErrorResponse = "test_error_response";
 
-      cds.model.definitions["testTarget.attachments"] = {}; // Add relevant attachment definition
+      cds.model.definitions["testTarget.attachments"] = {};
       fetchAccessToken.mockResolvedValueOnce("test_token");
       deleteAttachmentsOfFolder.mockResolvedValueOnce({});
       service.handleRequest = jest
@@ -1825,7 +1902,7 @@ describe("SDMAttachmentsService", () => {
       });
   
       fetchAccessToken.mockResolvedValueOnce("mocked_token");
-      getFolderIdByPath.mockResolvedValueOnce("mock_folder_id");
+      getFolderIdByIDAsPath.mockResolvedValueOnce("mock_folder_id");
   
       await service.attachDraftDeletionData(mockReq);
   
