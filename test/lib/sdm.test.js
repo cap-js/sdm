@@ -1026,13 +1026,8 @@ describe("SDMAttachmentsService", () => {
       // Mock implementation for getURLToDeleteFromDraftAttachments
       getURLToDeleteFromDraftAttachments.mockResolvedValue([{ url: 'http://example.com/attachment1', ID: '1' }]);
   
-      // Mock implementation for fetchAccessToken
-      fetchAccessToken.mockImplementation(async (creds, tokenValue) => {
-        return 'mockToken';
-      });
-  
       // Mock implementation for deleteAttachmentsOfFolder
-      deleteAttachmentsOfFolder.mockImplementation(async (creds, token, url) => {
+      deleteAttachmentsOfFolder.mockImplementation(async () => {
         return { status: 200 };
       });
     });
@@ -1075,8 +1070,6 @@ describe("SDMAttachmentsService", () => {
         user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
       };
       cds.model.definitions["DraftAttachments"] = {};
-  
-      const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
       
       await service.attachURLsToDeleteFromAttachmentsDraft(req);
   
