@@ -7,6 +7,10 @@ on:
         description: 'The Cloud Foundry space to deploy to'
         required: true
         default: 'developcap'  # You can set a default value if needed
+      branch:
+        description: 'The Git branch to use for deployment'
+        required: true
+        default: 'develop'
 
 permissions:
   pull-requests: read
@@ -33,7 +37,7 @@ jobs:
        
       - name: Clone and prepare projects & Build and deploy
         run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
+          git clone --single-branch --branch ${{ github.event.inputs.branch }} https://github.com/cap-js/sdm.git
           git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
           cd sdm
           npm pack
