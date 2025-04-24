@@ -1,7 +1,5 @@
 ## Describe your changes
 
--
-Jira Issue: https://jira.tools.sap/browse/SDMEXT-
 
 #### Any documentation
 
