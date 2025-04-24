@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Handling of special characters in attachments name during upload and rename of attachments.
 
 ### Fixed
+- Error to allow any name in the primary key for the entity.
 - Issue with deleting attachments from SDM when the entity has not been saved once.
 - Error message in case of rename when attachment is deleted from backend SDM repository.
 
