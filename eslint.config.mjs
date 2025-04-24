@@ -11,6 +11,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.jest,
+        ...globals.node, // Add this line to include Node.js globals
         response: "writable",
         cds: "writable",
         payload: "writable",

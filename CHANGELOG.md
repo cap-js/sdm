@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.5.0
+
+### Added
+- Handling of special characters in attachments name during upload and rename of attachments.
+
+### Fixed
+- Issue with deleting attachments from SDM when the entity has not been saved once.
+- Error message in case of rename when attachment is deleted from backend SDM repository.
+
+## Version 1.4.0
+
+### Added 
+
+- Attachment stored in SDM as soon as user uploads the attachment.
+- Capability to configure repository id from user provided variables.
+
+### Changed
+- Attachments usage changed to using { sap.attachments.Attachments } from '@cap-js/attachments'.
+
+## Version 1.3.0
+
+### Added
+Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
+
+### Fixed
+- Issue with repositoryId caching in multitenant scenario.
+- Error message on read of attachment when attachment is deleted from DI.
+
 ## Version 1.2.2
 
 ### Fixed

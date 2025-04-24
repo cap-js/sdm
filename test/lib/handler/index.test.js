@@ -24,11 +24,14 @@ const {
   deleteAttachmentsOfFolder,
   readAttachment,
   getFolderIdByPath,
+  getFolderIdByIDAsPath,
   createFolder,
   deleteFolderWithAttachments,
+  getAttachment,
   renameAttachment,
   getRepositoryInfo
 } = require("../../../lib/handler/index");
+const { errorMessage } = require("../../../lib/util/messageConsts");
 
 describe("handlers", () => {
   describe("ReadAttachment function", () => {
@@ -154,7 +157,7 @@ describe("handlers", () => {
       mockedCredentials = { uri: "mocked_uri/" };
       mockedToken = "mocked_token";
       mockedAttachments = {
-        keys: { up_: { keys: [{ $generatedFieldName: "__idValue" }] } },
+        keys: { up_: { keys: [{ $generatedFieldName: "idValue" }] } },
       };
     });
 
@@ -232,6 +235,82 @@ describe("handlers", () => {
       expect(logSpy).toHaveBeenCalledWith("Some error occurred");
 
       // restore console.log
+      logSpy.mockRestore();
+    });
+  });
+
+  describe("Test for getFolderIdByIDAsPath", () => {
+    let mockedReq, mockedCredentials, mockedToken, mockedAttachments;
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockedReq = { data: { '123': "testValue" } }; // Assuming the ID extracted from field is '123'
+      mockedCredentials = { uri: "mocked_uri/" };
+      mockedToken = "mocked_token";
+      mockedAttachments = {
+        keys: { up_: { keys: [{ $generatedFieldName: "field1__123" }] } },
+      };
+    });
+  
+    it("should return a folderId when axios request is successful", async () => {
+      const mockedResponse = {
+        data: { properties: { "cmis:objectId": { value: "folderId" } } },
+      };
+      axios.get.mockResolvedValue(mockedResponse);
+  
+      const result = await getFolderIdByIDAsPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+  
+      // assertions
+      expect(result).toEqual("folderId");
+      expect(axios.get).toHaveBeenCalledWith(
+        "mocked_uri/browser/123/root/testValue?cmisselector=object",
+        { headers: { Authorization: "Bearer mocked_token" } }
+      );
+    });
+  
+    it("should return null when axios request fails", async () => {
+      axios.get.mockRejectedValue(new Error("Network error"));
+  
+      const result = await getFolderIdByIDAsPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+  
+      // assertions
+      expect(result).toEqual(null);
+      expect(axios.get).toHaveBeenCalledWith(
+        "mocked_uri/browser/123/root/testValue?cmisselector=object",
+        { headers: { Authorization: "Bearer mocked_token" } }
+      );
+    });
+  
+    it("should log statusText and return null when axios.get throws an error with response.statusText", async () => {
+      // Create the mock objects
+      const errorResponse = { statusText: "Some error occurred" };
+      axios.get.mockRejectedValue({ response: errorResponse });
+  
+      // Spy on console.log
+      const logSpy = jest.spyOn(console, "log");
+  
+      // Call the function
+      const response = await getFolderIdByIDAsPath(
+        mockedReq,
+        mockedCredentials,
+        mockedToken,
+        mockedAttachments
+      );
+  
+      // Assert that the function returned null and printed the statusText
+      expect(response).toBeNull();
+      expect(logSpy).toHaveBeenCalledWith("Some error occurred");
+  
       logSpy.mockRestore();
     });
   });
@@ -381,7 +460,55 @@ describe("handlers", () => {
     });
   });
 
-  describe("renameAttachment function", () => {
+  describe('getAttachment', () => {
+    const uri = 'http://example.com/';
+    const token = 'test-token';
+    const objectId = 'test-object-id';
+  
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+  
+    it('should fetch attachment successfully', async () => {
+      const mockResponse = { data: 'some data' };
+      axios.get.mockResolvedValueOnce(mockResponse);
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      const expectedUrl =`${uri}browser/123/root?cmisselector=object&objectId=${objectId}&succinct=true`;
+      expect(axios.get).toHaveBeenCalledWith(expectedUrl, { headers: { Authorization: `Bearer ${token}` } });
+      expect(response).toBe(mockResponse);
+    });
+  
+    it('should return null and log status text on error', async () => {
+      const errorMessage = 'Not Found';
+      const mockError = {
+        response: {
+          statusText: errorMessage,
+        },
+      };
+      axios.get.mockRejectedValueOnce(mockError);
+      console.log = jest.fn(); // Mock console.log
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      expect(console.log).toHaveBeenCalledWith(errorMessage);
+      expect(response).toBeNull();
+    });
+  
+    it('should return null and log a default error message when there is no status text', async () => {
+      const mockError = {};
+      axios.get.mockRejectedValueOnce(mockError);
+      console.log = jest.fn(); // Mock console.log
+  
+      const response = await getAttachment(uri, token, objectId);
+  
+      expect(console.log).toHaveBeenCalledWith(errorMessage);
+      expect(response).toBeNull();
+    });
+  });
+
+  describe("renameAttachment", () => {
     beforeEach(() => {
       jest.clearAllMocks();
     });

@@ -1,17 +1,20 @@
-name: Deploy to Cloud Foundry
+name: Deploy
+
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - develop
   workflow_dispatch:
-  
+    inputs:
+      cfspace:
+        description: 'The Cloud Foundry space to deploy to'
+        required: true
+        default: 'developcap'  # You can set a default value if needed
+
 permissions:
   pull-requests: read
+
 jobs:
-  deploy:
-    if: github.event.pull_request.merged == true
+  Deploy:
     runs-on: ubuntu-latest
+
     steps:        
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -20,11 +23,14 @@ jobs:
           
       - name: Login to Cloud Foundry
         run: |
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
-          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-          sudo apt-get update
-          sudo apt-get install cf8-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
+          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
+          echo "deb https://packages.cloudfoundry.org/debian stable main" \
+          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt update
+          sudo apt install cf-cli
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
+       
       - name: Clone and prepare projects & Build and deploy
         run: |
           git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
@@ -37,7 +43,7 @@ jobs:
           mv *.tgz ../incidents-app
           cd ../incidents-app
           npm i *.tgz
-
+      
       - name: Build and deploy
         run: |
           cd incidents-app
@@ -47,4 +53,4 @@ jobs:
           npm i @sap/cds-dk -g
           mbt build
           cf install-plugin multiapps -f
-          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f       
+          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
