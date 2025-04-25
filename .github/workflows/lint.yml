@@ -5,7 +5,10 @@ on:
     branches: [develop]
   pull_request:
     types: [opened, synchronize, reopened, auto_merge_enabled]
-
+    
+permissions:
+  contents: read
+  pull-requests: write
 concurrency:
   group: lint-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
