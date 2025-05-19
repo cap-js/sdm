@@ -45,7 +45,6 @@ describe("handlers", () => {
       const mockCredentials = { uri: "http://example.com/" };
 
       const mockResponse = { data: "mock pdf file content" };
-      const mockBuffer = (mockResponse.data, "binary");
 
       axios.get.mockResolvedValue(mockResponse);
 
