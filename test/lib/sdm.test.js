@@ -192,6 +192,10 @@ describe("SDMAttachmentsService", () => {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
+         res: {
+              setHeader: jest.fn(),
+              end: jest.fn(),
+            },
       };
       let cds = require("@sap/cds/lib");
       cds.context = {
@@ -208,10 +212,10 @@ describe("SDMAttachmentsService", () => {
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
-
       // set req in service instance
-      getURLFromAttachments.mockResolvedValueOnce(response);
-      readAttachment.mockResolvedValueOnce("dummy_content");
+     getURLFromAttachments.mockResolvedValueOnce(response);
+       fetchAccessToken.mockResolvedValueOnce("mocked_token");
+       readAttachment.mockResolvedValueOnce(Buffer.from("dummy_content"));
 
       await service.get(attachments, keys, req); // call get method
 
@@ -225,6 +229,9 @@ describe("SDMAttachmentsService", () => {
         token,
         service.creds
       );
+      expect(req.res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/octet-stream');
+        expect(req.res.setHeader).toHaveBeenCalledWith('Content-Length', expect.any(Number));
+        expect(req.res.end).toHaveBeenCalledWith(Buffer.from("dummy_content"));
     });
 
     it("should throw error if readAttachment fails", async () => {
@@ -233,7 +240,10 @@ describe("SDMAttachmentsService", () => {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
-        },
+        },res: {
+                        setHeader: jest.fn(),
+                        end: jest.fn(),
+                      },
       };
       let cds = require("@sap/cds/lib");
       cds.context = {
@@ -253,8 +263,8 @@ describe("SDMAttachmentsService", () => {
       const errorMessage = new Error("Attachment not found in the repository");
       errorMessage.code = 404;
     
-      getURLFromAttachments.mockResolvedValueOnce(response);
-      fetchAccessToken.mockResolvedValueOnce("mockToken");
+     getURLFromAttachments.mockResolvedValueOnce(response);
+            fetchAccessToken.mockResolvedValueOnce("mockToken");
       readAttachment.mockImplementationOnce(() => {
         throw errorMessage;
       });
@@ -273,7 +283,7 @@ describe("SDMAttachmentsService", () => {
         "mockToken", // Passing the mocked token value
         service.creds
       );
-    });
+          });
 
     it("should interact with DB, fetch access token and readAttachment with correct parameters when cache returns non-versioned repo type", async () => {
       NodeCache.prototype.get.mockImplementation(() => "non-versioned");
@@ -283,6 +293,10 @@ describe("SDMAttachmentsService", () => {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
           },
         },
+                 res: {
+                      setHeader: jest.fn(),
+                      end: jest.fn(),
+                    },
       };
       let cds = require("@sap/cds/lib");
       cds.context = {
@@ -299,11 +313,9 @@ describe("SDMAttachmentsService", () => {
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
-
-      // set req in service instance
-      getURLFromAttachments.mockResolvedValueOnce(response);
-      readAttachment.mockResolvedValueOnce("dummy_content");
-
+    getURLFromAttachments.mockResolvedValueOnce(response);
+             fetchAccessToken.mockResolvedValueOnce("mocked_token");
+             readAttachment.mockResolvedValueOnce(Buffer.from("dummy_content"));
       await service.get(attachments, keys, req); // call get method
 
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
@@ -316,6 +328,9 @@ describe("SDMAttachmentsService", () => {
         token,
         service.creds
       );
+      expect(req.res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/octet-stream');
+                    expect(req.res.setHeader).toHaveBeenCalledWith('Content-Length', expect.any(Number));
+                    expect(req.res.end).toHaveBeenCalledWith(Buffer.from("dummy_content"));
     });
   });
 

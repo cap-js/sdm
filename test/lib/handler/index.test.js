@@ -45,7 +45,7 @@ describe("handlers", () => {
       const mockCredentials = { uri: "http://example.com/" };
 
       const mockResponse = { data: "mock pdf file content" };
-      const mockBuffer = Buffer.from(mockResponse.data, "binary");
+      const mockBuffer = (mockResponse.data, "binary");
 
       axios.get.mockResolvedValue(mockResponse);
 
@@ -64,7 +64,7 @@ describe("handlers", () => {
         headers: { Authorization: `Bearer ${mockToken}` },
         responseType: "arraybuffer",
       });
-      expect(document).toEqual(mockBuffer);
+      expect(document).toEqual(mockResponse.data);
     });
 
     it("throws error on unsuccessful read", async () => {
