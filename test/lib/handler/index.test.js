@@ -1,5 +1,12 @@
 const axios = require("axios");
+const NodeCache = require("node-cache");
 jest.mock("axios");
+jest.mock("node-cache", () => {
+  return jest.fn().mockImplementation(() => ({
+    get: jest.fn(),
+    set: jest.fn(),
+  }));
+});
 let formDataMockedInstances = [];
 
 jest.mock("form-data", () => {
@@ -16,6 +23,9 @@ jest.mock("form-data", () => {
 jest.mock("../../../lib/util/index", () => {
   return {
     getConfigurations: jest.fn().mockReturnValue({ repositoryId: "123" }),
+    prepareSecondaryProperties: jest.fn(), // Add this mock
+    checkMCM: jest.fn(),
+    extractSecondaryTypeIds: jest.fn(),
   };
 });
 const { getConfigurations } = require("../../../lib/util/index");
@@ -28,8 +38,8 @@ const {
   createFolder,
   deleteFolderWithAttachments,
   getAttachment,
-  renameAttachment,
-  getRepositoryInfo
+  getRepositoryInfo,
+  updateAttachment
 } = require("../../../lib/handler/index");
 const { errorMessage } = require("../../../lib/util/messageConsts");
 
@@ -508,29 +518,201 @@ describe("handlers", () => {
     });
   });
 
-  describe("renameAttachment", () => {
+  describe("updateAttachment", () => {
+    let req, attachment, credentials, token, updatedSecondaryProperties, secondaryPropertiesWithInvalidDefinitions;
+  
     beforeEach(() => {
       jest.clearAllMocks();
+  
+      req = { reject: jest.fn() };
+      attachment = { url: "mockObjectId" };
+      credentials = { uri: "http://mock-uri/" };
+      token = "mockToken";
+      updatedSecondaryProperties = { "cmis:name": "newName", "custom:property": "value" };
+      secondaryPropertiesWithInvalidDefinitions = {};
+  
+      getConfigurations.mockReturnValue({ repositoryId: "mockRepoId" });
     });
+  
+    it("should update attachment successfully and return status code", async () => {
+      const mockSecondaryTypes = ["type1", "type2"];
+      const mockValidSecondaryProperties = ["cmis:namemock", "custom:property"];
+      const mockResponse = { status: 200 };
+    
+      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
+      axios.get.mockImplementation((url) => {
+        if (url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              {
+                type: { id: "cmis:secondary" },
+                children: [
+                  { type: { id: "type1" } },
+                  { type: { id: "type2" } },
+                ],
+              },
+            ],
+          });
+        } else if (url.includes("typeDefinition")) {
+          return Promise.resolve({ data: { propertyDefinitions: {} } });
+        }
+      });
 
-    it("returns response from updateServerRequest without error", async () => {
-      const modifiedAttachments = [{name:"name"}];
-      const credentials = {};
-      const token = "token";
-      axios.post.mockResolvedValue({'status' : 201});
-
-      const result = await renameAttachment(
-        modifiedAttachments,
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        // Simulate extracting secondary type IDs
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+    
+      // Mock checkMCM to validate secondary properties
+      require("../../../lib/util/index").checkMCM.mockImplementation((responseBody, validSecondaryProperties) => {
+        validSecondaryProperties.push("cmis:name", "custom:property");
+        return true;
+      });
+    
+      // Mock axios.post for updateServerRequest
+      axios.post.mockResolvedValue(mockResponse);
+    
+      const result = await updateAttachment(
+        req,
+        attachment,
         credentials,
         token,
+        updatedSecondaryProperties,
+        secondaryPropertiesWithInvalidDefinitions
       );
-      expect(result.status).toEqual(201);
-    });
-
-    it("calls getConfigurations", async () => {
-      await renameAttachment({}, {}, "", {});
-
+    
       expect(getConfigurations).toHaveBeenCalledTimes(1);
+      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
+      expect(axios.post).toHaveBeenCalledTimes(1);
+      expect(result).toBe(200);
+    });
+  
+    it("should throw an error if unsupported properties are found", async () => {
+      const mockSecondaryTypes = ["type1", "type2"];
+      const mockValidSecondaryProperties = ["cmis:name"];
+  
+      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
+      axios.get.mockImplementation((url) => {
+        if (url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }, { type: { id: "type2" } }] },
+            ],
+          });
+        } else if (url.includes("typeDefinition")) {
+          return Promise.resolve({ data: { propertyDefinitions: {} } });
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        // Simulate extracting secondary type IDs
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+  
+      // Mock checkMCM to validate secondary properties
+      require("../../../lib/util/index").checkMCM.mockImplementation((responseBody, validSecondaryProperties) => {
+        validSecondaryProperties.push("cmis:name");
+        return true;
+      });
+  
+      await expect(
+        updateAttachment(
+          req,
+          attachment,
+          credentials,
+          token,
+          updatedSecondaryProperties,
+          secondaryPropertiesWithInvalidDefinitions
+        )
+      ).rejects.toThrow("Unsupported properties custom:property");
+  
+      expect(getConfigurations).toHaveBeenCalledTimes(1);
+      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
+    });
+  
+    it("should return 500 if getSecondaryTypes throws an error", async () => {
+      // Mock axios.get to throw an error for getSecondaryTypes
+      axios.get.mockRejectedValue(new Error("Network error"));
+  
+      const result = await updateAttachment(
+        req,
+        attachment,
+        credentials,
+        token,
+        updatedSecondaryProperties,
+        secondaryPropertiesWithInvalidDefinitions
+      );
+  
+      expect(result).toBe(500);
+      expect(getConfigurations).toHaveBeenCalledTimes(1);
+    });
+  
+    it("should throw an error if updateServerRequest fails with a 400 status", async () => {
+      const mockSecondaryTypes = ["type1", "type2"];
+      const mockValidSecondaryProperties = ["cmis:name", "custom:property"];
+      const mockErrorResponse = {
+        response: {
+          status: 400,
+          json: jest.fn().mockResolvedValue({ message: "Bad Request" }),
+        },
+      };
+  
+      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
+      axios.get.mockImplementation((url) => {
+        if (url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }, { type: { id: "type2" } }] },
+            ],
+          });
+        } else if (url.includes("typeDefinition")) {
+          return Promise.resolve({ data: { propertyDefinitions: {} } });
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        // Simulate extracting secondary type IDs
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+  
+      // Mock checkMCM to validate secondary properties
+      require("../../../lib/util/index").checkMCM.mockImplementation((responseBody, validSecondaryProperties) => {
+        validSecondaryProperties.push("cmis:name", "custom:property");
+        return true;
+      });
+  
+      // Mock axios.post to throw a 400 error
+      axios.post.mockRejectedValue(mockErrorResponse);
+  
+      await expect(
+        updateAttachment(
+          req,
+          attachment,
+          credentials,
+          token,
+          updatedSecondaryProperties,
+          secondaryPropertiesWithInvalidDefinitions
+        )
+      ).rejects.toThrow("Could not update the attachment");
+  
+      expect(getConfigurations).toHaveBeenCalledTimes(1);
+      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
+      expect(axios.post).toHaveBeenCalledTimes(1);
     });
   });
 });
