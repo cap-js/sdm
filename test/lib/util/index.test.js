@@ -19,7 +19,6 @@ const {
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
-const { getExistingAttachments } = require("../../../lib/persistence");
 const { sdmAnnotationAdditionalproperty, sdmAnnotationAdditionalpropertyName } = require("../../../lib/util/messageConsts");
 
 jest.mock("../../../lib/persistence", () => ({

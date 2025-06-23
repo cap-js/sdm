@@ -1,5 +1,4 @@
 const axios = require("axios");
-const NodeCache = require("node-cache");
 jest.mock("axios");
 jest.mock("node-cache", () => {
   return jest.fn().mockImplementation(() => ({
@@ -535,8 +534,6 @@ describe("handlers", () => {
     });
   
     it("should update attachment successfully and return status code", async () => {
-      const mockSecondaryTypes = ["type1", "type2"];
-      const mockValidSecondaryProperties = ["cmis:namemock", "custom:property"];
       const mockResponse = { status: 200 };
     
       // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
@@ -593,8 +590,6 @@ describe("handlers", () => {
     });
   
     it("should throw an error if unsupported properties are found", async () => {
-      const mockSecondaryTypes = ["type1", "type2"];
-      const mockValidSecondaryProperties = ["cmis:name"];
   
       // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
       axios.get.mockImplementation((url) => {
@@ -658,8 +653,6 @@ describe("handlers", () => {
     });
   
     it("should throw an error if updateServerRequest fails with a 400 status", async () => {
-      const mockSecondaryTypes = ["type1", "type2"];
-      const mockValidSecondaryProperties = ["cmis:name", "custom:property"];
       const mockErrorResponse = {
         response: {
           status: 400,
