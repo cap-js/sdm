@@ -46,8 +46,6 @@ const {
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
-  renameFileErr,
-  renameOtherFilesErr,
   sdmRolesErrorMessage
 } = require("../../lib/util/messageConsts");
 
@@ -498,6 +496,7 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       req = {
+        reject: jest.fn(),
         data: {
           attachments: [{ ID: 'attachment1', filename: 'file1.txt' }]
         }
@@ -539,19 +538,20 @@ describe("SDMAttachmentsService", () => {
       );
     });
   
-    it('should throw an error if filename is null', async () => {
+    it('should call req.reject if filename is null', async () => {
       attachment.filename = null;
-  
-      await expect(
-        service.updateNonDraftAttachments(
-          req,
-          token,
-          attachment,
-          attachmentsEntity,
-          secondaryPropertiesWithInvalidDefinitions,
-          secondaryTypeProperties
-        )
-      ).rejects.toThrow('Filename cannot be empty');
+    
+      await service.updateNonDraftAttachments(
+        req,
+        token,
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties
+      );
+    
+      // Verify that req.reject was called with the correct arguments
+      expect(req.reject).toHaveBeenCalledWith(400, 'Filename cannot be empty');
     });
   
     it('should update the filename if it differs from the database', async () => {
@@ -607,25 +607,6 @@ describe("SDMAttachmentsService", () => {
         secondaryPropertiesWithInvalidDefinitions
       );
       expect(result).toEqual([]);
-    });
-
-    it('should throw an error if filenameInRequest is null', async () => {
-      getFileNameForAttachmentID.mockResolvedValue(null);
-      attachment.filename = null; // Simulate filenameInRequest being null
-  
-      await expect(
-        service.updateNonDraftAttachments(
-          req,
-          token,
-          attachment,
-          attachmentsEntity,
-          secondaryPropertiesWithInvalidDefinitions,
-          secondaryTypeProperties
-        )
-      ).rejects.toThrow('Filename cannot be empty');
-  
-      expect(updateAttachment).not.toHaveBeenCalled();
-      expect(service.replacePropertiesInAttachment).not.toHaveBeenCalled();
     });
   
     it('should handle a 403 response from updateAttachment', async () => {
@@ -845,7 +826,7 @@ describe("SDMAttachmentsService", () => {
         secondaryTypeProperties
       );
   
-      expect(result).toEqual([{ typeOfError: 'restricted characters', filenameInRequest: 'file1.txt' }]);
+      expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
       expect(service.replacePropertiesInAttachment).toHaveBeenCalledWith(
         req,
         'attachment1',
