@@ -14,12 +14,14 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Virus scanning : Provides the capability to support virus scan for virus scan enabled repositories.
 - Draft functionality : Provides the capability of working with draft attachments.
 - Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
+- Custom properties in attachments : Provides the capability to define custom properties for attachments in SDM.
 
 ### Table of Contents
 
 - [Pre-Requisites](#pre-requisites)
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
+- [Support for Custom Properties](#support-for-custom-properties)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Known Restrictions](#known-restrictions)
@@ -109,6 +111,62 @@ extend my.Incidents with { attachments: Composition of many Attachments }
 ```
 
 Create a SAP Document Management Integration Option [Service instance and key](https://help.sap.com/docs/document-management-service/sap-document-management-service/creating-service-instance-and-service-key). Using credentials from key [onboard a repository](https://help.sap.com/docs/document-management-service/sap-document-management-service/onboarding-repository). Configure the [REPOSITORY_ID](https://github.com/cap-js/incidents-app/blob/9327f550cde9f9666a1ffb3cbc727295b8d6fdb7/mta.yaml#L19) with the repository you want to use for deploying the application. Set the SDM instance name to match the SAP Document Management integration option instance you created in BTP and update this in the mta.yaml file under the  [srv module](https://github.com/cap-js/incidents-app/blob/9327f550cde9f9666a1ffb3cbc727295b8d6fdb7/mta.yaml#L13) and the [resources section](https://github.com/cap-js/incidents-app/blob/9327f550cde9f9666a1ffb3cbc727295b8d6fdb7/mta.yaml#L134) values in the mta.yaml. Currently only non versioned repositories are supported.
+
+## Support for Custom Properties
+
+Custom properties are supported via the usage of CMIS secondary type properties. Follow the below steps to add and use custom properties.
+
+1. If the repository does not contain secondary types and properties, create CMIS secondary types and properties using the [Create Secondary Type API](https://api.sap.com/api/CreateSecondaryTypeApi/overview). The property definition must contain the following section for the CAP plugin to process the property.
+
+   ```json
+   "mcm:miscellaneous": {        
+      "isPartOfTable": "true"  
+   } 
+   ```
+
+   With this, the secondary type and properties definition will be as per the sample given below
+
+      ```json
+      {
+         "id": "Working:DocumentInfo",
+         "displayName": "Document Info",
+         "baseId": "cmis:secondary",
+         "parentId": "cmis:secondary",
+         ...
+         },
+         "propertyDefinitions": {
+            "Working:DocumentInfoRecord": {
+                  "id": "Working:DocumentInfoRecord",
+                  "displayName": "Document Info Record",
+                  ...
+                  "mcm:miscellaneous": {     <-- Required section in the property definition
+                     "isPartOfTable": "true"
+                  }
+            }
+         }
+      }
+      ```
+
+2. Using secondary properties in CAP Application.
+   - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file. 
+   - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`. 
+   - In this field set the name of the secondary property in SDM. 
+   
+   Refer the following example from a sample Incidents Management app:
+
+      ```cds
+      extend Attachments with {
+         customProperty : String
+            @SDM.Attachments.AdditionalProperty: {
+               name: 'Working:DocumentInfoRecordString'
+            }  
+            @(title: 'DocumentInfoRecordString');
+      }
+      ```
+
+   > **Note**
+   >
+   > SDM supports secondary properties with data types `String`, `Boolean`, `Decimal`, `Integer` and `DateTime`.
 
 ## Deploying and testing the application
 
