@@ -11,11 +11,15 @@ on:
         description: 'Branch name for sdm.git repository'
         required: true
         default: 'develop'
+      incidents_app_branch:
+        description: 'Branch name for incidents-app.git repository'
+        required: true
+        default: 'sdmIncidents'
       applicationVersion:
         description: 'Version for the application deployment (updates manifest.json)'
         required: true
         default: '1.0.0'
-      REPOSITORY_ID: 
+      REPOSITORY_ID:
         description: 'ID of the repository for tracking/metadata (updates mta.yaml)'
         required: true
         default: 'default-repo-id'
@@ -47,7 +51,7 @@ jobs:
         run: |
           # --- Clone sdm and incidents-app repositories ---
           git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch local_deploy https://github.com/cap-js/incidents-app.git
+          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git
 
           # --- Move sdm package into incidents-app ---
           cd sdm
@@ -65,7 +69,7 @@ jobs:
           sudo apt-get install -y jq # For manifest.json
           # Install yq (Go version)
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod a+x /usr/local/bin/yq
+          sudo chmod a%x /usr/local/bin/yq
           echo "yq version: $(yq --version)"
 
 
@@ -85,7 +89,7 @@ jobs:
             echo "Successfully updated applicationVersion in $MANIFEST_FILE to $NEW_APP_VERSION"
           else
             echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
-            exit 1 # Fail the workflow if the manifest file is missing
+            exit 1
           fi
 
           # --- Update REPOSITORY_ID in mta.yaml ---
@@ -99,8 +103,6 @@ jobs:
             echo "--- Original mta.yaml REPOSITORY_ID (before update) ---"
             yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
 
-            # Update the REPOSITORY_ID using yq's 'eval' command with inplace editing (-i)
-            # Using double quotes for the value of yq e command to ensure variable expansion
             yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE"
             
             echo "--- Updated mta.yaml REPOSITORY_ID ---"
@@ -108,17 +110,18 @@ jobs:
             echo "Successfully updated REPOSITORY_ID in $MTA_FILE to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
-            exit 1 # Fail the workflow if the mta.yaml file is missing
+            exit 1
           fi
-
 
           # --- Install npm dependencies for incidents-app, including the sdm package ---
           npm i *.tgz
 
       - name: Build and deploy
+        # CRUCIAL FIX: Set the working directory for this step
+        working-directory: incidents-app
         run: |
-          # You should already be in the 'incidents-app' directory from the previous step.
-          echo "Current directory for build/deploy: $(pwd)"
+          # No need for 'cd incidents-app' here, as 'working-directory' handles it.
+          echo "Current directory for build/deploy: $(pwd)" # This will now correctly show .../incidents-app
 
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
