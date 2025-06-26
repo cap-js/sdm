@@ -6,23 +6,23 @@ on:
       cfspace:
         description: 'The Cloud Foundry space to deploy to'
         required: true
-        default: 'developcap'
+        default: 'cfdeploy_job'
       sdm_branch:
         description: 'Branch name for sdm.git repository'
         required: true
-        default: 'develop'
+        default: 'cfdeploy_job'
       incidents_app_branch:
         description: 'Branch name for incidents-app.git repository'
         required: true
-        default: 'sdmIncidents'
+        default: 'local_deploy'
       applicationVersion:
         description: 'Version for the application deployment (updates manifest.json)'
         required: true
-        default: '1.0.0'
+        default: '0.0.9'
       REPOSITORY_ID:
         description: 'ID of the repository for tracking/metadata (updates mta.yaml)'
         required: true
-        default: 'default-repo-id'
+        default: '7b9b33a9-0606-4caf-bb61-1d810de9a6b2'
 
 permissions:
   pull-requests: read
