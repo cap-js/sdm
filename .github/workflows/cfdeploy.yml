@@ -71,10 +71,18 @@ jobs:
           NEW_APP_VERSION="${{ github.event.inputs.applicationVersion }}"
 
           if [ -f "$MANIFEST_FILE" ]; then
+            echo "--- Full manifest.json content (BEFORE update) ---" # Explicit label
+            cat "$MANIFEST_FILE"
+            echo "--- Original manifest.json applicationVersion value (BEFORE update) ---" # Explicit label
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
+            
             jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
             mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
-            echo "--- Updated manifest.json content ---" # New line
-            cat "$MANIFEST_FILE" # New line
+            
+            echo "--- Full manifest.json content (AFTER update) ---" # Explicit label
+            cat "$MANIFEST_FILE" # This will now show the full content
+            echo "--- Updated manifest.json applicationVersion value (AFTER update) ---" # Explicit label
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
             echo "Updated manifest.json: applicationVersion set to $NEW_APP_VERSION"
           else
             echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
@@ -87,9 +95,18 @@ jobs:
           MTA_PATH_TO_UPDATE='.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' 
 
           if [ -f "$MTA_FILE" ]; then
-            yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE"
-            echo "--- Updated mta.yaml content ---" # New line
-            cat "$MTA_FILE" # New line
+            echo "--- Full mta.yaml content (BEFORE update) ---" # Explicit label
+            cat "$MTA_FILE"
+            echo "--- Original mta.yaml REPOSITORY_ID value (BEFORE update) ---" # Explicit label
+            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
+
+            # Perform the update, redirecting yq's own output to null
+            yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE" > /dev/null 2>&1 # CRITICAL FIX: Redirect yq output
+            
+            echo "--- Full mta.yaml content (AFTER update) ---" # Explicit label
+            cat "$MTA_FILE" # This will now show the full content
+            echo "--- Updated mta.yaml REPOSITORY_ID value (AFTER update) ---" # Explicit label
+            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE"
             echo "Updated mta.yaml: REPOSITORY_ID set to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
