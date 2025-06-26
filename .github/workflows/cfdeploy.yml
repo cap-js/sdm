@@ -15,6 +15,13 @@ on:
         description: 'Branch name for cap incidents-app.git repository'
         required: true
         default: 'sdmIncidents' 
+      applicationVersion: 
+        description: 'Version for the application deployment'
+        required: true
+        default: '1.0.0'
+      REPOSITORY_ID: 
+        description: 'ID of the repository'
+        required: true
 
 # permissions:
 #   pull-requests: read # This is usually not needed for deploy workflows unless PR status is updated
