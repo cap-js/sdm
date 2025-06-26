@@ -46,7 +46,6 @@ jobs:
           sudo apt update
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
-
       - name: Clone projects & Update manifest/mta files
         run: |
           echo "Cloning repositories and preparing files..."
@@ -54,7 +53,7 @@ jobs:
           git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git > /dev/null 2>&1
 
           cd sdm
-          npm pack --silent > /dev/null # Quiet npm pack
+          npm pack --silent > /dev/null
           mv *.tgz ../incidents-app
           
           cd ../incidents-app
@@ -74,6 +73,8 @@ jobs:
           if [ -f "$MANIFEST_FILE" ]; then
             jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
             mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+            echo "--- Updated manifest.json content ---" # New line
+            cat "$MANIFEST_FILE" # New line
             echo "Updated manifest.json: applicationVersion set to $NEW_APP_VERSION"
           else
             echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
@@ -87,6 +88,8 @@ jobs:
 
           if [ -f "$MTA_FILE" ]; then
             yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE"
+            echo "--- Updated mta.yaml content ---" # New line
+            cat "$MTA_FILE" # New line
             echo "Updated mta.yaml: REPOSITORY_ID set to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
@@ -94,7 +97,8 @@ jobs:
           fi
 
           # --- Install npm dependencies for incidents-app, including the sdm package ---
-          npm i *.tgz --silent # Quiet npm install
+          npm i *.tgz --silent
+     
 
       # - name: Build and deploy
       #   working-directory: incidents-app
