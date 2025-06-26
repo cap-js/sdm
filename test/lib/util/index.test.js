@@ -5,15 +5,21 @@ const jwt = require('jsonwebtoken');
 const {
   fetchAccessToken,
   getConfigurations,
-  checkAttachmentsToRename,
   isRepositoryVersioned,
   getClientCredentialsToken,
   isRestrictedCharactersInName,
   getStatusCondition,
+  getPropertyTitles,
+  getSecondaryPropertiesWithInvalidDefinition,
+  getSecondaryTypeProperties,
+  getUpdatedSecondaryProperties,
+  extractSecondaryTypeIds,
+  checkMCM,
+  prepareSecondaryProperties
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
-const { getExistingAttachments } = require("../../../lib/persistence");
+const { sdmAnnotationAdditionalproperty, sdmAnnotationAdditionalpropertyName } = require("../../../lib/util/messageConsts");
 
 jest.mock("../../../lib/persistence", () => ({
   getExistingAttachments: jest.fn(),
@@ -360,51 +366,6 @@ describe("util", () => {
         });
   });
 
-  describe("checkAttachmentsToRename", () => {
-    it("should do nothing if attachment_val_rename is empty", async () => {
-      let attachment_val_rename = [];
-      let attachmentIDs = [];
-      let attachments = [];
-      await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
-      expect(getExistingAttachments).not.toBeCalled();
-    });
-
-    it("should call getExistingAttachments if attachment_val_rename is not empty", async () => {
-      let attachment_val_rename = [
-        {
-          ID: 1,
-          filename: "name1",
-          url: "url1",
-        },
-        {
-          ID: 2,
-          filename: "name2",
-          url: "url2",
-        },
-      ];
-      let attachmentIDs = ["1", "2"];
-      let attachments = ["attachments1", "attachments2"];
-      const existingAttachments = [
-        {
-          ID: 1,
-          filename: "Old_File.pdf",
-          folderId: "folder1",
-        },
-        {
-          ID: 2,
-          filename: "Another_Old_File.pdf",
-          folderId: "folder2",
-        },
-      ];      
-
-      getExistingAttachments.mockResolvedValueOnce(existingAttachments);
-
-      await checkAttachmentsToRename(attachment_val_rename, attachmentIDs, attachments)
-
-      expect(getExistingAttachments).toBeCalled();
-    });
-  });
-
   describe("isRestrictedCharactersInName", () => {
     it("should return true if the filename contains a forward slash", () => {
       const filename = "file/name";
@@ -451,6 +412,599 @@ describe("util", () => {
     it('should return undefined for unknown status code', () => {
       const result = getStatusCondition(500); // Example of a status that isn't handled specifically
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe("getPropertyTitles", () => {
+    it("should return an empty map if attachmentEntity is null", () => {
+      const attachmentEntity = null;
+      const attachment = { key1: "value1" };
+  
+      const result = getPropertyTitles(attachmentEntity, attachment);
+  
+      expect(result).toEqual({});
+    });
+  
+    it("should return a map with property names and titles when annotations are present", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+            "@title": "Title 1",
+            name: "key1",
+          },
+          key2: {
+            [sdmAnnotationAdditionalpropertyName]: "property2",
+            "@title": "Title 2",
+            name: "key2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getPropertyTitles(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        property1: "Title 1",
+        property2: "Title 2",
+      });
+    });
+  
+    it("should fallback to element name if @title annotation is not present", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+            name: "key1",
+          },
+          key2: {
+            [sdmAnnotationAdditionalpropertyName]: "property2",
+            "@title": "Title 2",
+            name: "key2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getPropertyTitles(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        property1: "key1",
+        property2: "Title 2",
+      });
+    });
+  
+    it("should skip keys without property names", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+            "@title": "Title 1",
+            name: "key1",
+          },
+          key2: {
+            "@title": "Title 2",
+            name: "key2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getPropertyTitles(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        property1: "Title 1",
+      });
+    });
+  
+    it("should return an empty map if attachment has no matching keys in attachmentEntity", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+            "@title": "Title 1",
+            name: "key1",
+          },
+        },
+      };
+      const attachment = { key2: "value2" };
+  
+      const result = getPropertyTitles(attachmentEntity, attachment);
+  
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("getSecondaryPropertiesWithInvalidDefinition", () => {
+    it("should return an empty object if attachmentEntity is null", () => {
+      const attachmentEntity = null;
+      const attachment = { key1: "value1" };
+  
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+  
+      expect(result).toEqual({});
+    });
+  
+    it("should return an empty object if no keys in attachment have outdated annotations", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            "@title": "Title 1",
+          },
+          key2: {
+            name: "key2",
+            "@title": "Title 2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+  
+      expect(result).toEqual({});
+    });
+  
+    it("should return a map of invalid properties with their titles when outdated annotations are present", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            "@title": "Title 1",
+            [sdmAnnotationAdditionalproperty]: true,
+          },
+          key2: {
+            name: "key2",
+            "@title": "Title 2",
+            [sdmAnnotationAdditionalproperty]: true,
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        key1: "Title 1",
+        key2: "Title 2",
+      });
+    });
+  
+    it("should fallback to element name if @title annotation is not present", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            [sdmAnnotationAdditionalproperty]: true,
+          },
+          key2: {
+            name: "key2",
+            "@title": "Title 2",
+            [sdmAnnotationAdditionalproperty]: true,
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        key1: "key1",
+        key2: "Title 2",
+      });
+    });
+  
+    it("should skip keys in attachment that do not exist in attachmentEntity.elements", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            "@title": "Title 1",
+            [sdmAnnotationAdditionalproperty]: true,
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" }; // key2 does not exist in attachmentEntity.elements
+  
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+  
+      expect(result).toEqual({
+        key1: "Title 1",
+      });
+    });
+  });
+
+  describe("getSecondaryTypeProperties", () => {
+    it("should return an empty map if attachmentEntity is null", () => {
+      const attachmentEntity = null;
+      const attachment = { key1: "value1" };
+  
+      const result = getSecondaryTypeProperties(attachmentEntity, attachment);
+  
+      expect(result.size).toBe(0); // Map should be empty
+    });
+  
+    it("should return an empty map if no keys in attachment have annotations", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+          },
+          key2: {
+            name: "key2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryTypeProperties(attachmentEntity, attachment);
+  
+      expect(result.size).toBe(0); // Map should be empty
+    });
+  
+    it("should return a map of secondary type properties when annotations are present", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+          },
+          key2: {
+            name: "key2",
+            [sdmAnnotationAdditionalpropertyName]: "property2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryTypeProperties(attachmentEntity, attachment);
+  
+      expect(result.size).toBe(2);
+      expect(result.get("key1")).toBe("property1");
+      expect(result.get("key2")).toBe("property2");
+    });
+  
+    it("should skip keys in attachment that do not exist in attachmentEntity.elements", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" }; // key2 does not exist in attachmentEntity.elements
+  
+      const result = getSecondaryTypeProperties(attachmentEntity, attachment);
+  
+      expect(result.size).toBe(1);
+      expect(result.get("key1")).toBe("property1");
+      expect(result.has("key2")).toBe(false); // key2 should not be in the map
+    });
+  
+    it("should handle cases where annotations are missing for some keys", () => {
+      const attachmentEntity = {
+        elements: {
+          key1: {
+            name: "key1",
+            [sdmAnnotationAdditionalpropertyName]: "property1",
+          },
+          key2: {
+            name: "key2",
+          },
+        },
+      };
+      const attachment = { key1: "value1", key2: "value2" };
+  
+      const result = getSecondaryTypeProperties(attachmentEntity, attachment);
+  
+      expect(result.size).toBe(1);
+      expect(result.get("key1")).toBe("property1");
+      expect(result.has("key2")).toBe(false); // key2 should not be in the map
+    });
+  });
+
+  describe("getUpdatedSecondaryProperties", () => {
+    it("should return an empty object if there are no differences between attachment and database values", () => {
+      const attachment = { property1: "value1", property2: "value2" };
+      const secondaryTypeProperties = new Map([
+        ["property1", "dbProperty1"],
+        ["property2", "dbProperty2"],
+      ]);
+      const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({});
+    });
+  
+    it("should update properties when attachment value is null and database value is not null", () => {
+      const attachment = { property1: null, property2: "value2" };
+      const secondaryTypeProperties = new Map([
+        ["property1", "dbProperty1"],
+        ["property2", "dbProperty2"],
+      ]);
+      const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({ dbProperty1: null });
+    });
+  
+    it("should update properties when attachment value differs from database value", () => {
+      const attachment = { property1: "newValue1", property2: "value2" };
+      const secondaryTypeProperties = new Map([
+        ["property1", "dbProperty1"],
+        ["property2", "dbProperty2"],
+      ]);
+      const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({ dbProperty1: "newValue1" });
+    });
+  
+    it("should handle cases where database value is null and attachment value is not null", () => {
+      const attachment = { property1: "value1", property2: "value2" };
+      const secondaryTypeProperties = new Map([
+        ["property1", "dbProperty1"],
+        ["property2", "dbProperty2"],
+      ]);
+      const propertiesInDB = { dbProperty1: null, dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({ dbProperty1: "value1" });
+    });
+  
+    it("should handle cases where both attachment and database values are null", () => {
+      const attachment = { property1: null, property2: "value2" };
+      const secondaryTypeProperties = new Map([
+        ["property1", "dbProperty1"],
+        ["property2", "dbProperty2"],
+      ]);
+      const propertiesInDB = { dbProperty1: null, dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({});
+    });
+  
+    it("should handle cases where secondaryTypeProperties is empty", () => {
+      const attachment = { property1: "value1", property2: "value2" };
+      const secondaryTypeProperties = new Map(); // Empty map
+      const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
+  
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+  
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("extractSecondaryTypeIds", () => {
+    it("should extract type IDs from a flat JSON array", () => {
+      const jsonArray = [
+        { type: { id: "type1" } },
+        { type: { id: "type2" } },
+        { type: { id: "type3" } },
+      ];
+      const result = [];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual(["type1", "type2", "type3"]);
+    });
+  
+    it("should extract type IDs from a nested JSON array", () => {
+      const jsonArray = [
+        {
+          type: { id: "type1" },
+          children: [
+            { type: { id: "type2" } },
+            { type: { id: "type3" } },
+          ],
+        },
+        { type: { id: "type4" } },
+      ];
+      const result = [];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual(["type1", "type2", "type3", "type4"]);
+    });
+  
+    it("should handle JSON objects without a type ID", () => {
+      const jsonArray = [
+        { type: { id: "type1" } },
+        { type: {} }, // No ID
+        { children: [{ type: { id: "type2" } }] }, // Nested with valid ID
+      ];
+      const result = [];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual(["type1", "type2"]);
+    });
+  
+    it("should handle an empty JSON array", () => {
+      const jsonArray = [];
+      const result = [];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual([]);
+    });
+  
+    it("should handle a JSON array with no valid type IDs", () => {
+      const jsonArray = [
+        { type: {} },
+        { children: [{ type: {} }] },
+      ];
+      const result = [];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual([]);
+    });
+  
+    it("should not modify the result array if no type IDs are found", () => {
+      const jsonArray = [
+        { type: {} },
+        { children: [{ type: {} }] },
+      ];
+      const result = ["existingType"];
+  
+      extractSecondaryTypeIds(jsonArray, result);
+  
+      expect(result).toEqual(["existingType"]);
+    });
+  });
+
+  describe("checkMCM", () => {
+    it("should return false if responseBody is null or empty", () => {
+      const responseBody = "";
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  
+    it("should return false if responseBody does not contain propertyDefinitions", () => {
+      const responseBody = JSON.stringify({ someOtherKey: {} });
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  
+    it("should return false if propertyDefinitions is null or undefined", () => {
+      const responseBody = JSON.stringify({ propertyDefinitions: null });
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  
+    it("should return true and add keys to secondaryPropertyIds if isPartOfTable is 'true'", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          key1: { "mcm:miscellaneous": { isPartOfTable: "true" } },
+          key2: { "mcm:miscellaneous": { isPartOfTable: "false" } },
+          key3: { "mcm:miscellaneous": { isPartOfTable: "true" } },
+        },
+      });
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(true);
+      expect(secondaryPropertyIds).toEqual(["key1", "key3"]);
+    });
+  
+    it("should return false if no properties have isPartOfTable set to 'true'", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          key1: { "mcm:miscellaneous": { isPartOfTable: "false" } },
+          key2: { "mcm:miscellaneous": { isPartOfTable: "false" } },
+        },
+      });
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  
+    it("should handle cases where propertyDefinitions has no mcm:miscellaneous key", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          key1: {},
+          key2: { "mcm:miscellaneous": { isPartOfTable: "false" } },
+        },
+      });
+      const secondaryPropertyIds = [];
+  
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+  
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  
+    it("should handle invalid JSON in responseBody", () => {
+      const responseBody = "invalid JSON";
+      const secondaryPropertyIds = [];
+  
+      expect(() => checkMCM(responseBody, secondaryPropertyIds)).toThrow(SyntaxError);
+    });
+  });
+
+  describe("prepareSecondaryProperties", () => {
+    let formData;
+  
+    beforeEach(() => {
+      formData = {
+        append: jest.fn(), // Mock the append method
+      };
+    });
+  
+    it("should append secondary properties to FormData", () => {
+      const secondaryProperties = {
+        key1: "value1",
+        key2: "value2",
+      };
+  
+      prepareSecondaryProperties(formData, secondaryProperties);
+  
+      expect(formData.append).toHaveBeenCalledTimes(4);
+      expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "key1");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "value1");
+      expect(formData.append).toHaveBeenCalledWith("propertyId[2]", "key2");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value2");
+    });
+  
+    it("should handle the 'filename' key and map it to 'cmis:name'", () => {
+      const secondaryProperties = {
+        filename: "testFileName",
+      };
+  
+      prepareSecondaryProperties(formData, secondaryProperties);
+  
+      expect(formData.append).toHaveBeenCalledTimes(2);
+      expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "cmis:name");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "testFileName");
+    });
+  
+    it("should handle an empty secondaryProperties object", () => {
+      const secondaryProperties = {};
+  
+      prepareSecondaryProperties(formData, secondaryProperties);
+  
+      expect(formData.append).not.toHaveBeenCalled();
+    });
+  
+    it("should handle multiple secondary properties including 'filename'", () => {
+      const secondaryProperties = {
+        filename: "testFileName",
+        key1: "value1",
+        key2: "value2",
+      };
+  
+      prepareSecondaryProperties(formData, secondaryProperties);
+  
+      expect(formData.append).toHaveBeenCalledTimes(6);
+      expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "cmis:name");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "testFileName");
+      expect(formData.append).toHaveBeenCalledWith("propertyId[2]", "key1");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value1");
+      expect(formData.append).toHaveBeenCalledWith("propertyId[3]", "key2");
+      expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
     });
   });
 });
