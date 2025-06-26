@@ -48,7 +48,22 @@ jobs:
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
       - name: Clone projects & Update manifest/mta files
         run: |
-          # ... (unchanged clone, cd, install jq/yq parts) ...
+          echo "Cloning repositories and preparing files..."
+          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git > /dev/null 2>&1
+          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git > /dev/null 2>&1
+
+          cd sdm
+          npm pack --silent > /dev/null
+          mv *.tgz ../incidents-app
+          
+          cd ../incidents-app
+
+          # Install jq and yq quietly
+          sudo apt-get update -qq
+          sudo apt-get install -y jq -qq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          echo "jq and yq tools installed."
 
           # --- Update applicationVersion in app/incidents/webapp/manifest.json ---
           MANIFEST_FILE="app/incidents/webapp/manifest.json"
