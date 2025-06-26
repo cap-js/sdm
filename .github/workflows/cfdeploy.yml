@@ -11,18 +11,14 @@ on:
         description: 'Branch name for sdm.git repository'
         required: true
         default: 'develop'
-      incidents_app_branch:
-        description: 'Branch name for incidents-app.git repository'
-        required: true
-        default: 'sdmIncidents'
       applicationVersion:
         description: 'Version for the application deployment (updates manifest.json)'
         required: true
         default: '1.0.0'
-      REPOSITORY_ID: # NEW INPUT
+      REPOSITORY_ID: 
         description: 'ID of the repository for tracking/metadata (updates mta.yaml)'
-        required: true # Making this required as it's directly used for modification
-        default: 'default-repo-id' # Example default, adjust as needed
+        required: true
+        default: 'default-repo-id'
 
 permissions:
   pull-requests: read
@@ -51,7 +47,7 @@ jobs:
         run: |
           # --- Clone sdm and incidents-app repositories ---
           git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git
+          git clone --single-branch --branch local_deploy https://github.com/cap-js/incidents-app.git
 
           # --- Move sdm package into incidents-app ---
           cd sdm
