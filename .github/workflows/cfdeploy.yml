@@ -69,7 +69,7 @@ jobs:
           sudo apt-get install -y jq # For manifest.json
           # Install yq (Go version)
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod a%x /usr/local/bin/yq
+          sudo chmod a+x /usr/local/bin/yq
           echo "yq version: $(yq --version)"
 
 
