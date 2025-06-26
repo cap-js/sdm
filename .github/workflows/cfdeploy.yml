@@ -6,7 +6,7 @@ on:
       cfspace:
         description: 'The Cloud Foundry space to deploy to'
         required: true
-        default: 'cfdeploy_job'
+        default: 'yash'
       sdm_branch:
         description: 'Branch name for sdm.git repository'
         required: true
@@ -69,7 +69,7 @@ jobs:
           sudo apt-get install -y jq # For manifest.json
           # Install yq (Go version)
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod a+x /usr/local/bin/yq
+          sudo chmod a+x /usr/local/bin/yq # Corrected 'a%x' to 'a+x'
           echo "yq version: $(yq --version)"
 
 
@@ -77,21 +77,23 @@ jobs:
           MANIFEST_FILE="app/incidents/webapp/manifest.json"
           NEW_APP_VERSION="${{ github.event.inputs.applicationVersion }}"
 
-          echo "DEBUG: Input applicationVersion value for manifest: '$NEW_APP_VERSION'"
+          echo "DEBUG: Input applicationVersion value for manifest: '$NEW_APP_VERSION'" # Added debug line
+
           if [ -f "$MANIFEST_FILE" ]; then
-            echo "--- Full manifest.json content BEFORE update ---"
-            cat "$MANIFEST_FILE"
+            echo "--- Full manifest.json content BEFORE update ---" # Debug output
+            cat "$MANIFEST_FILE" # Debug output
 
             echo "--- Original manifest.json applicationVersion (before update) ---"
             jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
             
+            # --- CRITICAL FIX HERE: Use --arg to pass NEW_APP_VERSION to jq ---
             jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
             mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
             
             echo "--- Updated manifest.json applicationVersion ---"
             jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
-            echo "--- Full manifest.json content AFTER update ---"
-            cat "$MANIFEST_FILE"
+            echo "--- Full manifest.json content AFTER update ---" # Debug output
+            cat "$MANIFEST_FILE" # Debug output
             echo "Successfully updated applicationVersion in $MANIFEST_FILE to $NEW_APP_VERSION"
           else
             echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
@@ -102,8 +104,8 @@ jobs:
           MTA_FILE="mta.yaml"
           NEW_REPO_ID="${{ github.event.inputs.REPOSITORY_ID }}"
           
-          # CRITICAL FIX: Corrected path for REPOSITORY_ID in mta.yaml
-          MTA_PATH_TO_UPDATE=".modules.incidents-srv.properties.REPOSITORY_ID" 
+          # IMPORTANT: Adjust this path '.parameters.REPOSITORY_ID' if your REPOSITORY_ID is elsewhere in mta.yaml
+          MTA_PATH_TO_UPDATE=".parameters.REPOSITORY_ID" 
 
           if [ -f "$MTA_FILE" ]; then
             echo "--- Original mta.yaml REPOSITORY_ID (before update) ---"
@@ -113,16 +115,16 @@ jobs:
             
             echo "--- Updated mta.yaml REPOSITORY_ID ---"
             yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE"
-            echo "--- Full mta.yaml content AFTER update ---"
-            cat "$MTA_FILE"
+            echo "--- Full mta.yaml content AFTER update ---" # Debug output
+            cat "$MTA_FILE" # Debug output
             echo "Successfully updated REPOSITORY_ID in $MTA_FILE to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
             exit 1
           fi
 
-      #     # --- Install npm dependencies for incidents-app, including the sdm package ---
-      #     npm i *.tgz
+          # --- Install npm dependencies for incidents-app, including the sdm package ---
+          npm i *.tgz
 
       # - name: Build and deploy
       #   working-directory: incidents-app
