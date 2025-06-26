@@ -6,21 +6,29 @@ on:
       cfspace:
         description: 'The Cloud Foundry space to deploy to'
         required: true
-        default: 'developcap'  # You can set a default value if needed
+        default: 'developcap' 
+      sdm_branch: 
+        description: 'Branch name for cap sdm.git repository'
+        required: true
+        default: 'develop' 
+      incidents_app_branch: 
+        description: 'Branch name for cap incidents-app.git repository'
+        required: true
+        default: 'sdmIncidents' 
 
-permissions:
-  pull-requests: read
+# permissions:
+#   pull-requests: read # This is usually not needed for deploy workflows unless PR status is updated
 
 jobs:
   Deploy:
     runs-on: ubuntu-latest
 
-    steps:        
+    steps:
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x  
-          
+          node-version: 20.x
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -30,11 +38,13 @@ jobs:
           sudo apt update
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
-       
-      - name: Clone and prepare projects & Build and deploy
+
+      - name: Clone and prepare projects & Build
         run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          # Use the user-provided branch names from workflow_dispatch inputs
+          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
+          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git
+          
           cd sdm
           npm pack
           echo "Current directory"
@@ -43,10 +53,9 @@ jobs:
           mv *.tgz ../incidents-app
           cd ../incidents-app
           npm i *.tgz
-      
-      - name: Build and deploy
+
+      - name: Build and deploy 
         run: |
-          cd incidents-app
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
