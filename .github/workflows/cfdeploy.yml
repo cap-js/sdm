@@ -47,51 +47,34 @@ jobs:
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
 
-      - name: Clone and prepare projects & Update manifest/mta files
+      - name: Clone projects & Update manifest/mta files
         run: |
-          # --- Clone sdm and incidents-app repositories ---
-          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git
+          echo "Cloning repositories and preparing files..."
+          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git > /dev/null 2>&1
+          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git > /dev/null 2>&1
 
-          # --- Move sdm package into incidents-app ---
           cd sdm
-          npm pack
-          echo "Current directory (sdm): $(pwd)"
-          ls -l
+          npm pack --silent > /dev/null # Quiet npm pack
           mv *.tgz ../incidents-app
-
-          # --- Navigate to incidents-app root (where mta.yaml and manifest.json are relative to) ---
+          
           cd ../incidents-app
-          echo "Current directory (incidents-app): $(pwd)"
 
-          # --- Install jq (for manifest.json) and yq (for mta.yaml) ---
-          sudo apt-get update
-          sudo apt-get install -y jq # For manifest.json
-          # Install yq (Go version)
+          # Install jq and yq quietly
+          sudo apt-get update -qq
+          sudo apt-get install -y jq -qq
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod a+x /usr/local/bin/yq
-          echo "yq version: $(yq --version)"
+          echo "jq and yq tools installed."
 
 
           # --- Update applicationVersion in app/incidents/webapp/manifest.json ---
           MANIFEST_FILE="app/incidents/webapp/manifest.json"
           NEW_APP_VERSION="${{ github.event.inputs.applicationVersion }}"
 
-          echo "DEBUG: Input applicationVersion value for manifest: '$NEW_APP_VERSION'"
           if [ -f "$MANIFEST_FILE" ]; then
-            echo "--- Full manifest.json content (A) BEFORE any update attempts ---"
-            cat "$MANIFEST_FILE"
-            echo "--- Original manifest.json applicationVersion (A) ---"
-            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
-            
             jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
             mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
-            
-            echo "--- Full manifest.json content (B) AFTER jq update ---"
-            cat "$MANIFEST_FILE"
-            echo "--- Updated manifest.json applicationVersion (B) ---"
-            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
-            echo "Successfully updated applicationVersion in $MANIFEST_FILE to $NEW_APP_VERSION"
+            echo "Updated manifest.json: applicationVersion set to $NEW_APP_VERSION"
           else
             echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
             exit 1
@@ -100,39 +83,18 @@ jobs:
           # --- Update REPOSITORY_ID in mta.yaml ---
           MTA_FILE="mta.yaml"
           NEW_REPO_ID="${{ github.event.inputs.REPOSITORY_ID }}"
-          
-          # CRITICAL FIX: Corrected yq path for REPOSITORY_ID in mta.yaml
           MTA_PATH_TO_UPDATE='.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' 
 
           if [ -f "$MTA_FILE" ]; then
-            echo "--- Full mta.yaml content (C) BEFORE update ---"
-            cat "$MTA_FILE"
-            echo "--- Original mta.yaml REPOSITORY_ID (C) ---"
-            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
-
-            # Update the REPOSITORY_ID using yq's 'eval' command with inplace editing (-i)
             yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE"
-            
-            echo "--- Full mta.yaml content (D) AFTER yq update ---"
-            cat "$MTA_FILE"
-            echo "--- Updated mta.yaml REPOSITORY_ID (D) ---"
-            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE"
-            echo "Successfully updated REPOSITORY_ID in $MTA_FILE to $NEW_REPO_ID"
+            echo "Updated mta.yaml: REPOSITORY_ID set to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
             exit 1
           fi
 
           # --- Install npm dependencies for incidents-app, including the sdm package ---
-          echo "--- manifest.json content (E) BEFORE npm i *.tgz ---"
-          cat "$MANIFEST_FILE"
-          jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
-
-          npm i *.tgz
-
-          echo "--- manifest.json content (F) AFTER npm i *.tgz ---"
-          cat "$MANIFEST_FILE"
-          jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
+          npm i *.tgz --silent # Quiet npm install
 
       # - name: Build and deploy
       #   working-directory: incidents-app
