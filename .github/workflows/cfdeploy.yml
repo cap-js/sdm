@@ -6,25 +6,26 @@ on:
       cfspace:
         description: 'The Cloud Foundry space to deploy to'
         required: true
-        default: 'developcap' 
-      sdm_branch: 
-        description: 'Branch name for cap sdm.git repository'
+        default: 'developcap'
+      sdm_branch:
+        description: 'Branch name for sdm.git repository'
         required: true
-        default: 'develop' 
-      incidents_app_branch: 
-        description: 'Branch name for cap incidents-app.git repository'
+        default: 'develop'
+      incidents_app_branch:
+        description: 'Branch name for incidents-app.git repository'
         required: true
-        default: 'sdmIncidents' 
-      applicationVersion: 
-        description: 'Version for the application deployment'
+        default: 'sdmIncidents'
+      applicationVersion:
+        description: 'Version for the application deployment (updates manifest.json)'
         required: true
         default: '1.0.0'
-      REPOSITORY_ID: 
-        description: 'ID of the repository'
-        required: true
+      REPOSITORY_ID: # NEW INPUT
+        description: 'ID of the repository for tracking/metadata (updates mta.yaml)'
+        required: true # Making this required as it's directly used for modification
+        default: 'default-repo-id' # Example default, adjust as needed
 
-# permissions:
-#   pull-requests: read # This is usually not needed for deploy workflows unless PR status is updated
+permissions:
+  pull-requests: read
 
 jobs:
   Deploy:
@@ -46,23 +47,83 @@ jobs:
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
 
-      - name: Clone and prepare projects & Build
+      - name: Clone and prepare projects & Update manifest/mta files
         run: |
-          # Use the user-provided branch names from workflow_dispatch inputs
+          # --- Clone sdm and incidents-app repositories ---
           git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
           git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git
-          
+
+          # --- Move sdm package into incidents-app ---
           cd sdm
           npm pack
-          echo "Current directory"
-          pwd
-          ls
+          echo "Current directory (sdm): $(pwd)"
+          ls -l
           mv *.tgz ../incidents-app
+
+          # --- Navigate to incidents-app root ---
           cd ../incidents-app
+          echo "Current directory (incidents-app): $(pwd)"
+
+          # --- Install jq (for manifest.json) and yq (for mta.yaml) ---
+          sudo apt-get update
+          sudo apt-get install -y jq # For manifest.json
+          # Install yq (Go version)
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          echo "yq version: $(yq --version)"
+
+
+          # --- Update applicationVersion in app/incidents/webapp/manifest.json ---
+          MANIFEST_FILE="app/incidents/webapp/manifest.json"
+          NEW_APP_VERSION="${{ github.event.inputs.applicationVersion }}"
+
+          if [ -f "$MANIFEST_FILE" ]; then
+            echo "--- Original manifest.json applicationVersion (before update) ---"
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
+            
+            jq '."sap.app".applicationVersion.version = env.NEW_APP_VERSION' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
+            mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+            
+            echo "--- Updated manifest.json applicationVersion ---"
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
+            echo "Successfully updated applicationVersion in $MANIFEST_FILE to $NEW_APP_VERSION"
+          else
+            echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
+            exit 1 # Fail the workflow if the manifest file is missing
+          fi
+
+          # --- Update REPOSITORY_ID in mta.yaml ---
+          MTA_FILE="mta.yaml"
+          NEW_REPO_ID="${{ github.event.inputs.REPOSITORY_ID }}"
+          
+          # IMPORTANT: Adjust this path '.parameters.REPOSITORY_ID' if your REPOSITORY_ID is elsewhere in mta.yaml
+          MTA_PATH_TO_UPDATE=".parameters.REPOSITORY_ID" 
+
+          if [ -f "$MTA_FILE" ]; then
+            echo "--- Original mta.yaml REPOSITORY_ID (before update) ---"
+            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
+
+            # Update the REPOSITORY_ID using yq's 'eval' command with inplace editing (-i)
+            # Using double quotes for the value of yq e command to ensure variable expansion
+            yq -i e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE"
+            
+            echo "--- Updated mta.yaml REPOSITORY_ID ---"
+            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE"
+            echo "Successfully updated REPOSITORY_ID in $MTA_FILE to $NEW_REPO_ID"
+          else
+            echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
+            exit 1 # Fail the workflow if the mta.yaml file is missing
+          fi
+
+
+          # --- Install npm dependencies for incidents-app, including the sdm package ---
           npm i *.tgz
 
-      - name: Build and deploy 
+      - name: Build and deploy
         run: |
+          # You should already be in the 'incidents-app' directory from the previous step.
+          echo "Current directory for build/deploy: $(pwd)"
+
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
