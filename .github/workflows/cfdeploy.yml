@@ -75,7 +75,6 @@ jobs:
             echo "--- Original manifest.json applicationVersion value (BEFORE update) ---"
             jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
             
-            # This part remains as it was working correctly
             jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
             mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
             
@@ -92,24 +91,21 @@ jobs:
           # --- Update REPOSITORY_ID in mta.yaml ---
           MTA_FILE="mta.yaml"
           NEW_REPO_ID="${{ github.event.inputs.REPOSITORY_ID }}"
-          MTA_PATH_TO_UPDATE='.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' 
-
+          
           if [ -f "$MTA_FILE" ]; then
             echo "--- Full mta.yaml content (BEFORE update) ---"
             cat "$MTA_FILE"
             echo "--- Original mta.yaml REPOSITORY_ID value (BEFORE update) ---"
-            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
+            yq e '.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
 
-            # CRITICAL FIX ATTEMPT: Use explicit temp file and move for yq update
-            # 1. Evaluate the yq expression and direct output to a temporary file
-            yq e "$MTA_PATH_TO_UPDATE = \"$NEW_REPO_ID\"" "$MTA_FILE" > "${MTA_FILE}.tmp"
-            # 2. Atomically move the temporary file to replace the original
-            mv "${MTA_FILE}.tmp" "$MTA_FILE"
+            # CRITICAL FIX: Using the robust yq syntax for updating an array element in-place
+            # This ensures the entire document is correctly re-written.
+            yq -i e '(.modules[] | select(.name == "incidents-srv")).properties.REPOSITORY_ID = "'"$NEW_REPO_ID"'"' "$MTA_FILE"
             
             echo "--- Full mta.yaml content (AFTER update) ---"
-            cat "$MTA_FILE" # This *must* now show the full content of the updated file
+            cat "$MTA_FILE" # This should now definitively show the full content of the updated file
             echo "--- Updated mta.yaml REPOSITORY_ID value (AFTER update) ---"
-            yq e "$MTA_PATH_TO_UPDATE" "$MTA_FILE"
+            yq e '.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' "$MTA_FILE"
             echo "Updated mta.yaml: REPOSITORY_ID set to $NEW_REPO_ID"
           else
             echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
