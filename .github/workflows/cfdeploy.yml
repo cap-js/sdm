@@ -6,7 +6,23 @@ on:
       cfspace:
         description: 'The Cloud Foundry space to deploy to'
         required: true
-        default: 'developcap'  # You can set a default value if needed
+        default: 'abc'
+      sdm_branch:
+        description: 'Branch name for sdm.git repository'
+        required: true
+        default: 'abc'
+      incidents_app_branch:
+        description: 'Branch name for incidents-app.git repository,please dont change this value for individual spaces'
+        required: true
+        default: 'local_deploy'
+      applicationVersion:
+        description: 'Version for the application deployment (updates manifest.json)'
+        required: true
+        default: '0.0.9'
+      REPOSITORY_ID:
+        description: 'ID of the repository for tracking/metadata (updates mta.yaml)'
+        required: true
+        default: 'abc'
 
 permissions:
   pull-requests: read
@@ -15,12 +31,12 @@ jobs:
   Deploy:
     runs-on: ubuntu-latest
 
-    steps:        
+    steps:
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x  
-          
+          node-version: 20.x
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -30,27 +46,96 @@ jobs:
           sudo apt update
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
-       
-      - name: Clone and prepare projects & Build and deploy
+      - name: Clone projects & Update manifest/mta files
         run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          echo "Cloning repositories and preparing files..."
+          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git > /dev/null 2>&1
+          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://github.com/cap-js/incidents-app.git > /dev/null 2>&1
           cd sdm
-          npm pack
-          echo "Current directory"
-          pwd
-          ls
+          npm pack --silent > /dev/null
           mv *.tgz ../incidents-app
+          
           cd ../incidents-app
-          npm i *.tgz
-      
+          # Install jq and yq quietly
+          sudo apt-get update -qq
+          sudo apt-get install -y jq -qq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          echo "jq and yq tools installed."
+          # --- Update applicationVersion in app/incidents/webapp/manifest.json ---
+          MANIFEST_FILE="app/incidents/webapp/manifest.json"
+          NEW_APP_VERSION="${{ github.event.inputs.applicationVersion }}"
+          if [ -f "$MANIFEST_FILE" ]; then
+            echo "--- Full manifest.json content (BEFORE update) ---"
+            cat "$MANIFEST_FILE"
+            echo "--- Original manifest.json applicationVersion value (BEFORE update) ---"
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE" || echo "Path not found in manifest or file empty."
+            
+            jq --arg new_version "$NEW_APP_VERSION" '."sap.app".applicationVersion.version = $new_version' "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp" && \
+            mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+            
+            echo "--- Full manifest.json content (AFTER update) ---"
+            cat "$MANIFEST_FILE"
+            echo "--- Updated manifest.json applicationVersion value (AFTER update) ---"
+            jq '."sap.app".applicationVersion.version' "$MANIFEST_FILE"
+            echo "Updated manifest.json: applicationVersion set to $NEW_APP_VERSION"
+          else
+            echo "Error: manifest.json not found at $MANIFEST_FILE. Cannot update applicationVersion."
+            exit 1
+          fi
+          # --- Update REPOSITORY_ID in mta.yaml ---
+          MTA_FILE="mta.yaml"
+          NEW_REPO_ID="${{ github.event.inputs.REPOSITORY_ID }}"
+          
+          if [ -f "$MTA_FILE" ]; then
+            echo "--- Full mta.yaml content (BEFORE update) ---"
+            cat "$MTA_FILE"
+            echo "--- Original mta.yaml REPOSITORY_ID value (BEFORE update) ---"
+            yq e '.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' "$MTA_FILE" || echo "Path not found in mta.yaml or file empty."
+            # CRITICAL FIX: Using the robust yq syntax for updating an array element in-place
+            # This ensures the entire document is correctly re-written.
+            yq -i e '(.modules[] | select(.name == "incidents-srv")).properties.REPOSITORY_ID = "'"$NEW_REPO_ID"'"' "$MTA_FILE"
+            
+            echo "--- Full mta.yaml content (AFTER update) ---"
+            cat "$MTA_FILE" # This should now definitively show the full content of the updated file
+            echo "--- Updated mta.yaml REPOSITORY_ID value (AFTER update) ---"
+            yq e '.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' "$MTA_FILE"
+            echo "Updated mta.yaml: REPOSITORY_ID set to $NEW_REPO_ID"
+          else
+            echo "Error: mta.yaml not found at $MTA_FILE. Cannot update REPOSITORY_ID."
+            exit 1
+          fi
+          # --- Install npm dependencies for incidents-app, including the sdm package ---
+          npm i *.tgz --silent
+     
       - name: Build and deploy
+        working-directory: incidents-app
         run: |
-          cd incidents-app
-          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
-          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+          echo "Starting build and deployment..."
+          # Final verification before mbt build (these checks will appear in logs)
+          echo "Verifying manifest.json version before mbt build:"
+          jq '."sap.app".applicationVersion.version' app/incidents/webapp/manifest.json
+          echo "Verifying mta.yaml REPOSITORY_ID before mbt build:"
+          yq e '.modules[] | select(.name == "incidents-srv") | .properties.REPOSITORY_ID' mta.yaml
+          # Download and setup mbt (wget output redirected)
+          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz > /dev/null 2>&1
+          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz > /dev/null 2>&1
           sudo mv mbt /usr/local/bin/
-          npm i @sap/cds-dk -g
+          # Install cds-dk (npm output redirected)
+          npm i @sap/cds-dk -g --silent
+          # Perform MTA build and deploy
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
+      # - name: Build and deploy
+      #   working-directory: incidents-app
+      #   run: |
+      #     echo "Current directory for build/deploy: $(pwd)"
+
+      #     wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+      #     tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
+      #     sudo mv mbt /usr/local/bin/
+      #     npm i @sap/cds-dk -g
+      #     mbt build
+      #     cf install-plugin multiapps -f
+      #     cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
