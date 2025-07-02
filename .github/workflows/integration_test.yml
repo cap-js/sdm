@@ -7,6 +7,10 @@ on:
         description: 'Specify the Cloud Foundry space to run integration tests on'
         required: true
 
+      branch_name:
+        description: 'Specify the branch to use for integration tests'
+        required: true
+
 permissions:
   pull-requests: read
 
@@ -17,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v2.1.5
