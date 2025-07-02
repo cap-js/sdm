@@ -2,7 +2,6 @@ const axios = require('axios');
 const credentials = require('./credentials.json');
 const Api = require('./api');
 const expect = require('@sap/cds/lib/test/expect');
-const { update } = require('@sap/cds');
 
 let token;
 let incidentID;
