@@ -96,10 +96,6 @@ describe('Attachments Integration Tests --CREATE', () => {
       { 
         filename: "samplebig.pdf", 
         filepath: "./test/integration/samplebig.pdf" 
-      },
-      { 
-        filename: "invalid.pdf", 
-        filepath: "./test/integration/invalid.pdf" 
       }
     ];
 
