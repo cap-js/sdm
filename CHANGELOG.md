@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.6.0
+
+### Added
+- Support custom properties in attachments.
+
+### Fixed
+- Issue where users were unable to read attachments after uploading them. 
+
 ## Version 1.5.1
 
 ### Fixed
