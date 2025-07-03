@@ -17,15 +17,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'  # Specify the necessary node version
+
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          fetch-depth: 0
           
-      - name: npm install
+      - name: Install node modules
         run: |
+          npm config set loglevel verbose # More detailed logging
           npm install
-          curl --silent -O https://detect.synopsys.com/detect9.sh
 
       - name: Run & analyze BlackDuck Scan
         run: |
