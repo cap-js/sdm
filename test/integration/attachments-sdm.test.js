@@ -213,22 +213,25 @@ describe('Attachments Integration Tests --CREATE', () => {
   });
 });
 
-// describe('Attachments Integration Tests --READ', () => {
-//   it('should read the created attachment', async () => {
-//     //This test case also reads files not supported by browser (.exe)
-//     const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, attachments);
-//     for(let i = 0; i < attachments.length; i++){
-//       expect(response[i]).toBe("OK")
-//     }
-//   });
+describe('Attachments Integration Tests --READ', () => {
+  it('should read the created attachment', async () => {
+    //This test case also reads files not supported by browser (.exe)
+    for(let i = 0; i < attachments.length; i++){
+      const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[i]);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+    }
+  });
 
-//   it('should not read an attachment that doesnt exist', async () => {
-//     const invalidAttachment = 'invalid-attachment-id';
-//     const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, invalidAttachment);
-//     expect(response.status).toBe("Failed");
-//     expect(response.message).toBe("Read attachment did not return 200 status code");
-//   });
-// });
+  it('should not read an attachment that doesnt exist', async () => {
+    const invalidAttachment = 'invalid-attachment-id';
+    const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, invalidAttachment);
+    if (response.status == "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+});
 
 describe('Attachments Integration Tests --UPDATE', () => {
   let attachment1;
