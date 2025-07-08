@@ -138,7 +138,7 @@ describe("SDMAttachmentsService", () => {
       await service.checkRepositoryType(mockReq);
   
       expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
-      expect(getRepositoryInfo).toHaveBeenCalledWith(service.creds, "mock-token");
+      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, "mock-token");
       expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
       expect(mockReq.reject).not.toHaveBeenCalled();
     });
@@ -162,7 +162,7 @@ describe("SDMAttachmentsService", () => {
       await service.checkRepositoryType(mockReq);
   
       expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
-      expect(getRepositoryInfo).toHaveBeenCalledWith(service.creds, "mock-token");
+      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, "mock-token");
       expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
       expect(mockReq.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
     });
