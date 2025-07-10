@@ -34,7 +34,7 @@ jobs:
       - name: Clone and prepare projects & Build and deploy
         env:
           USERNAME: ${{ secrets.GH_USER_CAP_JS_INCIDENT_APP_MULTITENANCY }} # Add this secret with your GitHub username if needed
-          TOKEN: ${{ GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
+          TOKEN: ${{ secrets.GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
         run: |
           git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
           git clone --single-branch --branch sdm-mtx-develop https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
