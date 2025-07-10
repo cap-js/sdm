@@ -54,7 +54,6 @@ describe("handlers", () => {
       const mockCredentials = { uri: "http://example.com/" };
 
       const mockResponse = { data: "mock pdf file content" };
-      const mockBuffer = Buffer.from(mockResponse.data, "binary");
 
       axios.get.mockResolvedValue(mockResponse);
 
@@ -71,9 +70,9 @@ describe("handlers", () => {
         "&cmisselector=content";
       expect(axios.get).toHaveBeenCalledWith(expectedUrl, {
         headers: { Authorization: `Bearer ${mockToken}` },
-        responseType: "arraybuffer",
+        responseType: "stream",
       });
-      expect(document).toEqual(mockBuffer);
+      expect(document).toEqual(mockResponse.data);
     });
 
     it("throws error on unsuccessful read", async () => {
@@ -120,9 +119,10 @@ describe("handlers", () => {
   });
 
   describe("getRepositoryInfo", () => {
-    let mockedCredentials, mockedToken, mockRepoInfo;
+    let mockedCredentials, mockedToken, mockRepoInfo, mockReq;
     beforeEach(() => {
       jest.clearAllMocks();
+      mockReq = { reject: jest.fn() };
     });
 
     it("should return repositoryInfo for provided repositoryId", async () => {
@@ -139,7 +139,7 @@ describe("handlers", () => {
       }
       const mockUrl = mockedCredentials.uri + "browser/" + 123 + "?cmisselector=repositoryInfo";
       axios.get.mockResolvedValue(mockRepoInfo);
-      const repoInfo = await getRepositoryInfo(mockedCredentials, mockedToken);
+      const repoInfo = await getRepositoryInfo(mockReq, mockedCredentials, mockedToken);
       expect(axios.get).toHaveBeenCalledWith(mockUrl, {
         headers: { Authorization: `Bearer ${mockedToken}` }
       });
@@ -153,7 +153,7 @@ describe("handlers", () => {
         Promise.reject("something bad happened")
       );
       await expect(
-        getRepositoryInfo(mockedCredentials, mockedToken)
+        getRepositoryInfo(mockReq, mockedCredentials, mockedToken)
       ).rejects.toThrow("something bad happened");
     });
   })
