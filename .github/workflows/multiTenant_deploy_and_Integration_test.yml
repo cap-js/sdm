@@ -1,4 +1,4 @@
-name: Deploy and Integration Test
+name: Multi Tenancy Deploy
 
 on:
   push:
