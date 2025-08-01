@@ -58,11 +58,6 @@ describe("util", () => {
       xssec.v3.requests.requestUserToken.mockClear();
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
-      const payload = {
-        "sub": "1234567890",
-        "email": "example@example.com",
-        "exp": 1516239022
-      };
       dummyToken = createDummyToken({
         sub: "1234567890",
         email: "example@example.com",
