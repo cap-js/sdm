@@ -1,6 +1,5 @@
 const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
-const jwt = require('jsonwebtoken');
 
 const {
   fetchAccessToken,
@@ -26,15 +25,37 @@ jest.mock("../../../lib/persistence", () => ({
 }));
 
 let dummyToken = "";
+function createDummyToken(payload = {}, header = { alg: 'HS256', typ: 'JWT' }) {
+  const base64UrlEncode = obj =>
+    Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
 
-jest.mock("@sap/xssec");
+  const encodedHeader = base64UrlEncode(header);
+  const encodedPayload = base64UrlEncode(payload);
+  const signature = 'dummy-signature';
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
 jest.mock("node-cache");
 jest.mock("@sap/cds");
+jest.mock("@sap/xssec", () => ({
+  v3: {
+    requests: {
+      requestUserToken: jest.fn(),
+      requestClientCredentialsToken: jest.fn()
+    },
+  },
+}));
+
 
 describe("util", () => {
   describe("fetchAccessToken", () => {
     beforeEach(() => {
-      xssec.requests.requestUserToken.mockClear();
+      xssec.v3.requests.requestUserToken.mockClear();
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
       const payload = {
@@ -42,31 +63,30 @@ describe("util", () => {
         "email": "example@example.com",
         "exp": 1516239022
       };
-
-      // Please replace 'your_secret_key' with your own secret key
-      const secretKey = 'your_secret_key';
-
-      // sign the token with your secret key
-      dummyToken = jwt.sign(payload, secretKey);
+      dummyToken = createDummyToken({
+        sub: "1234567890",
+        email: "example@example.com",
+        exp: 1516239022
+      });
 
     });
 
     it("requestUserToken should be called when no token in cache", async () => {
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.requests.requestUserToken.mockImplementation(
+      xssec.v3.requests.requestUserToken.mockImplementation(
         (a, b, c, d, e, f, callback) => callback(null, dummyToken)
       );
-  cds.context = {
-            user: {
-                tokenInfo: {
-                    getPayload: jest.fn(() => ({
-                        ext_attr: {
-                            zdn: 'subdomain' // simulate the subdomain extraction
-                        }
-                    })),
-                },
+      cds.context = {
+        user: {
+            tokenInfo: {
+                getPayload: jest.fn(() => ({
+                    ext_attr: {
+                        zdn: 'subdomain' // simulate the subdomain extraction
+                    }
+                })),
             },
-        };
+        },
+      };
       const credentials = { uaa: "uaa" };
       const req = {
         user: {
@@ -77,7 +97,7 @@ describe("util", () => {
       };
       const accessToken =  await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
       const expectedCacheKey = "example@example.com_subdomain";
-      expect(xssec.requests.requestUserToken).toBeCalled();
+      expect(xssec.v3.requests.requestUserToken).toBeCalled();
       expect(NodeCache.prototype.set).toBeCalledWith(
         expectedCacheKey,
         dummyToken,
@@ -96,30 +116,6 @@ describe("util", () => {
         },
       };
       cds.context = {
-                  user: {
-                      tokenInfo: {
-                          getPayload: jest.fn(() => ({
-                              ext_attr: {
-                                  zdn: 'subdomain' // simulate the subdomain extraction
-                              }
-                          })),
-                      },
-                  },
-              };
-      const credentials = { uaa: "uaa" };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.requests.requestUserToken).toBeCalled();
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("requestUserToken should  be called when there is already token in cache which is not expired", async () => {
-      payload = {
-        "sub": "1234567890",
-        "email": "example@example.com",
-        "exp": 2537353178
-      };
-      cds.context = {
         user: {
             tokenInfo: {
                 getPayload: jest.fn(() => ({
@@ -129,12 +125,34 @@ describe("util", () => {
                 })),
             },
         },
-    };
-      // Please replace 'your_secret_key' with your own secret key
-      const secretKey = 'your_secret_key';
+      };
+      const credentials = { uaa: "uaa" };
+      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
+      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
+      expect(xssec.v3.requests.requestUserToken).toBeCalled();
+      expect(accessToken).toBe(dummyToken);
+    });
 
-      // sign the token with your secret key
-      dummyToken = jwt.sign(payload, secretKey);
+    it("requestUserToken should  be called when there is already token in cache which is not expired", async () => {
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: jest.fn(() => ({
+              ext_attr: {
+                zdn: 'subdomain' // simulate the subdomain extraction
+              }
+            })),
+          },
+        },
+      };
+    
+      const nowInSeconds = Math.floor(Date.now() / 1000);
+
+      dummyToken = createDummyToken({
+        sub: "1234567890",
+        email: "example@example.com",
+        exp: nowInSeconds + 3600, // 1 hour from now
+      });
       NodeCache.prototype.get.mockImplementation(() => dummyToken);
       const req = {
         user: {
@@ -146,7 +164,7 @@ describe("util", () => {
       const credentials = { uaa: "uaa" };
       const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
       expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.requests.requestUserToken).not.toBeCalled();
+      expect(xssec.v3.requests.requestUserToken).not.toBeCalled();
       expect(accessToken).toBe(dummyToken);
     });
 
@@ -155,21 +173,21 @@ describe("util", () => {
         .spyOn(console, "error")
         .mockImplementation(() => { });
       NodeCache.prototype.get.mockImplementationOnce(() => undefined);
-      xssec.requests.requestUserToken.mockImplementation(
+      xssec.v3.requests.requestUserToken.mockImplementation(
         (a, b, c, d, e, f, callback) =>
           callback(new Error("test error"), { statusCode: 500 })
       );
       cds.context = {
         user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
+          tokenInfo: {
+            getPayload: jest.fn(() => ({
+              ext_attr: {
+                zdn: 'subdomain' // simulate the subdomain extraction
+              }
+            })),
+          },
         },
-    };
+      };
       const req = {
         user: {
           tokenInfo: {
@@ -182,7 +200,7 @@ describe("util", () => {
         await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
       } catch (err) {
         expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-        expect(xssec.requests.requestUserToken).toBeCalled();
+        expect(xssec.v3.requests.requestUserToken).toBeCalled();
         expect(consoleErrorSpy).toBeCalledWith(
           "Response error while fetching access token 500"
         );
@@ -195,7 +213,7 @@ describe("util", () => {
 
   describe('getClientCredentialsToken', () => {
     beforeEach(() => {
-      xssec.requests.requestClientCredentialsToken.mockClear();
+      xssec.v3.requests.requestClientCredentialsToken.mockClear();
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
     });
@@ -218,14 +236,14 @@ describe("util", () => {
   
       expect(token).toBe(cachedToken);
       expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain');
-      expect(xssec.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
+      expect(xssec.v3.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
     });
   
     it('requests new token and caches it if not available', async () => {
       const credentials = { uaa: 'mockedUaa' };
       const mockResponse = { accessToken: 'newAccessToken' };
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
+      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
         callback(null, mockResponse);
       });
       cds.context = {
@@ -243,7 +261,7 @@ describe("util", () => {
   
       expect(token).toBe(mockResponse);
       expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain', mockResponse, expect.any(Number));
-      expect(xssec.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
+      expect(xssec.v3.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
         "subdomain",
         credentials.uaa,
         null,
@@ -255,7 +273,7 @@ describe("util", () => {
       const credentials = { uaa: 'mockedUaa' };
       const mockError = new Error('Request failed');
       NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
+      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
         callback(mockError, null);
       });
   
