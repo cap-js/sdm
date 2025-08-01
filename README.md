@@ -43,6 +43,9 @@ In this guide, we use the [Incidents Management reference sample app](https://gi
 > [!Note]
 > To be able to use the Fiori *uploadTable* feature, you must ensure 1.121.0/ 1.122.0/ ^1.125.0 SAPUI5 version is updated in the application's _index.html_
 
+> [!Note]
+> Only @sap/xssec version >=4 is supported by the plugin
+
 ### Using the released version
 If you want to use the released version of SDM CAP plugin follow the below steps:
 
