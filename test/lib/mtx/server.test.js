@@ -1,141 +1,139 @@
-jest.mock('@sap/cds', () => ({
-    env: { profile: 'mtx-sidecar', requires: { sdm: { credentials: { uri: 'http://sdm', uaa: {} } } } },
-    root: '/mock/root',
-    connect: { to: jest.fn() },
-    on: jest.fn()
+jest.mock('axios');
+jest.mock('@sap/xssec');
+jest.mock('../../../lib/util/index');
+jest.mock('../../../lib/util/messageConsts', () => ({
+    repositoryUrl: "/api/v1/repositories",
+    repositoryMissing: "TEST: Repository Missing",
+    repositoryConfigurationMissing: "TEST: SDM Config Missing",
 }));
 
-jest.mock('@sap/xssec', () => ({
-    requests: { requestClientCredentialsToken: jest.fn() }
-}));
+const path = require('path');
 
-jest.mock('axios', () => ({
-    post: jest.fn()
-}));
-
-jest.mock('path', () => ({
-    join: jest.fn(() => '/mock/root/config.js')
-}));
-
-jest.mock('../util/index', () => ({
-    getConfigurations: jest.fn()
-}));
-
-jest.mock('../util/messageConsts', () => ({
-    repositoryUrl: '/repo',
-    repositoryMissing: 'REPO_MISSING',
-    repositoryConfigMissing: 'CONFIG_MISSING'
-}));
-
-// Mock config.js dynamically
-jest.mock('/mock/root/config.js', () => ({
-    sdm: { repositoryConfig: { foo: 'bar' } }
-}), { virtual: true });
-
-const cds = require('@sap/cds');
-const { requests } = require('@sap/xssec');
-const axios = require('axios');
-const { getConfigurations } = require('../util/index');
-const { repositoryMissing } = require('../util/messageConsts');
-
-describe('server.js', () => {
-    let server;
+describe('SDM Plugin Onboarding Logic', () => {
+    let axios, xssec, utils, mockCds, mockDeploymentService;
 
     beforeEach(() => {
+        jest.resetModules();
+        const MOCK_CONFIG = {
+            sdm: {
+                repositoryConfig: {
+                    description: "A test repository",
+                    repositoryType: "com.sap.cloud.cmis.repository.ecm.system",
+                    isVersionEnabled: "true",
+                },
+            },
+        };
+
+        const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
+        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'config.js');
+        const MOCK_CDS_ENV = {
+            profile: 'mtx-sidecar',
+            root: MOCK_CDS_ROOT,
+            requires: {
+                sdm: {
+                    credentials: {
+                        uri: 'https://mock-sdm-api.com',
+                        uaa: {},
+                    },
+                },
+            },
+        };
+
+        axios = require('axios');
+        xssec = require('@sap/xssec');
+        utils = require('../../../lib/util/index');
+
+        axios.post.mockResolvedValue({ status: 201, data: 'Repository onboarded' });
+        xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(null, 'mock-jwt-token'));
+        utils.getConfigurations.mockReturnValue({ repositoryId: 'ext-12345' });
+
+        mockDeploymentService = { after: jest.fn() };
+        mockCds = {
+            connect: { to: jest.fn().mockResolvedValue(mockDeploymentService) },
+            on: jest.fn(),
+            env: MOCK_CDS_ENV,
+            root: MOCK_CDS_ENV.root,
+        };
+
+        jest.doMock(MOCK_CONFIG_PATH, () => MOCK_CONFIG, { virtual: true });
+        jest.doMock('@sap/cds', () => mockCds);
+    });
+
+    afterEach(() => {
         jest.clearAllMocks();
-        jest.resetModules(); // Important for re-import
-        server = require('../server');
+        jest.restoreAllMocks();
     });
 
-    describe('buildRepositoryObject', () => {
-        it('should return repository object when config is valid', () => {
-            getConfigurations.mockReturnValue({ repositoryId: 'id123' });
-            const result = server.buildRepositoryObject();
-            expect(result.repository.externalId).toBe('id123');
-        });
+    const triggerSubscribe = async (reqData) => {
+        require('../../../lib/mtx/server');
+        const listeningCallback = mockCds.on.mock.calls.find(call => call[0] === 'listening')[1];
+        await listeningCallback();
+        const subscribeCallback = mockDeploymentService.after.mock.calls.find(call => call[0] === 'subscribe')[1];
+        await subscribeCallback({}, { data: reqData });
+    };
 
-        it('should throw error when repositoryId missing', () => {
-            getConfigurations.mockReturnValue({ repositoryId: null });
-            expect(() => server.buildRepositoryObject()).toThrow(repositoryMissing);
-        });
+    it('should successfully onboard a tenant repository on subscribe', async () => {
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const mockReqData = { tenant: 't1', metadata: { subscribedSubdomain: 'tenant-a-subdomain' } };
+        await triggerSubscribe(mockReqData);
+        const expectedRepoObject = {
+            repository: {
+                description: "A test repository",
+                repositoryType: "com.sap.cloud.cmis.repository.ecm.system",
+                isVersionEnabled: "true",
+                externalId: 'ext-12345'
+            }
+        };
+        expect(axios.post).toHaveBeenCalledWith(
+            'https://mock-sdm-api.com/api/v1/repositories',
+            expectedRepoObject,
+            expect.any(Object)
+        );
+        expect(consoleLogSpy).toHaveBeenCalledWith('SDM repository onboarded');
     });
 
-    describe('fetchSDMToken', () => {
-        it('should resolve with token', async () => {
-            requests.requestClientCredentialsToken.mockImplementation((sd, uaa, _n, cb) => {
-                cb(null, 'token123');
-            });
-            await expect(server.fetchSDMToken('sub', {})).resolves.toBe('token123');
-        });
-
-        it('should reject on error', async () => {
-            requests.requestClientCredentialsToken.mockImplementation((sd, uaa, _n, cb) => {
-                cb(new Error('fail'));
-            });
-            await expect(server.fetchSDMToken('sub', {})).rejects.toThrow('fail');
-        });
+    it('should log an error if fetching the SDM token fails', async () => {
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(new Error("UAA connection failed")));
+        const mockReqData = { tenant: 't2', metadata: { subscribedSubdomain: 'tenant-b-subdomain' } };
+        await triggerSubscribe(mockReqData);
+        expect(axios.post).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", expect.any(Error));
     });
 
-    describe('onboardRepository', () => {
-        it('should post repository and return response', async () => {
-            axios.post.mockResolvedValue({ data: 'ok' });
-            const res = await server.onboardRepository('http://sdm', { repository: {} }, 'tok');
-            expect(res.data).toBe('ok');
-        });
-
-        it('should throw error on failure', async () => {
-            axios.post.mockRejectedValue({ response: { data: 'err' } });
-            await expect(server.onboardRepository('http://sdm', {}, 'tok')).rejects.toBe('err');
-        });
+    it('should throw error if config.js is missing sdm key', () => {
+        const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
+        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'config.js');
+        jest.doMock(MOCK_CONFIG_PATH, () => ({}), { virtual: true });
+        mockCds.env.profile = 'mtx-sidecar';
+        jest.doMock('@sap/cds', () => mockCds);
+        expect(() => require('../../../lib/mtx/server')).toThrow("TEST: SDM Config Missing");
     });
 
-    describe('CDS event handlers', () => {
-        it('should handle subscribe success', async () => {
-            const afterHandlers = {};
-            cds.connect.to.mockResolvedValue({
-                after: (evt, cb) => { afterHandlers[evt] = cb; }
-            });
-            cds.on.mockImplementation((evt, cb) => cb());
+    it('should throw error if repositoryId or repositoryConfig is missing', async () => {
+        utils.getConfigurations.mockReturnValue({}); // no repositoryId
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const mockReqData = { tenant: 't3', metadata: { subscribedSubdomain: 'tenant-c-subdomain' } };
+        await triggerSubscribe(mockReqData);
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", new Error("TEST: Repository Missing"));
+    });
 
-            getConfigurations.mockReturnValue({ repositoryId: 'id123' });
-            requests.requestClientCredentialsToken.mockImplementation((sd, uaa, _n, cb) => {
-                cb(null, 'token123');
-            });
-            axios.post.mockResolvedValue({ data: 'ok' });
+    it('should log error if onboardRepository fails', async () => {
+        axios.post.mockRejectedValue({ response: { data: "POST failed" } });
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const mockReqData = { tenant: 't4', metadata: { subscribedSubdomain: 'tenant-d-subdomain' } };
+        await triggerSubscribe(mockReqData);
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", "POST failed");
+    });
 
-            require('../server');
-            await afterHandlers.subscribe(null, {
-                data: { tenant: 't1', metadata: { subscribedSubdomain: 'sub' } }
-            });
+    it('should log error if cds.xt.DeploymentService connection fails', async () => {
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        mockCds.connect.to.mockResolvedValueOnce(null); // force connection failure
 
-            expect(axios.post).toHaveBeenCalled();
-        });
+        require('../../../lib/mtx/server');
+        const listeningCallback = mockCds.on.mock.calls.find(call => call[0] === 'listening')[1];
+        await listeningCallback();
 
-        it('should handle subscribe with error', async () => {
-            const afterHandlers = {};
-            cds.connect.to.mockResolvedValue({
-                after: (evt, cb) => { afterHandlers[evt] = cb; }
-            });
-            cds.on.mockImplementation((evt, cb) => cb());
-
-            getConfigurations.mockReturnValue({ repositoryId: null });
-            require('../server');
-            await afterHandlers.subscribe(null, {
-                data: { tenant: 't1', metadata: { subscribedSubdomain: 'sub' } }
-            });
-        });
-
-        it('should handle unsubscribe', async () => {
-            const afterHandlers = {};
-            cds.connect.to.mockResolvedValue({
-                after: (evt, cb) => { afterHandlers[evt] = cb; }
-            });
-            cds.on.mockImplementation((evt, cb) => cb());
-
-            require('../server');
-            const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-            await afterHandlers.unsubscribe(null, { data: { tenant: 't1' } });
-            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Tenant unsubscribed'));
-        });
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to connect to cds.xt.DeploymentService");
     });
 });
