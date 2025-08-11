@@ -1,13 +1,8 @@
 jest.mock('axios');
 jest.mock('@sap/xssec');
 jest.mock('../../../lib/util/index');
-jest.mock('../../../lib/util/messageConsts', () => ({
-    repositoryUrl: "/api/v1/repositories",
-    repositoryMissing: "TEST: Repository Missing",
-    repositoryConfigurationMissing: "TEST: SDM Config Missing",
-}));
-
 const path = require('path');
+const messageConsts = require('../../../lib/util/messageConsts');
 
 describe('SDM Plugin Onboarding Logic', () => {
     let axios, xssec, utils, mockCds, mockDeploymentService;
@@ -85,7 +80,7 @@ describe('SDM Plugin Onboarding Logic', () => {
             }
         };
         expect(axios.post).toHaveBeenCalledWith(
-            'https://mock-sdm-api.com/api/v1/repositories',
+            `https://mock-sdm-api.com${messageConsts.repositoryUrl}`,
             expectedRepoObject,
             expect.any(Object)
         );
@@ -107,7 +102,7 @@ describe('SDM Plugin Onboarding Logic', () => {
         jest.doMock(MOCK_CONFIG_PATH, () => ({}), { virtual: true });
         mockCds.env.profile = 'mtx-sidecar';
         jest.doMock('@sap/cds', () => mockCds);
-        expect(() => require('../../../lib/mtx/server')).toThrow("TEST: SDM Config Missing");
+        expect(() => require('../../../lib/mtx/server')).toThrow(messageConsts.repositoryConfigurationMissing);
     });
 
     it('should throw error if repositoryId or repositoryConfig is missing', async () => {
@@ -115,7 +110,7 @@ describe('SDM Plugin Onboarding Logic', () => {
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const mockReqData = { tenant: 't3', metadata: { subscribedSubdomain: 'tenant-c-subdomain' } };
         await triggerSubscribe(mockReqData);
-        expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", new Error("TEST: Repository Missing"));
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", new Error(messageConsts.repositoryMissing));
     });
 
     it('should log error if onboardRepository fails', async () => {
