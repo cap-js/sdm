@@ -1835,18 +1835,14 @@ describe("SDMAttachmentsService", () => {
     
     it('should attach URLs to delete and call deleteAttachmentsWithKeys with correct data', async () => {
       const req = {
-        query: { target: { name: 'DraftAttachments' } },
-        data:  {},
+        target: { name: 'DraftAttachments' }, // <-- fix here
+        data: {},
         params: [
-                  {
-                    ID: 'some-other-id'
-                  },
-                  {
-                    ID: '12345'
-                  }
-                ] ,
-        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
-      };
+          { ID: 'some-other-id' },
+          { ID: '12345' }
+        ],
+        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } }
+      };      
       cds.model.definitions["DraftAttachments"] = {};
   
       // Define a mock function on the service instance to observe it being called
@@ -1870,17 +1866,14 @@ describe("SDMAttachmentsService", () => {
       });
   
       const req = {
-        query: { target: { name: 'DraftAttachments' } },
+        target: { name: 'DraftAttachments' }, // <-- fix here
         data: {},
         params: [
-                              {
-                                ID: 'some-other-id'
-                              },{
-                                                      ID: '12345'
-                                                    }
-                            ] ,
-        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
-      };
+          { ID: 'some-other-id' },
+          { ID: '12345' }
+        ],
+        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } }
+      };    
       cds.model.definitions["DraftAttachments"] = {};
       
       await service.attachURLsToDeleteFromAttachmentsDraft(req);
