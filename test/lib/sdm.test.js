@@ -1378,7 +1378,15 @@ describe("SDMAttachmentsService", () => {
   
     test('should handle drafts when attachment values are found', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+      const req = { data: {  content: 'some content' }, params: [
+                                                                 {
+                                                                   ID: '12345'
+                                                                 },
+                                                                 {
+                                                                             ID: '12345'
+                                                                           }
+                                                               ],target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+
       const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345' },
@@ -1396,8 +1404,26 @@ describe("SDMAttachmentsService", () => {
   
     test('should not create attachment if no matching inactive entities are found', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
-      const token = 'token123';
+      const req = {
+        data: {
+          content: 'some content'
+        },
+        params: [
+          {
+            ID: '12345'
+          },
+          {
+                      ID: '12345'
+                    }
+        ],
+        target: draftAttachments,
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
+          }
+        }
+      };
+       const token = 'token123';
       const attachment_val = [{ HasActiveEntity: true, ID: '12345' }];
   
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1441,7 +1467,9 @@ describe("SDMAttachmentsService", () => {
     });
     test('should reject when filename contains restricted characters', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      const req = { data: { content: 'some content' },params:[{ID: '12345'},{
+                                                                                                  ID: '12345'
+                                                                                                }], target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
       const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
@@ -1458,7 +1486,13 @@ describe("SDMAttachmentsService", () => {
   
     test('should not reject when filename does not contain restricted characters', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      const req = { data: { content: 'some content' },params: [
+                                                                                                                 {
+                                                                                                                   ID: '12345'
+                                                                                                                 },{
+                                                                                                                                         ID: '12345'
+                                                                                                                                       }
+                                                                                                               ] ,target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
       const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345', filename: 'validname' },
@@ -1801,8 +1835,16 @@ describe("SDMAttachmentsService", () => {
     
     it('should attach URLs to delete and call deleteAttachmentsWithKeys with correct data', async () => {
       const req = {
-        target: { name: 'DraftAttachments' },
-        data: { ID: 'some-id' },
+        query: { target: { name: 'DraftAttachments' } },
+        data:  {},
+        params: [
+                  {
+                    ID: 'some-other-id'
+                  },
+                  {
+                    ID: '12345'
+                  }
+                ] ,
         user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
       };
       cds.model.definitions["DraftAttachments"] = {};
@@ -1828,8 +1870,15 @@ describe("SDMAttachmentsService", () => {
       });
   
       const req = {
-        target: { name: 'DraftAttachments' },
-        data: { ID: 'some-other-id' },
+        query: { target: { name: 'DraftAttachments' } },
+        data: {},
+        params: [
+                              {
+                                ID: 'some-other-id'
+                              },{
+                                                      ID: '12345'
+                                                    }
+                            ] ,
         user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
       };
       cds.model.definitions["DraftAttachments"] = {};
@@ -2322,8 +2371,15 @@ describe("SDMAttachmentsService", () => {
           name: "testName.drafts",
         },
         data: {
-          ID: "mocked_id",
+         ID: "mocked_id",
         },
+         params: [
+                     {
+                       ID: "mocked_id",
+                     },{
+                                             ID: 'mocked_id'
+                                           }
+                   ],
         event: "DELETE",
         user: {
           tokenInfo: {
