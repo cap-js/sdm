@@ -39,7 +39,7 @@ describe('SDM Plugin Onboarding Logic', () => {
         utils = require('../../../lib/util/index');
 
         axios.post.mockResolvedValue({ status: 201, data: 'Repository onboarded' });
-        xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(null, 'mock-jwt-token'));
+        xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(null, 'mock-jwt-token'));
         utils.getConfigurations.mockReturnValue({ repositoryId: 'ext-12345' });
 
         mockDeploymentService = { after: jest.fn() };
@@ -89,7 +89,7 @@ describe('SDM Plugin Onboarding Logic', () => {
 
     it('should log an error if fetching the SDM token fails', async () => {
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        xssec.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(new Error("UAA connection failed")));
+        xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(new Error("UAA connection failed")));
         const mockReqData = { tenant: 't2', metadata: { subscribedSubdomain: 'tenant-b-subdomain' } };
         await triggerSubscribe(mockReqData);
         expect(axios.post).not.toHaveBeenCalled();
