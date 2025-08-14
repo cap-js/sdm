@@ -168,6 +168,45 @@ Custom properties are supported via the usage of CMIS secondary type properties.
    >
    > SDM supports secondary properties with data types `String`, `Boolean`, `Decimal`, `Integer` and `DateTime`.
 
+## Support for Multitenancy
+
+This plugin provides APIs for managing repositories in a multitenant CAP SaaS application. The core logic for handling tenant subscriptions and unsubscriptions is implemented using a hook on the cds.on('listening', ...) event.
+When a tenant subscribes to your application, a new repository is automatically created (onboarded) and associated with that tenant. Conversely, when a tenant unsubscribes, the corresponding repository is deleted (offboarded) to ensure a clean teardown. This process is stateful, meaning the application stores the repository ID to correctly offboard it later.
+
+The following code snippet demonstrates how to onboard a new repository for a subscribing tenant.
+
+```js
+// On tenant subscribe
+deploymentService.after('subscribe', async (_, req) => {
+    const { tenant, metadata } = req.data;
+    const subdomain = metadata?.subscribedSubdomain;
+    const SDMCredentials = cds.env.requires?.sdm?.credentials;
+    const sdmUrl = SDMCredentials?.uri;
+
+    console.log(`SDM Plugin: Tenant subscription started — ${tenant}`);
+
+    try {
+        const repository = buildRepositoryObject();
+        const token = await fetchSDMToken(subdomain, SDMCredentials.uaa);
+        await onboardRepository(sdmUrl, repository, token);
+        console.log("SDM repository onboarded");
+    } catch (err) {
+        console.error("Error during SDM onboarding:", err);
+    }
+});
+```
+
+
+
+
+
+
+
+
+
+
+
+
 ## Deploying and testing the application
 
 1. Log in to Cloud Foundry space:
