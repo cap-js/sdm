@@ -2,7 +2,7 @@
 
 # CAP plugin for SAP Document Management Service
 
-The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with [SAP Document Management Service](https://discovery-center.cloud.sap/serviceCatalog/document-management-service-integration-option). This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.
+The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with [SAP Document Management Service](https://discovery-center.cloud.sap/serviceCatalog/document-management-service-integration-option). This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
 This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
 # Key features
@@ -30,7 +30,6 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Licensing](#licensing)
 
 ## Pre-Requisites
-
 * Node.JS 16 or higher
 * CAP Development Kit (`npm install -g @sap/cds-dk`)
 * SAP Build WorkZone should be subscribed to view the HTML5Applications.
@@ -45,7 +44,6 @@ In this guide, we use the [Incidents Management reference sample app](https://gi
 > To be able to use the Fiori *uploadTable* feature, you must ensure 1.121.0/ 1.122.0/ ^1.125.0 SAPUI5 version is updated in the application's _index.html_
 
 ### Using the released version
-
 If you want to use the released version of SDM CAP plugin follow the below steps:
 
 1. Clone the incidents-app repository:
@@ -67,7 +65,6 @@ If you want to use the released version of SDM CAP plugin follow the below steps
 ```
 
 ### Using the development version
-
 If you want to use the version under development follow the below steps:
 
 1. Clone the sdm repository:
@@ -122,55 +119,54 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 1. If the repository does not contain secondary types and properties, create CMIS secondary types and properties using the [Create Secondary Type API](https://api.sap.com/api/CreateSecondaryTypeApi/overview). The property definition must contain the following section for the CAP plugin to process the property.
 
    ```
-   "mcm:miscellaneous": {      
+   "mcm:miscellaneous": {        
       "isPartOfTable": "true"  
    } 
    ```
 
    With this, the secondary type and properties definition will be as per the sample given below
 
-   ```
-   {
-      "id": "Working:DocumentInfo",
-      "displayName": "Document Info",
-      "baseId": "cmis:secondary",
-      "parentId": "cmis:secondary",
-      ...
-      },
-      "propertyDefinitions": {
-         "Working:DocumentInfoRecord": {
-               "id": "Working:DocumentInfoRecord",
-               "displayName": "Document Info Record",
-               ...
-               "mcm:miscellaneous": {     <-- Required section in the property definition
-                  "isPartOfTable": "true"
-               }
+      ```
+      {
+         "id": "Working:DocumentInfo",
+         "displayName": "Document Info",
+         "baseId": "cmis:secondary",
+         "parentId": "cmis:secondary",
+         ...
+         },
+         "propertyDefinitions": {
+            "Working:DocumentInfoRecord": {
+                  "id": "Working:DocumentInfoRecord",
+                  "displayName": "Document Info Record",
+                  ...
+                  "mcm:miscellaneous": {     <-- Required section in the property definition
+                     "isPartOfTable": "true"
+                  }
+            }
          }
       }
-   }
-   ```
-2. Using secondary properties in CAP Application.
+      ```
 
+2. Using secondary properties in CAP Application.
     - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file.
     - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`.
     - In this field set the name of the secondary property in SDM.
 
    Refer the following example from a sample Incidents Management app:
 
-   ```cds
-   extend Attachments with {
-      customProperty : String
-         @SDM.Attachments.AdditionalProperty: {
-            name: 'Working:DocumentInfoRecordString'
-         }  
-         @(title: 'DocumentInfoRecordString');
-   }
-   ```
+      ```cds
+      extend Attachments with {
+         customProperty : String
+            @SDM.Attachments.AdditionalProperty: {
+               name: 'Working:DocumentInfoRecordString'
+            }  
+            @(title: 'DocumentInfoRecordString');
+      }
+      ```
 
    > **Note**
    >
    > SDM supports secondary properties with data types `String`, `Boolean`, `Decimal`, `Integer` and `DateTime`.
->
 
 ## Support for Multitenancy
 
@@ -207,6 +203,7 @@ deploymentService.after('subscribe', async (_, req) => {
    ```sh
    cf login -a <CF-API> -o <ORG-NAME> -s <SPACE-NAME>
    ```
+
 2. Bind CAP application to SAP Document Management Integration Option. Check the following reference from `mta.yaml` of Incidents Management app
 
    ```
@@ -216,7 +213,7 @@ deploymentService.after('subscribe', async (_, req) => {
       path: gen/srv
       requires:
          - name: sdm-di-instance
-
+  
    resources:
       - name: sdm-di-instance
       type: org.cloudfoundry.managed-service
@@ -224,39 +221,42 @@ deploymentService.after('subscribe', async (_, req) => {
          service: sdm
          service-plan: standard
    ```
-3. Build the project by running following command from root folder of incidents-app.
 
+3. Build the project by running following command from root folder of incidents-app.
    ```sh
    mbt build
    ```
-
    Above step will generate .mtar file inside mta_archives folder.
-4. Deploy the application
 
+4. Deploy the application
    ```sh
    cf deploy mta_archives/*.mtar
    ```
-5. Launch the application
 
+5. Launch the application
    ```sh
    * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
-   ```
+   ```  
+
 6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
-   `<img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">`
+   <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
+
 7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. The file is then stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
-   `<img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">`
+   <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
+
 8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
-   `<img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">`
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
+
 9. **Rename a file** by going into Edit mode and setting a new name for the file in the filename field. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
-   `<img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">`
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
+
 10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
-    `<img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">`
+    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
 
 To run the unit tests:
-
 ```sh
 npm run test
 ```
@@ -276,4 +276,4 @@ We as members, contributors, and leaders pledge to make participation in our com
 
 ## Licensing
 
-Copyright 2024 SAP SE or an SAP affiliate company and `<your-project>` contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/cap-js/sdm).
+Copyright 2024 SAP SE or an SAP affiliate company and <your-project> contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/cap-js/sdm).
