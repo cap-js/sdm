@@ -166,17 +166,16 @@ class Api {
                 postData,
                 this.config
             )
-
             if (response.data && response.data.ID) {
                 const formDataPut = new FormData();
                 const pdfStream = fs.createReadStream(file.filepath); 
                 formDataPut.append('content', pdfStream);
                 // responseStatus.attachmentID.push(response.data.ID)
-            
-                try{
+                 try{
                     await axios.put(
-                    `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`,
-                    formDataPut, 
+                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`,
+
+                    formDataPut,
                     this.config
                     );
 
@@ -265,13 +264,14 @@ class Api {
                 message: "Fetch metadata API call failed: " + error.message 
             };
         }
-    }    
+    }
 
     async updateAttachment(appUrl, serviceName, entityName, incidentID, updateData, attachment){
         let response;
-        try{
+         try{
+                                      );
             response = await axios.patch(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}_attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=false)`,
+               `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)`,
                 updateData,
                 this.config
             );
@@ -293,11 +293,11 @@ class Api {
         }   
     }
 
-    async deleteAttachment(appUrl, serviceName, incidentID, attachment){
+    async deleteAttachment(appUrl, serviceName, incidentID, attachment,entityName){
         let response;
         try{
             response = await axios.delete(
-                `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=false)`,
+                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)`,
                 this.config
             );
             if (response.status === 204) {
