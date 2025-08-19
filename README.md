@@ -196,7 +196,7 @@ Refer the following example from a sample Incidents Management app which demonst
         sdm: {
             repositoryConfig: {
             displayName: "SDM Repository",
-            description: "Onboarded via default-env",
+            description: "Onboarded on tenant subscription",
             repositoryType: "internal",
             isVersionEnabled: "false",
             isVirusScanEnabled: "false",
