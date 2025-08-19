@@ -134,7 +134,6 @@ Custom properties are supported via the usage of CMIS secondary type properties.
          "baseId": "cmis:secondary",
          "parentId": "cmis:secondary",
          ...
-         },
          "propertyDefinitions": {
             "Working:DocumentInfoRecord": {
                   "id": "Working:DocumentInfoRecord",
@@ -181,7 +180,8 @@ Refer the following example from a sample Incidents Management app which demonst
    "cds": {
     "requires": {
         "cds.xt.DeploymentService": {
-        "preset": "in-sidecar"
+            "preset": "in-sidecar"
+         }
       }
     }
     ```
