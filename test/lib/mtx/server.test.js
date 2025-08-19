@@ -20,7 +20,7 @@ describe('SDM Plugin Onboarding Logic', () => {
         };
 
         const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
-        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'config.js');
+        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'SDMRepositoryConfig.js');
         const MOCK_CDS_ENV = {
             profile: 'mtx-sidecar',
             root: MOCK_CDS_ROOT,
@@ -96,9 +96,9 @@ describe('SDM Plugin Onboarding Logic', () => {
         expect(consoleErrorSpy).toHaveBeenCalledWith("Error during SDM onboarding:", expect.any(Error));
     });
 
-    it('should throw error if config.js is missing sdm key', () => {
+    it('should throw error if SDMRepositoryConfig.js is missing sdm key', () => {
         const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
-        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'config.js');
+        const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'SDMRepositoryConfig.js');
         jest.doMock(MOCK_CONFIG_PATH, () => ({}), { virtual: true });
         mockCds.env.profile = 'mtx-sidecar';
         jest.doMock('@sap/cds', () => mockCds);
