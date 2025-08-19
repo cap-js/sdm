@@ -170,7 +170,7 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 
 ## Support for Multitenancy
 
-This implementation automates repository lifecycle management in a multi-tenant setup. On tenant subscription, it provisions a repository and stores its details, and on unsubscription, it securely cleans up the repository.
+This plugin automates repository lifecycle management in a multi-tenant setup. On tenant subscription, it provisions a repository and stores its details, and on unsubscription, it securely cleans up the repository.
 
 Refer the following example from a sample Incidents Management app which demonstrates how to onboard a new repository for a subscribing tenant.
 
