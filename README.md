@@ -22,7 +22,6 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Support for Custom Properties](#support-for-custom-properties)
-- [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Known Restrictions](#known-restrictions)
@@ -168,46 +167,6 @@ Custom properties are supported via the usage of CMIS secondary type properties.
    > **Note**
    >
    > SDM supports secondary properties with data types `String`, `Boolean`, `Decimal`, `Integer` and `DateTime`.
-
-## Support for Multitenancy
-
-This implementation automates repository lifecycle management in a multi-tenant setup. On tenant subscription, it provisions a repository and stores its details, and on unsubscription, it securely cleans up the repository.
-
-Refer the following example from a sample Incidents Management app which demonstrates how to onboard a new repository for a subscribing tenant.
-
-1. Add the cds.xt.DeploymentService to the package.json file
-
-    ```json
-   "cds": {
-    "requires": {
-        "cds.xt.DeploymentService": {
-        "preset": "in-sidecar"
-      }
-    }
-    ```
-2. Add the @cap-js/sdm dependency to the mtx/sidecar/package.json
-
-3. Add the external id of repository in properties of incidents-mtx-mtx in mta.yaml
-
-4. Add SDMRepositoryConfig.js file in mtx/sidecar folder with the following content:
-
-    ```js
-    module.exports = {
-        sdm: {
-            repositoryConfig: {
-            displayName: "SDM Repository",
-            description: "Onboarded via default-env",
-            repositoryType: "internal",
-            isVersionEnabled: "false",
-            isVirusScanEnabled: "false",
-            skipVirusScanForLargeFile: "true",
-            hashAlgorithms: "SHA-256"
-            }
-        }
-    };
-    ```
-
-When the application is deployed as a SaaS application with above code, a repository is onboarded automatically when a tenant subscribes the SaaS application. The same repository is deleted when the tenant unsubscribes from the SaaS application. The necessary params for the Repository onboarding can be found in the [documentation](https://help.sap.com/docs/document-management-service/sap-document-management-service/internal-repository).
 
 ## Deploying and testing the application
 
