@@ -118,7 +118,7 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 
 1. If the repository does not contain secondary types and properties, create CMIS secondary types and properties using the [Create Secondary Type API](https://api.sap.com/api/CreateSecondaryTypeApi/overview). The property definition must contain the following section for the CAP plugin to process the property.
 
-   ```
+   ```json
    "mcm:miscellaneous": {        
       "isPartOfTable": "true"  
    } 
@@ -126,7 +126,7 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 
    With this, the secondary type and properties definition will be as per the sample given below
 
-      ```
+      ```json
       {
          "id": "Working:DocumentInfo",
          "displayName": "Document Info",
@@ -148,9 +148,9 @@ Custom properties are supported via the usage of CMIS secondary type properties.
       ```
 
 2. Using secondary properties in CAP Application.
-    - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file.
-    - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`.
-    - In this field set the name of the secondary property in SDM.
+   - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file.
+   - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`.
+   - In this field set the name of the secondary property in SDM.
 
    Refer the following example from a sample Incidents Management app:
 
@@ -170,31 +170,43 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 
 ## Support for Multitenancy
 
-This plugin provides APIs for managing repositories in a multitenant CAP SaaS application. The core logic for handling tenant subscriptions and unsubscriptions is implemented using a hook on the cds.on('listening', ...) event.
-When a tenant subscribes to your application, a new repository is automatically created (onboarded) and associated with that tenant. Conversely, when a tenant unsubscribes, the corresponding repository is deleted (offboarded) to ensure a clean teardown. This process is stateful, meaning the application stores the repository ID to correctly offboard it later.
+This implementation automates repository lifecycle management in a multi-tenant setup. On tenant subscription, it provisions a repository and stores its details, and on unsubscription, it securely cleans up the repository.
 
-The following code snippet demonstrates how to onboard a new repository for a subscribing tenant.
+Refer the following example from a sample Incidents Management app which demonstrates how to onboard a new repository for a subscribing tenant.
 
-```js
-// On tenant subscribe
-deploymentService.after('subscribe', async (_, req) => {
-    const { tenant, metadata } = req.data;
-    const subdomain = metadata?.subscribedSubdomain;
-    const SDMCredentials = cds.env.requires?.sdm?.credentials;
-    const sdmUrl = SDMCredentials?.uri;
+1. Add the cds.xt.DeploymentService to the package.json file
 
-    console.log(`SDM Plugin: Tenant subscription started — ${tenant}`);
-
-    try {
-        const repository = buildRepositoryObject();
-        const token = await fetchSDMToken(subdomain, SDMCredentials.uaa);
-        await onboardRepository(sdmUrl, repository, token);
-        console.log("SDM repository onboarded");
-    } catch (err) {
-        console.error("Error during SDM onboarding:", err);
+    ```json
+   "cds": {
+    "requires": {
+        "cds.xt.DeploymentService": {
+        "preset": "in-sidecar"
+      }
     }
-});
-```
+    ```
+2. Add the @cap-js/sdm dependency to the mtx/sidecar/package.json
+
+3. Add the external id of repository in properties of incidents-mtx-mtx in mta.yaml
+
+4. Add SDMRepositoryConfig.js file in mtx/sidecar folder with the following content:
+
+    ```js
+    module.exports = {
+        sdm: {
+            repositoryConfig: {
+            displayName: "SDM Repository",
+            description: "Onboarded via default-env",
+            repositoryType: "internal",
+            isVersionEnabled: "false",
+            isVirusScanEnabled: "false",
+            skipVirusScanForLargeFile: "true",
+            hashAlgorithms: "SHA-256"
+            }
+        }
+    };
+    ```
+
+When the application is deployed as a SaaS application with above code, a repository is onboarded automatically when a tenant subscribes the SaaS application. The same repository is deleted when the tenant unsubscribes from the SaaS application. The necessary params for the Repository onboarding can be found in the [documentation](https://help.sap.com/docs/document-management-service/sap-document-management-service/internal-repository).
 
 ## Deploying and testing the application
 
@@ -252,7 +264,7 @@ deploymentService.after('subscribe', async (_, req) => {
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
 
 10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
-    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
+   <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
 
