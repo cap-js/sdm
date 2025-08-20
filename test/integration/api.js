@@ -269,7 +269,6 @@ class Api {
     async updateAttachment(appUrl, serviceName, entityName, incidentID, updateData, attachment){
         let response;
          try{
-                                      );
             response = await axios.patch(
                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)`,
                 updateData,
