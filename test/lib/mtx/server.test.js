@@ -11,7 +11,6 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
 
     beforeEach(async () => {
         jest.resetModules();
-
         const MOCK_CONFIG = {
             sdm: {
                 repositoryConfig: {
@@ -47,9 +46,7 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
         xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(null, 'mock-jwt-token'));
         utils.getConfigurations.mockReturnValue({ repositoryId: 'ext-12345' });
         mockRepoStore.getRepositoryId.mockReturnValue({ repositoryId: 'onboard-123', subdomain: 'mock-subdomain' });
-
         mockDeploymentService = { after: jest.fn() };
-
         mockCds = {
             connect: { to: jest.fn().mockResolvedValue(mockDeploymentService) },
             on: jest.fn(),
@@ -87,7 +84,6 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
     });
 
     describe('Onboarding Logic', () => {
-        // ... (Onboarding tests are correct and unchanged) ...
         it('should successfully onboard a tenant repository and save its ID on subscribe', async () => {
             const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
             const mockReqData = { tenant: 't1', metadata: { subscribedSubdomain: 'tenant-a-subdomain' } };
@@ -202,8 +198,6 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
             const mockReqData = { tenant: 't7' };
 
-            // --- THIS IS THE FIX ---
-            // We expect the promise to reject with the unwrapped string, not the original error object.
             await expect(unsubscribeCallback({}, { data: mockReqData })).rejects.toEqual("DELETE failed");
 
             expect(axios.delete).toHaveBeenCalledTimes(1);
