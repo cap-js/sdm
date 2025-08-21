@@ -9,6 +9,16 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
     let axios, xssec, utils, mockCds, mockDeploymentService, mockRepoStore;
     let subscribeCallback, unsubscribeCallback;
 
+    beforeAll(() => {
+        jest.spyOn(console, "log").mockImplementation(() => {});
+        jest.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterAll(() => {
+        console.log.mockRestore();
+        console.error.mockRestore();
+    });
+
     beforeEach(async () => {
         jest.resetModules();
 
