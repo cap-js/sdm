@@ -1378,8 +1378,15 @@ describe("SDMAttachmentsService", () => {
   
     test('should handle drafts when attachment values are found', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
-      const token = 'token123';
+     const req = { data: {  content: 'some content' }, params: [
+                                                                      {
+                                                                        ID: '12345'
+                                                                      },
+                                                                      {
+                                                                                  ID: '12345'
+                                                                                }
+                                                                    ],target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+                                                                     const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345' },
         { HasActiveEntity: true, ID: '67890' },
@@ -1396,8 +1403,26 @@ describe("SDMAttachmentsService", () => {
   
     test('should not create attachment if no matching inactive entities are found', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
-      const token = 'token123';
+      const req = {
+              data: {
+                content: 'some content'
+              },
+              params: [
+                {
+                  ID: '12345'
+                },
+                {
+                            ID: '12345'
+                          }
+              ],
+              target: draftAttachments,
+              user: {
+                tokenInfo: {
+                  getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
+                }
+              }
+            };
+             const token = 'token123';
       const attachment_val = [{ HasActiveEntity: true, ID: '12345' }];
   
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1441,8 +1466,10 @@ describe("SDMAttachmentsService", () => {
     });
     test('should reject when filename contains restricted characters', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
-      const token = 'token123';
+      const req = { data: { content: 'some content' },params:[{ID: '12345'},{
+                                                                                                        ID: '12345'
+                                                                                                      }], target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+          const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
@@ -1458,23 +1485,29 @@ describe("SDMAttachmentsService", () => {
   
     test('should not reject when filename does not contain restricted characters', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
-      const token = 'token123';
-      const attachment_val = [
-        { HasActiveEntity: false, ID: '12345', filename: 'validname' },
-        { HasActiveEntity: true, ID: '67890' },
-      ];
-      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
-      fetchAccessToken.mockResolvedValue(token);
-      isRestrictedCharactersInName.mockReturnValue(false);
-  
-      await service.draftSaveHandler(req);
-  
-      expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
-      expect(req.data.content).toBeNull();
-    });
-  });
+           const req = { data: { content: 'some content' },params: [
+                                                                                                                      {
+                                                                                                                        ID: '12345'
+                                                                                                                      },{
+                                                                                                                                              ID: '12345'
+                                                                                                                                            }
+                                                                                                                    ] ,target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+           const token = 'token123';
+           const attachment_val = [
+             { HasActiveEntity: false, ID: '12345', filename: 'validname' },
+             { HasActiveEntity: true, ID: '67890' },
+           ];
+           getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+           fetchAccessToken.mockResolvedValue(token);
+           isRestrictedCharactersInName.mockReturnValue(false);
+
+           await service.draftSaveHandler(req);
+
+           expect(req.reject).not.toHaveBeenCalled();
+           expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
+           expect(req.data.content).toBeNull();
+         });
+       });
 
   describe("filterAttachments", () => {
     let service;
@@ -1801,26 +1834,26 @@ describe("SDMAttachmentsService", () => {
     
     it('should attach URLs to delete and call deleteAttachmentsWithKeys with correct data', async () => {
       const req = {
-        target: { name: 'DraftAttachments' },
-        data: { ID: 'some-id' },
-        user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
-      };
-      cds.model.definitions["DraftAttachments"] = {};
-  
-      // Define a mock function on the service instance to observe it being called
-      const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
-      
-      // Call the method
-      await service.attachURLsToDeleteFromAttachmentsDraft(req);
-      
-      expect(req.attachmentsToDelete).toEqual([{ url: 'http://example.com/attachment1', ID: '1' }]);
-      
-      // Validate deleteAttachmentsWithKeys has been called
-      expect(deleteAttachmentsSpy).toHaveBeenCalled();
-      
-      // Validate deleteAttachmentsWithKeys is called with the correct arguments
-      expect(deleteAttachmentsSpy).toHaveBeenCalledWith(req.attachmentsToDelete, req);
-    });
+              target: {   name: 'DraftAttachments'  },
+              data:  { ID: 'some-other-id'},
+              user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
+            };
+            cds.model.definitions["DraftAttachments"] = {};
+
+            // Define a mock function on the service instance to observe it being called
+            const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
+
+            // Call the method
+            await service.attachURLsToDeleteFromAttachmentsDraft(req);
+
+            expect(req.attachmentsToDelete).toEqual([{ url: 'http://example.com/attachment1', ID: '1' }]);
+
+            // Validate deleteAttachmentsWithKeys has been called
+            expect(deleteAttachmentsSpy).toHaveBeenCalled();
+
+            // Validate deleteAttachmentsWithKeys is called with the correct arguments
+            expect(deleteAttachmentsSpy).toHaveBeenCalledWith(req.attachmentsToDelete, req);
+          });
     
     it('should not call deleteAttachmentsWithKeys if there are no attachments to delete', async () => {
       getURLToDeleteFromDraftAttachments.mockImplementationOnce(async () => {
