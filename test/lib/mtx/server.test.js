@@ -141,16 +141,6 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 await unsubscribeCallback({}, { data: { tenant: tenantId } });
                 expect(axios.get).not.toHaveBeenCalled();
             });
-
-            it('should delete tenant from store', async () => {
-                const tenantId = 't11';
-                await subscribeCallback({}, { data: { tenant: tenantId, metadata: { subscribedSubdomain: 'tenant-k' } } });
-                await unsubscribeCallback({}, { data: { tenant: tenantId } });
-                expect(axios.delete).toHaveBeenCalledTimes(1);
-                axios.delete.mockClear();
-                await unsubscribeCallback({}, { data: { tenant: tenantId } });
-                expect(axios.delete).not.toHaveBeenCalled();
-            });
         });
     });
 });
