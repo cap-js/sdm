@@ -243,7 +243,7 @@ class Api {
         
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}_attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
                 this.config
             );
     
