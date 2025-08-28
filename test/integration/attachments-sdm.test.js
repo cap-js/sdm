@@ -75,14 +75,14 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should upload a single attachment and check if it has been uploaded with content --exe', async () => { 
+  it('should upload a single attachment and check if it has been uploaded with content --exe', async () => {
     //A separate test case is formed for exe as the postData will vary, and unlike pdf it can't be viewed in browser
     const file =
-    { 
-      filename: "sample.exe", 
-      filepath: "./test/integration/sample.exe" 
+    {
+      filename: "sample.exe",
+      filepath: "./test/integration/sample.exe"
     }
-    
+
     const postData = {
       up__ID: incidentID,
       mimeType: "application/exe",
@@ -106,11 +106,11 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should not allow upload of duplicate files in same entity', async () => { 
-    const file = 
-      { 
-        filename: "sample.pdf", 
-        filepath: "./test/integration/sample.pdf" 
+  it('should not allow upload of duplicate files in same entity', async () => {
+    const file =
+      {
+        filename: "sample.pdf",
+        filepath: "./test/integration/sample.pdf"
       }
 
     const postData = {
@@ -129,7 +129,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     if (response.status == "OK") {
       throw new Error("Error : " + response.message)
     }
-    response = await api.deleteAttachment(appUrl, serviceName, incidentID, response.ID);
+    response = await api.deleteAttachment(appUrl, serviceName, incidentID, response.ID,entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -139,15 +139,15 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should not allow upload of duplicate files in same entity --draft', async () => { 
+  it('should not allow upload of duplicate files in same entity --draft', async () => {
     const files = [
-      { 
-        filename: "sample2.pdf", 
-        filepath: "./test/integration/sample2.pdf" 
+      {
+        filename: "sample2.pdf",
+        filepath: "./test/integration/sample2.pdf"
       },
       {
-        filename: "sample2.pdf", 
-        filepath: "./test/integration/sample2.pdf" 
+        filename: "sample2.pdf",
+        filepath: "./test/integration/sample2.pdf"
       }
     ]
 
@@ -171,7 +171,7 @@ describe('Attachments Integration Tests --CREATE', () => {
     if (response.status == "OK") {
       throw new Error("Error : " + "Duplicate attachment was created")
     }
-    response = await api.deleteAttachment(appUrl, serviceName, incidentID, response.ID);
+    response = await api.deleteAttachment(appUrl, serviceName, incidentID, response.ID,entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -181,17 +181,17 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should allow upload of a duplicate file in a different entity', async () => { 
+  it('should allow upload of a duplicate file in a different entity', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
     incidentToDelete = response.incidentID;
 
-    const file = 
-    { 
-      filename: "sample.pdf", 
-      filepath: "./test/integration/sample.pdf" 
+    const file =
+    {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
     }
 
     const postData = {
@@ -240,11 +240,11 @@ describe('Attachments Integration Tests --UPDATE', () => {
 
   it('should update valid properties of attachments during create of entity', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
     incidentIDCustomProperty1 = response.incidentID;
-
     const postData = {
       up__ID: incidentIDCustomProperty1,
       mimeType: "application/pdf",
@@ -253,18 +253,17 @@ describe('Attachments Integration Tests --UPDATE', () => {
       modifiedBy: "test@test.com"
     }
 
-    const file = 
-    { 
-      filename: "sample.pdf", 
-      filepath: "./test/integration/sample.pdf" 
-    }    
+    const file =
+    {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    }
 
     response = await api.createAttachment(appUrl, serviceName, entityName, incidentIDCustomProperty1, postData, file);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
     attachment1 = response.ID;
-
     let updateData = {
       filename : "sample_updated.pdf",
       customProperty1_code: "test",
@@ -296,7 +295,7 @@ describe('Attachments Integration Tests --UPDATE', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    
+
     let updateData = {
       filename : "sample_updated1.pdf",
       customProperty1_code: "test123",
@@ -339,16 +338,16 @@ describe('Attachments Integration Tests --UPDATE', () => {
     }
 
     const files = [
-      { 
-        filename: "sample.pdf", 
-        filepath: "./test/integration/sample.pdf" 
+      {
+        filename: "sample.pdf",
+        filepath: "./test/integration/sample.pdf"
       },
       {
-        filename: "sample2.pdf", 
-        filepath: "./test/integration/sample2.pdf" 
-      } 
+        filename: "sample2.pdf",
+        filepath: "./test/integration/sample2.pdf"
+      }
     ]
-       
+
 
     response = await api.createAttachment(appUrl, serviceName, entityName, incidentIDCustomProperty2, postData, files[0]);
     if (response.status !== "OK") {
@@ -418,7 +417,7 @@ describe('Attachments Integration Tests --UPDATE', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    
+
     let updateDataInvalid = {
       filename : "sample_updated_invalid.pdf",
       customProperty1_code: "test123",
@@ -477,7 +476,7 @@ describe('Attachments Integration Tests --DELETE', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    response = await api.deleteAttachment(appUrl, serviceName, incidentID, attachments[0]);
+    response = await api.deleteAttachment(appUrl, serviceName, incidentID, attachments[0],entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
