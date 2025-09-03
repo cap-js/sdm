@@ -243,7 +243,7 @@ class Api {
         
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}_attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
                 this.config
             );
     
@@ -274,6 +274,7 @@ class Api {
                 updateData,
                 this.config
             );
+            console.log("Response "+response);
             if (response.status === 200) {
                 return { 
                     status: "OK"
@@ -285,6 +286,7 @@ class Api {
                 };
             }
         } catch (error) {
+         console.log("Error in update "+error);
             return { 
                 status: "FAILED",
                 message: "Update attachment API call failed : " + error.message 
