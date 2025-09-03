@@ -1381,22 +1381,34 @@ describe("SDMAttachmentsService", () => {
   
     test('should handle drafts when attachment values are found', async () => {
       const draftAttachments = [];
-     const req = { data: {  content: 'some content' }, params: [
-                                                                      {
-                                                                        ID: '12345'
-                                                                      },
-                                                                      {
-                                                                                  ID: '12345'
-                                                                                }
-                                                                    ],target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
-                                                                     const token = 'token123';
+      const req = { 
+        data: {
+          content: 'some content' 
+        }, 
+        params: [
+          {
+            ID: '12345'
+          },
+          {
+            ID: '12345'
+          }
+        ],
+        target: draftAttachments,
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue('mockTokenValue') 
+          } 
+        } 
+      };
+      const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: '12345' },
-        { HasActiveEntity: true, ID: '67890' },
+        { HasActiveEntity: false, ID: '12345', filename: 'sample.txt' },
+        { HasActiveEntity: true, ID: '67890', filename: 'other.txt' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
       fetchAccessToken.mockResolvedValue(token);
-  
+      getId.mockReturnValue("12345");
+    
       await service.draftSaveHandler(req);
       
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(attachment_val, req);
@@ -1468,17 +1480,32 @@ describe("SDMAttachmentsService", () => {
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(service.create).not.toHaveBeenCalled();
     });
+
     test('should reject when filename contains restricted characters', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content' },params:[{ID: '12345'},{
-                                                                                                        ID: '12345'
-                                                                                                      }], target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      const req = {
+        data: {
+          content: 'some content' 
+        },
+        params:[
+          {
+            ID: '12345'
+          },
+          {
+            ID: '12345'
+          }
+        ], 
+        target: draftAttachments, 
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
+          } }, reject: jest.fn() };
           const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
       ];
-     getId.mockResolvedValue("12345");
+      getId.mockReturnValue("12345");
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
       fetchAccessToken.mockResolvedValue(token);
       isRestrictedCharactersInName.mockReturnValue(true);
@@ -1490,33 +1517,44 @@ describe("SDMAttachmentsService", () => {
   
     test('should not reject when filename does not contain restricted characters', async () => {
       const draftAttachments = [];
-           const req = { data: { content: 'some content' },params: [
-                                                                                                                      {
-                                                                                                            ID: '12345'
-                                                                                                                      },{
-                                                                                                                                              ID: '12345'
-                                                                                                                                            }
+      const req = {
+        data: {
+        content: 'some content' },
+        params: [
+          {
+            ID: '12345'
+          },
+          {
+            ID: '12345'
+          }
+        ],
+        target: draftAttachments,
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue('mockTokenValue') 
+          }
+        },
+        reject: jest.fn() 
+      };
 
-                                                                                                ] ,target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+      getId.mockReturnValue("12345");
+      const token = 'token123';
+      const attachment_val = [
+        { HasActiveEntity: false, ID: '12345', filename: 'validname' },
+        { HasActiveEntity: true, ID: '67890' },
+      ];
+      getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
 
+      fetchAccessToken.mockResolvedValue(token);
+      isRestrictedCharactersInName.mockReturnValue(false);
 
-getId.mockResolvedValue({idToUse:"12345"});
-           const token = 'token123';
-           const attachment_val = [
-             { HasActiveEntity: false, ID: '12345', filename: 'validname' },
-             { HasActiveEntity: true, ID: '67890' },
-           ];
-           getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+      await service.draftSaveHandler(req);
 
-           fetchAccessToken.mockResolvedValue(token);
-           isRestrictedCharactersInName.mockReturnValue(false);
-
-           await service.draftSaveHandler(req);
-
-           expect(req.reject).not.toHaveBeenCalled();
-          expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, content: 'some content', filename: 'validname' }], draftAttachments, req, token);  expect(req.data.content).toBeNull();
-         });
-       });
+      expect(req.reject).not.toHaveBeenCalled();
+      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "12345", content: 'some content', filename: 'validname' }], draftAttachments, req, token);  
+      expect(req.data.content).toBeNull();
+    });
+  });
 
   describe("filterAttachments", () => {
     let service;
