@@ -156,6 +156,28 @@ describe("handlers", () => {
         getRepositoryInfo(mockReq, mockedCredentials, mockedToken)
       ).rejects.toThrow("something bad happened");
     });
+    it("should reject with 404 when repository info not found", async () => {
+        mockedCredentials = { uri: "mocked_uri/" };
+        mockedToken = "mocked_token";
+        axios.get.mockRejectedValue({
+          response: { status: 404 }
+        });
+
+        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedToken)).rejects.toThrow();
+        expect(mockReq.reject).toHaveBeenCalledWith(404, "Failed to get repository info");
+      });
+
+      it("should reject with 500 and a message from the server", async () => {
+        const errorMessage = 'Internal Server Error';
+        mockedCredentials = { uri: "mocked_uri/" };
+        mockedToken = "mocked_token";
+        axios.get.mockRejectedValue({
+          response: { status: 500, data: { message: errorMessage } }
+        });
+
+        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedToken)).rejects.toThrow();
+        expect(mockReq.reject).toHaveBeenCalledWith(500, errorMessage);
+      });
   })
 
   describe("Test for getFolderIdByPath", () => {
