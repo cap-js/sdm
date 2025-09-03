@@ -45,11 +45,11 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });   
 
-  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => { 
-    const file = 
-    { 
-      filename: "sample.pdf", 
-      filepath: "./test/integration/sample.pdf" 
+  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => {
+    const file =
+    {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
     }
 
     const postData = {
@@ -245,7 +245,6 @@ describe('Attachments Integration Tests --UPDATE', () => {
       throw new Error("Error : " + response.message)
     }
     incidentIDCustomProperty1 = response.incidentID;
-    console.log("Custom prop "+incidentIDCustomProperty1);
     const postData = {
       up__ID: incidentIDCustomProperty1,
       mimeType: "application/pdf",
@@ -264,9 +263,7 @@ describe('Attachments Integration Tests --UPDATE', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    console.log("RESPONSE "+response.status);
     attachment1 = response.ID;
-    console.log("attachment1 "+attachment1);
     let updateData = {
       filename : "sample_updated.pdf",
       customProperty1_code: "test",
@@ -275,7 +272,6 @@ describe('Attachments Integration Tests --UPDATE', () => {
       customProperty6: true
     }
     response = await api.updateAttachment(appUrl, serviceName, entityName, incidentIDCustomProperty1, updateData, attachment1);
-   console.log("Response update "+response.status);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -283,9 +279,7 @@ describe('Attachments Integration Tests --UPDATE', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    console.log("Respo test "+response);
     response = await api.fetchMetadata(appUrl, serviceName, entityName, incidentIDCustomProperty1, attachment1);
-     console.log("Respo test again "+response.status);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -514,6 +508,3 @@ describe('Attachments Integration Tests --DELETE', () => {
     }
   });
 });
-
-
-

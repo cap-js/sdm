@@ -52,18 +52,18 @@ class Api {
                 https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${srvpath}.draftActivate`,
                 {},
                 this.config
-            );  
+            );
             let sapMessages = "";
             sapMessages = response.headers['sap-messages'];
             if (response.status === 201 || response.status === 200) {
-                return { 
-                    status: "OK", 
+                return {
+                    status: "OK",
                     sapMessages: sapMessages
                 };
             } else {
-                return { 
-                    status: "FAILED", 
-                    message: "Save entity draft did not return 200/201 status code. Actual code : " + response.status 
+                return {
+                    status: "FAILED",
+                    message: "Save entity draft did not return 200/201 status code. Actual code : " + response.status
                 };
             }
         } catch (error) {
@@ -274,19 +274,17 @@ class Api {
                 updateData,
                 this.config
             );
-            console.log("Response "+response);
             if (response.status === 200) {
-                return { 
+                return {
                     status: "OK"
                 };
             } else {
-                return { 
+                return {
                     status: "FAILED",
-                    message: "Update attachment did not return 200 status code : " + response.status 
+                    message: "Update attachment did not return 200 status code : " + response.status
                 };
             }
         } catch (error) {
-         console.log("Error in update "+error);
             return { 
                 status: "FAILED",
                 message: "Update attachment API call failed : " + error.message 
