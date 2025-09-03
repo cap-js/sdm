@@ -45,6 +45,11 @@
   },
   "cds": {
     "requires": {
+      "sdm": {
+        "vcap": {
+          "label": "sdm"
+        }
+      },
       "kinds": {
         "sdm": {
           "impl": "@cap-js/sdm/lib/sdm"
