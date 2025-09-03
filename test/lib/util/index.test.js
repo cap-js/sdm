@@ -1023,9 +1023,12 @@ describe("util", () => {
   });
   describe('getId function', () => {
     test('should return ID from req.params when containment is true', () => {
-      // Mock cds environment for containment true
-       const cds = { env: { odata: { containment: true } } };
-
+      cds.env = {
+        odata :
+        {
+          containment : true
+        }
+      };
       // Example request object with params
       const req = {
         data: { ID: '12345' },
@@ -1040,9 +1043,12 @@ describe("util", () => {
     });
 
     test('should return ID from req.data when containment is false', () => {
-      // Mock cds environment for containment false
-       const cds = { env: { odata: { containment: false } } };
-
+      cds.env = {
+        odata :
+        {
+          containment : false
+        }
+      };
       // Example request object with data
       const req = {
         data: { ID: '67890' }
