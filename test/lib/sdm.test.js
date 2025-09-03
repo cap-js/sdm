@@ -1514,6 +1514,39 @@ describe("SDMAttachmentsService", () => {
   
       expect(req.reject).toHaveBeenCalledWith(409, nameConstrainErr(['invalid/name'], "Upload"));
     });
+     test('when req.data.content null', async () => {
+          const draftAttachments = [];
+          const req = {
+            data: {
+              content: 'some content'
+            },
+            params:[
+              {
+                ID: '12345'
+              },
+              {
+                ID: '12345'
+              }
+            ],
+            target: draftAttachments,
+            user: {
+              tokenInfo: {
+                getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
+              } }, reject: jest.fn() };
+              const token = 'token123';
+          const attachment_val = [
+            { HasActiveEntity: false, ID: '4555', filename: null },
+            { HasActiveEntity: true, ID: '67890' },
+          ];
+          getId.mockReturnValue("12345");
+          getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+          fetchAccessToken.mockResolvedValue(token);
+          isRestrictedCharactersInName.mockReturnValue(true);
+
+          await service.draftSaveHandler(req);
+
+          expect(service.create).not.toHaveBeenCalled();
+        });
   
     test('should not reject when filename does not contain restricted characters', async () => {
       const draftAttachments = [];
