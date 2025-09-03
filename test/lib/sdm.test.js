@@ -10,7 +10,8 @@ const {
   getPropertyTitles,
   getSecondaryPropertiesWithInvalidDefinition,
   getSecondaryTypeProperties,
-  getUpdatedSecondaryProperties
+  getUpdatedSecondaryProperties,
+  getId
 } = require("../../lib/util");
 const {
   getDraftAttachments,
@@ -77,6 +78,7 @@ jest.mock("../../lib/util", () => ({
   getSecondaryPropertiesWithInvalidDefinition: jest.fn(),
   getSecondaryTypeProperties: jest.fn(),
   getUpdatedSecondaryProperties: jest.fn(),
+  getId:jest.fn(),
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -1364,6 +1366,7 @@ describe("SDMAttachmentsService", () => {
       service.isFileNameDuplicateInDrafts = jest.fn();
       service.create = jest.fn();
       service.creds = {};
+
     });
   
     afterEach(() => {
@@ -1400,7 +1403,8 @@ describe("SDMAttachmentsService", () => {
       expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
       expect(req.data.content).toBeNull();
     });
-  
+
+
     test('should not create attachment if no matching inactive entities are found', async () => {
       const draftAttachments = [];
       const req = {
@@ -1474,6 +1478,7 @@ describe("SDMAttachmentsService", () => {
         { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
       ];
+     getId.mockResolvedValue("12345");
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
       fetchAccessToken.mockResolvedValue(token);
       isRestrictedCharactersInName.mockReturnValue(true);
@@ -1487,25 +1492,29 @@ describe("SDMAttachmentsService", () => {
       const draftAttachments = [];
            const req = { data: { content: 'some content' },params: [
                                                                                                                       {
-                                                                                                                        ID: '12345'
+                                                                                                            ID: '12345'
                                                                                                                       },{
                                                                                                                                               ID: '12345'
                                                                                                                                             }
-                                                                                                                    ] ,target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+
+                                                                                                ] ,target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } }, reject: jest.fn() };
+
+
+getId.mockResolvedValue({idToUse:"12345"});
            const token = 'token123';
            const attachment_val = [
              { HasActiveEntity: false, ID: '12345', filename: 'validname' },
              { HasActiveEntity: true, ID: '67890' },
            ];
            getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
+
            fetchAccessToken.mockResolvedValue(token);
            isRestrictedCharactersInName.mockReturnValue(false);
 
            await service.draftSaveHandler(req);
 
            expect(req.reject).not.toHaveBeenCalled();
-           expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
-           expect(req.data.content).toBeNull();
+          expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, content: 'some content', filename: 'validname' }], draftAttachments, req, token);  expect(req.data.content).toBeNull();
          });
        });
 
@@ -2508,4 +2517,6 @@ describe("SDMAttachmentsService", () => {
       );
     });
   });
+
+
 });
