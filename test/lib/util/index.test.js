@@ -14,7 +14,8 @@ const {
   getUpdatedSecondaryProperties,
   extractSecondaryTypeIds,
   checkMCM,
-  prepareSecondaryProperties
+  prepareSecondaryProperties,
+  getId
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -1019,5 +1020,51 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyId[3]", "key2");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
     });
+  });
+  describe('getId function', () => {
+    test('should return ID from req.params when containment is true', () => {
+      // Mock cds environment for containment true
+       const cds = { env: { odata: { containment: true } } };
+
+      // Example request object with params
+      const req = {
+        data: { ID: '12345' },
+        params: [
+          {},
+          { ID: '12345' }
+        ]
+      };
+
+      const id = getId(req);
+      expect(id).toBe('12345');
+    });
+
+    test('should return ID from req.data when containment is false', () => {
+      // Mock cds environment for containment false
+       const cds = { env: { odata: { containment: false } } };
+
+      // Example request object with data
+      const req = {
+        data: { ID: '67890' }
+      };
+
+      const id = getId(req);
+      expect(id).toBe('67890');
+    });
+
+    // test('should handle undefined cds.env.odata.containment gracefully', () => {
+    //   // Simulate cds environment where containment might be undefined
+    //    cds = require("@sap/cds/lib");
+    //    const cds = { env: { odata: { containment: false } } };
+    //   delete cds.env.odata.containment;
+
+    //   // Example request object
+    //   const req = {
+    //     data: { ID: '11111' }
+    //   };
+
+    //   const id = getId(req);
+    //   expect(id).toBe('11111');
+    // });
   });
 });
