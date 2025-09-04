@@ -260,20 +260,40 @@ async function handleCommentResponse(octokit, commentBody, pull_number, genAI) {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const userQuestion = commentBody.replace("Hey Gemini,", "").trim();
 
-    const diffContent = await getDiff(octokit, context.repo.owner, context.repo.repo, pull_number);
+    let prompt;
 
-    const prompt = `A user has a question about a pull request. The pull request diff is below, followed by the user's question. Please provide a clear and concise answer.
+    // Check if the comment is on a pull request
+    if (context.payload.issue.pull_request) {
+        // This is a comment on a PR, so we can get the diff
+        const diffContent = await getDiff(octokit, context.repo.owner, context.repo.repo, pull_number);
+        prompt = `A user has a question about a pull request. The pull request diff is below, followed by the user's question. Please provide a clear and concise answer.
 
-    ---
-    Git Diff:
-    \`\`\`diff
-    ${diffContent}
-    \`\`\`
+        ---
+        Git Diff:
+        \`\`\`diff
+        ${diffContent}
+        \`\`\`
 
-    ---
-    User's question:
-    ${userQuestion}
-    `;
+        ---
+        User's question:
+        ${userQuestion}
+        `;
+    } else {
+        // This is a comment on a regular issue. We don't have a diff.
+        // The issue number is in pull_number variable
+        const issueTitle = context.payload.issue.title;
+        const issueBody = context.payload.issue.body;
+        prompt = `A user has a question about a GitHub issue. The issue's title and body are provided below, followed by the user's question. Please provide a clear and concise answer.
+
+        ---
+        Issue Title: ${issueTitle}
+        Issue Body: ${issueBody}
+        
+        ---
+        User's question:
+        ${userQuestion}
+        `;
+    }
 
     let response = "Error: Could not generate a response to your comment.";
     try {
@@ -288,7 +308,7 @@ async function handleCommentResponse(octokit, commentBody, pull_number, genAI) {
         await octokit.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: pull_number,
+            issue_number: pull_number, // pull_number holds the issue number here
             body: `## Gemini's Response\n\n${response}`
         });
         console.log("Gemini's response posted successfully.");
