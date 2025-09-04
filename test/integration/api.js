@@ -1,13 +1,16 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
-
+const cds = require("@sap/cds/lib");
+function isOdataContainment() {
+    return cds?.env?.odata?.containment;
+}
 class Api {
     constructor(config) {
         config = JSON.parse(JSON.stringify(config));
         this.config = config
       }
-    
+
     async createEntityDraft(appUrl, serviceName, entityName){
         let response;
         let incidentID;
@@ -159,7 +162,7 @@ class Api {
     async createAttachment(appUrl, serviceName, entityName, incidentID, postData, file){
         let response;
         postData['filename'] = file.filename;
-
+        let putUrl;
         try{
             response = await axios.post(
                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
@@ -170,11 +173,14 @@ class Api {
                 const formDataPut = new FormData();
                 const pdfStream = fs.createReadStream(file.filepath); 
                 formDataPut.append('content', pdfStream);
-                // responseStatus.attachmentID.push(response.data.ID)
+                if (isOdataContainment() === true) {
+                               putUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`;
+                            } else {
+                                putUrl = `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`;
+                            }
                  try{
                     await axios.put(
-                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`,
-
+                    putUrl,
                     formDataPut,
                     this.config
                     );
@@ -315,7 +321,8 @@ class Api {
                 message: "Delete attachment API call failed : " + error.message 
             };
         }
-    }    
+    }
+
 }
 
 module.exports = Api;
