@@ -14,7 +14,8 @@ const {
   getUpdatedSecondaryProperties,
   extractSecondaryTypeIds,
   checkMCM,
-  prepareSecondaryProperties
+  prepareSecondaryProperties,
+  getId
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -140,7 +141,7 @@ describe("util", () => {
           },
         },
       };
-    
+
       const nowInSeconds = Math.floor(Date.now() / 1000);
 
       dummyToken = createDummyToken({
@@ -212,7 +213,7 @@ describe("util", () => {
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
     });
-  
+
     it('returns cached token if available', async () => {
       const cachedToken = 'mockedAccessToken';
       NodeCache.prototype.get.mockImplementation(() => cachedToken);
@@ -228,12 +229,12 @@ describe("util", () => {
         },
     };
       const token = await getClientCredentialsToken({ uaa: 'mockedUaa' });
-  
+
       expect(token).toBe(cachedToken);
       expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain');
       expect(xssec.v3.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
     });
-  
+
     it('requests new token and caches it if not available', async () => {
       const credentials = { uaa: 'mockedUaa' };
       const mockResponse = { accessToken: 'newAccessToken' };
@@ -253,7 +254,7 @@ describe("util", () => {
         },
     };
       const token = await getClientCredentialsToken(credentials);
-  
+
       expect(token).toBe(mockResponse);
       expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain', mockResponse, expect.any(Number));
       expect(xssec.v3.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
@@ -263,7 +264,7 @@ describe("util", () => {
         expect.any(Function)
       );
     });
-  
+
     it('handles error from requestClientCredentialsToken', async () => {
       const credentials = { uaa: 'mockedUaa' };
       const mockError = new Error('Request failed');
@@ -271,19 +272,19 @@ describe("util", () => {
       xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
         callback(mockError, null);
       });
-  
+
       await expect(getClientCredentialsToken(credentials)).rejects.toThrow();
       expect(NodeCache.prototype.set).not.toHaveBeenCalled();
     });
   });
 
   describe("isRepositoryVersioned", () => {
-    
+
     beforeEach(() => {
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
     });
-    
+
     it("should return true when repotype is pwconly", () => {
       NodeCache.prototype.get.mockImplementation(() => undefined);
       const mockRepoInfo = {
@@ -385,25 +386,25 @@ describe("util", () => {
       const result = isRestrictedCharactersInName(filename);
       expect(result).toBe(true);
     });
-  
+
     it("should return true if the filename contains a backslash", () => {
       const filename = "file\\name";
       const result = isRestrictedCharactersInName(filename);
       expect(result).toBe(true);
     });
-  
+
     it("should return false if the filename does not contain restricted characters", () => {
       const filename = "filename";
       const result = isRestrictedCharactersInName(filename);
       expect(result).toBe(false);
     });
-  
+
     it("should return false if the filename is empty", () => {
       const filename = "";
       const result = isRestrictedCharactersInName(filename);
       expect(result).toBe(false);
     });
-  
+
     it("should return false if the filename contains only valid characters", () => {
       const filename = "valid_filename";
       const result = isRestrictedCharactersInName(filename);
@@ -416,12 +417,12 @@ describe("util", () => {
       const result = getStatusCondition(404);
       expect(result).toBe("don't");
     });
-  
+
     it('should return "already" for status code 409', () => {
       const result = getStatusCondition(409);
       expect(result).toBe("already");
     });
-  
+
     it('should return undefined for unknown status code', () => {
       const result = getStatusCondition(500); // Example of a status that isn't handled specifically
       expect(result).toBeUndefined();
@@ -432,12 +433,12 @@ describe("util", () => {
     it("should return an empty map if attachmentEntity is null", () => {
       const attachmentEntity = null;
       const attachment = { key1: "value1" };
-  
+
       const result = getPropertyTitles(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({});
     });
-  
+
     it("should return a map with property names and titles when annotations are present", () => {
       const attachmentEntity = {
         elements: {
@@ -454,15 +455,15 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getPropertyTitles(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         property1: "Title 1",
         property2: "Title 2",
       });
     });
-  
+
     it("should fallback to element name if @title annotation is not present", () => {
       const attachmentEntity = {
         elements: {
@@ -478,15 +479,15 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getPropertyTitles(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         property1: "key1",
         property2: "Title 2",
       });
     });
-  
+
     it("should skip keys without property names", () => {
       const attachmentEntity = {
         elements: {
@@ -502,14 +503,14 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getPropertyTitles(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         property1: "Title 1",
       });
     });
-  
+
     it("should return an empty map if attachment has no matching keys in attachmentEntity", () => {
       const attachmentEntity = {
         elements: {
@@ -521,9 +522,9 @@ describe("util", () => {
         },
       };
       const attachment = { key2: "value2" };
-  
+
       const result = getPropertyTitles(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({});
     });
   });
@@ -532,12 +533,12 @@ describe("util", () => {
     it("should return an empty object if attachmentEntity is null", () => {
       const attachmentEntity = null;
       const attachment = { key1: "value1" };
-  
+
       const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({});
     });
-  
+
     it("should return an empty object if no keys in attachment have outdated annotations", () => {
       const attachmentEntity = {
         elements: {
@@ -552,12 +553,12 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({});
     });
-  
+
     it("should return a map of invalid properties with their titles when outdated annotations are present", () => {
       const attachmentEntity = {
         elements: {
@@ -574,15 +575,15 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         key1: "Title 1",
         key2: "Title 2",
       });
     });
-  
+
     it("should fallback to element name if @title annotation is not present", () => {
       const attachmentEntity = {
         elements: {
@@ -598,15 +599,15 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         key1: "key1",
         key2: "Title 2",
       });
     });
-  
+
     it("should skip keys in attachment that do not exist in attachmentEntity.elements", () => {
       const attachmentEntity = {
         elements: {
@@ -618,9 +619,9 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" }; // key2 does not exist in attachmentEntity.elements
-  
+
       const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
-  
+
       expect(result).toEqual({
         key1: "Title 1",
       });
@@ -631,12 +632,12 @@ describe("util", () => {
     it("should return an empty map if attachmentEntity is null", () => {
       const attachmentEntity = null;
       const attachment = { key1: "value1" };
-  
+
       const result = getSecondaryTypeProperties(attachmentEntity, attachment);
-  
+
       expect(result.size).toBe(0); // Map should be empty
     });
-  
+
     it("should return an empty map if no keys in attachment have annotations", () => {
       const attachmentEntity = {
         elements: {
@@ -649,12 +650,12 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryTypeProperties(attachmentEntity, attachment);
-  
+
       expect(result.size).toBe(0); // Map should be empty
     });
-  
+
     it("should return a map of secondary type properties when annotations are present", () => {
       const attachmentEntity = {
         elements: {
@@ -669,14 +670,14 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryTypeProperties(attachmentEntity, attachment);
-  
+
       expect(result.size).toBe(2);
       expect(result.get("key1")).toBe("property1");
       expect(result.get("key2")).toBe("property2");
     });
-  
+
     it("should skip keys in attachment that do not exist in attachmentEntity.elements", () => {
       const attachmentEntity = {
         elements: {
@@ -687,14 +688,14 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" }; // key2 does not exist in attachmentEntity.elements
-  
+
       const result = getSecondaryTypeProperties(attachmentEntity, attachment);
-  
+
       expect(result.size).toBe(1);
       expect(result.get("key1")).toBe("property1");
       expect(result.has("key2")).toBe(false); // key2 should not be in the map
     });
-  
+
     it("should handle cases where annotations are missing for some keys", () => {
       const attachmentEntity = {
         elements: {
@@ -708,9 +709,9 @@ describe("util", () => {
         },
       };
       const attachment = { key1: "value1", key2: "value2" };
-  
+
       const result = getSecondaryTypeProperties(attachmentEntity, attachment);
-  
+
       expect(result.size).toBe(1);
       expect(result.get("key1")).toBe("property1");
       expect(result.has("key2")).toBe(false); // key2 should not be in the map
@@ -725,12 +726,12 @@ describe("util", () => {
         ["property2", "dbProperty2"],
       ]);
       const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({});
     });
-  
+
     it("should update properties when attachment value is null and database value is not null", () => {
       const attachment = { property1: null, property2: "value2" };
       const secondaryTypeProperties = new Map([
@@ -738,12 +739,12 @@ describe("util", () => {
         ["property2", "dbProperty2"],
       ]);
       const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({ dbProperty1: null });
     });
-  
+
     it("should update properties when attachment value differs from database value", () => {
       const attachment = { property1: "newValue1", property2: "value2" };
       const secondaryTypeProperties = new Map([
@@ -751,12 +752,12 @@ describe("util", () => {
         ["property2", "dbProperty2"],
       ]);
       const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({ dbProperty1: "newValue1" });
     });
-  
+
     it("should handle cases where database value is null and attachment value is not null", () => {
       const attachment = { property1: "value1", property2: "value2" };
       const secondaryTypeProperties = new Map([
@@ -764,12 +765,12 @@ describe("util", () => {
         ["property2", "dbProperty2"],
       ]);
       const propertiesInDB = { dbProperty1: null, dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({ dbProperty1: "value1" });
     });
-  
+
     it("should handle cases where both attachment and database values are null", () => {
       const attachment = { property1: null, property2: "value2" };
       const secondaryTypeProperties = new Map([
@@ -777,19 +778,19 @@ describe("util", () => {
         ["property2", "dbProperty2"],
       ]);
       const propertiesInDB = { dbProperty1: null, dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({});
     });
-  
+
     it("should handle cases where secondaryTypeProperties is empty", () => {
       const attachment = { property1: "value1", property2: "value2" };
       const secondaryTypeProperties = new Map(); // Empty map
       const propertiesInDB = { dbProperty1: "value1", dbProperty2: "value2" };
-  
+
       const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
-  
+
       expect(result).toEqual({});
     });
   });
@@ -802,12 +803,12 @@ describe("util", () => {
         { type: { id: "type3" } },
       ];
       const result = [];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual(["type1", "type2", "type3"]);
     });
-  
+
     it("should extract type IDs from a nested JSON array", () => {
       const jsonArray = [
         {
@@ -820,12 +821,12 @@ describe("util", () => {
         { type: { id: "type4" } },
       ];
       const result = [];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual(["type1", "type2", "type3", "type4"]);
     });
-  
+
     it("should handle JSON objects without a type ID", () => {
       const jsonArray = [
         { type: { id: "type1" } },
@@ -833,42 +834,42 @@ describe("util", () => {
         { children: [{ type: { id: "type2" } }] }, // Nested with valid ID
       ];
       const result = [];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual(["type1", "type2"]);
     });
-  
+
     it("should handle an empty JSON array", () => {
       const jsonArray = [];
       const result = [];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual([]);
     });
-  
+
     it("should handle a JSON array with no valid type IDs", () => {
       const jsonArray = [
         { type: {} },
         { children: [{ type: {} }] },
       ];
       const result = [];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual([]);
     });
-  
+
     it("should not modify the result array if no type IDs are found", () => {
       const jsonArray = [
         { type: {} },
         { children: [{ type: {} }] },
       ];
       const result = ["existingType"];
-  
+
       extractSecondaryTypeIds(jsonArray, result);
-  
+
       expect(result).toEqual(["existingType"]);
     });
   });
@@ -877,33 +878,33 @@ describe("util", () => {
     it("should return false if responseBody is null or empty", () => {
       const responseBody = "";
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(false);
       expect(secondaryPropertyIds).toEqual([]);
     });
-  
+
     it("should return false if responseBody does not contain propertyDefinitions", () => {
       const responseBody = JSON.stringify({ someOtherKey: {} });
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(false);
       expect(secondaryPropertyIds).toEqual([]);
     });
-  
+
     it("should return false if propertyDefinitions is null or undefined", () => {
       const responseBody = JSON.stringify({ propertyDefinitions: null });
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(false);
       expect(secondaryPropertyIds).toEqual([]);
     });
-  
+
     it("should return true and add keys to secondaryPropertyIds if isPartOfTable is 'true'", () => {
       const responseBody = JSON.stringify({
         propertyDefinitions: {
@@ -913,13 +914,13 @@ describe("util", () => {
         },
       });
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(true);
       expect(secondaryPropertyIds).toEqual(["key1", "key3"]);
     });
-  
+
     it("should return false if no properties have isPartOfTable set to 'true'", () => {
       const responseBody = JSON.stringify({
         propertyDefinitions: {
@@ -928,13 +929,13 @@ describe("util", () => {
         },
       });
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(false);
       expect(secondaryPropertyIds).toEqual([]);
     });
-  
+
     it("should handle cases where propertyDefinitions has no mcm:miscellaneous key", () => {
       const responseBody = JSON.stringify({
         propertyDefinitions: {
@@ -943,74 +944,74 @@ describe("util", () => {
         },
       });
       const secondaryPropertyIds = [];
-  
+
       const result = checkMCM(responseBody, secondaryPropertyIds);
-  
+
       expect(result).toBe(false);
       expect(secondaryPropertyIds).toEqual([]);
     });
-  
+
     it("should handle invalid JSON in responseBody", () => {
       const responseBody = "invalid JSON";
       const secondaryPropertyIds = [];
-  
+
       expect(() => checkMCM(responseBody, secondaryPropertyIds)).toThrow(SyntaxError);
     });
   });
 
   describe("prepareSecondaryProperties", () => {
     let formData;
-  
+
     beforeEach(() => {
       formData = {
         append: jest.fn(), // Mock the append method
       };
     });
-  
+
     it("should append secondary properties to FormData", () => {
       const secondaryProperties = {
         key1: "value1",
         key2: "value2",
       };
-  
+
       prepareSecondaryProperties(formData, secondaryProperties);
-  
+
       expect(formData.append).toHaveBeenCalledTimes(4);
       expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "key1");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "value1");
       expect(formData.append).toHaveBeenCalledWith("propertyId[2]", "key2");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value2");
     });
-  
+
     it("should handle the 'filename' key and map it to 'cmis:name'", () => {
       const secondaryProperties = {
         filename: "testFileName",
       };
-  
+
       prepareSecondaryProperties(formData, secondaryProperties);
-  
+
       expect(formData.append).toHaveBeenCalledTimes(2);
       expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "cmis:name");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "testFileName");
     });
-  
+
     it("should handle an empty secondaryProperties object", () => {
       const secondaryProperties = {};
-  
+
       prepareSecondaryProperties(formData, secondaryProperties);
-  
+
       expect(formData.append).not.toHaveBeenCalled();
     });
-  
+
     it("should handle multiple secondary properties including 'filename'", () => {
       const secondaryProperties = {
         filename: "testFileName",
         key1: "value1",
         key2: "value2",
       };
-  
+
       prepareSecondaryProperties(formData, secondaryProperties);
-  
+
       expect(formData.append).toHaveBeenCalledTimes(6);
       expect(formData.append).toHaveBeenCalledWith("propertyId[1]", "cmis:name");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[1]", "testFileName");
@@ -1018,6 +1019,43 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value1");
       expect(formData.append).toHaveBeenCalledWith("propertyId[3]", "key2");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
+    });
+  });
+  describe('getId function', () => {
+    test('should return ID from req.params when containment is true', () => {
+      cds.env = {
+        odata :
+        {
+          containment : true
+        }
+      };
+      // Example request object with params
+      const req = {
+        data: { ID: '12345' },
+        params: [
+          {},
+          { ID: '12345' }
+        ]
+      };
+
+      const id = getId(req);
+      expect(id).toBe('12345');
+    });
+
+    test('should return ID from req.data when containment is false', () => {
+      cds.env = {
+        odata :
+        {
+          containment : false
+        }
+      };
+      // Example request object with data
+      const req = {
+        data: { ID: '67890' }
+      };
+
+      const id = getId(req);
+      expect(id).toBe('67890');
     });
   });
 });
