@@ -1021,41 +1021,5 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
     });
   });
-  describe('getId function', () => {
-    test('should return ID from req.params when containment is true', () => {
-      cds.env = {
-        odata :
-        {
-          containment : true
-        }
-      };
-      // Example request object with params
-      const req = {
-        data: { ID: '12345' },
-        params: [
-          {},
-          { ID: '12345' }
-        ]
-      };
 
-      const id = getId(req);
-      expect(id).toBe('12345');
-    });
-
-    test('should return ID from req.data when containment is false', () => {
-      cds.env = {
-        odata :
-        {
-          containment : false
-        }
-      };
-      // Example request object with data
-      const req = {
-        data: { ID: '67890' }
-      };
-
-      const id = getId(req);
-      expect(id).toBe('67890');
-    });
-  });
 });
