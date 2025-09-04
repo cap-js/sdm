@@ -6,8 +6,9 @@ on:
 
 jobs:
   respond:
-    # Ensure this job only runs for PR comments and not from the bot itself
-    if: github.event.issue.pull_request && github.event.comment.author.login != 'github-actions[bot]'
+    # This job will now run for comments on both issues and pull requests,
+    # as long as the comment is not from the bot itself.
+    if: github.event.comment.author.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
