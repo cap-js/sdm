@@ -1057,20 +1057,5 @@ describe("util", () => {
       const id = getId(req);
       expect(id).toBe('67890');
     });
-
-    // test('should handle undefined cds.env.odata.containment gracefully', () => {
-    //   // Simulate cds environment where containment might be undefined
-    //    cds = require("@sap/cds/lib");
-    //    const cds = { env: { odata: { containment: false } } };
-    //   delete cds.env.odata.containment;
-
-    //   // Example request object
-    //   const req = {
-    //     data: { ID: '11111' }
-    //   };
-
-    //   const id = getId(req);
-    //   expect(id).toBe('11111');
-    // });
   });
 });
