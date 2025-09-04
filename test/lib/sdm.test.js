@@ -1560,7 +1560,6 @@ describe("SDMAttachmentsService", () => {
 
     test('should not reject when filename does not contain restricted characters', async () => {
       const draftAttachments = [];
-      const attachmentIDRegex = /\/\w+\(.*ID=([0-9a-fA-F-]{36})/
       const req = {
       req: {
           url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
