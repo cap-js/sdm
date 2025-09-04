@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const credentials = require('./credentials.json');
 
 class Api {
     constructor(config) {
@@ -159,6 +160,7 @@ class Api {
     async createAttachment(appUrl, serviceName, entityName, incidentID, postData, file){
         let response;
         postData['filename'] = file.filename;
+        let putUrl;
 
         try{
             response = await axios.post(
@@ -170,11 +172,14 @@ class Api {
                 const formDataPut = new FormData();
                 const pdfStream = fs.createReadStream(file.filepath); 
                 formDataPut.append('content', pdfStream);
-                // responseStatus.attachmentID.push(response.data.ID)
+                 if (credentials.containment === true) {
+                                               putUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`;
+                                            } else {
+                                                putUrl = `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`;
+                                            }
                  try{
                     await axios.put(
-                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`,
-
+                     putUrl,
                     formDataPut,
                     this.config
                     );
