@@ -14,8 +14,7 @@ const {
   getUpdatedSecondaryProperties,
   extractSecondaryTypeIds,
   checkMCM,
-  prepareSecondaryProperties,
-  getId
+  prepareSecondaryProperties
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
