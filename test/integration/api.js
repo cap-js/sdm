@@ -1,10 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
-const cds = require("@sap/cds/lib");
-function isOdataContainment() {
-    return cds?.env?.odata?.containment;
-}
+const credentials = require('./credentials.json');
 class Api {
     constructor(config) {
         config = JSON.parse(JSON.stringify(config));
@@ -173,7 +170,7 @@ class Api {
                 const formDataPut = new FormData();
                 const pdfStream = fs.createReadStream(file.filepath); 
                 formDataPut.append('content', pdfStream);
-                if (isOdataContainment() === true) {
+                if (credentials.containment === true) {
                                putUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`;
                             } else {
                                 putUrl = `https://${appUrl}/odata/v4/${serviceName}/Incidents_attachments(up__ID=${incidentID},ID=${response.data.ID},IsActiveEntity=false)/content`;
