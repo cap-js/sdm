@@ -256,16 +256,15 @@ async function performPRReview(octokit, diffContent, pull_number, genAI) {
     console.log("Gemini's final review posted successfully.");
 }
 
-async function handleCommentResponse(octokit, commentBody, pull_number, genAI) {
+async function handleCommentResponse(octokit, commentBody, number, genAI) {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const userQuestion = commentBody.replace("Hey Gemini,", "").trim();
-
     let prompt;
 
     // Check if the comment is on a pull request
     if (context.payload.issue.pull_request) {
         // This is a comment on a PR, so we can get the diff
-        const diffContent = await getDiff(octokit, context.repo.owner, context.repo.repo, pull_number);
+        const diffContent = await getDiff(octokit, context.repo.owner, context.repo.repo, number);
         prompt = `A user has a question about a pull request. The pull request diff is below, followed by the user's question. Please provide a clear and concise answer.
 
         ---
@@ -280,7 +279,6 @@ async function handleCommentResponse(octokit, commentBody, pull_number, genAI) {
         `;
     } else {
         // This is a comment on a regular issue. We don't have a diff.
-        // The issue number is in pull_number variable
         const issueTitle = context.payload.issue.title;
         const issueBody = context.payload.issue.body;
         prompt = `A user has a question about a GitHub issue. The issue's title and body are provided below, followed by the user's question. Please provide a clear and concise answer.
@@ -308,14 +306,13 @@ async function handleCommentResponse(octokit, commentBody, pull_number, genAI) {
         await octokit.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: pull_number, // pull_number holds the issue number here
+            issue_number: number,
             body: `## Gemini's Response\n\n${response}`
         });
         console.log("Gemini's response posted successfully.");
     }
 }
 
-// New function to handle new issue creation
 async function handleNewIssue(octokit, owner, repo, issueNumber, issueTitle, issueBody, genAI) {
     console.log(`Processing new issue #${issueNumber}: ${issueTitle}`);
     
@@ -357,20 +354,33 @@ async function run() {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
         const { owner, repo } = context.repo;
-        const pull_number = context.payload.pull_request ? context.payload.pull_request.number : context.payload.issue.number;
 
+        // Determine the number based on the event payload
+        let number;
         if (context.eventName === 'pull_request') {
-            const diffContent = await getDiff(octokit, owner, repo, pull_number);
-            await performPRReview(octokit, diffContent, pull_number, genAI);
-        } else if (context.eventName === 'issue_comment') {
-            const commentBody = context.payload.comment.body;
-            if (commentBody.startsWith("Hey Gemini,")) {
-                await handleCommentResponse(octokit, commentBody, pull_number, genAI);
-            }
+            number = context.payload.pull_request.number;
+        } else if (context.payload.issue) {
+            number = context.payload.issue.number;
+        } else {
+            console.log("Could not determine issue/PR number from payload. Exiting.");
+            return;
+        }
+
+        // Conditional logic based on event type
+        if (context.eventName === 'pull_request') {
+            console.log(`Pull Request event detected for #${number}. Initiating review.`);
+            const diffContent = await getDiff(octokit, owner, repo, number);
+            await performPRReview(octokit, diffContent, number, genAI);
         } else if (context.eventName === 'issues' && context.payload.action === 'opened') {
+            console.log(`New Issue event detected for #${number}. Generating summary.`);
             const issueTitle = context.payload.issue.title;
             const issueBody = context.payload.issue.body;
-            await handleNewIssue(octokit, owner, repo, pull_number, issueTitle, issueBody, genAI);
+            await handleNewIssue(octokit, owner, repo, number, issueTitle, issueBody, genAI);
+        } else if (context.eventName === 'issue_comment' && context.payload.comment.body.startsWith("Hey Gemini,")) {
+            console.log(`"Hey Gemini," comment detected on issue/PR #${number}. Initiating response.`);
+            await handleCommentResponse(octokit, context.payload.comment.body, number, genAI);
+        } else {
+            console.log(`Event '${context.eventName}' did not match any triggers. No action taken.`);
         }
     } catch (error) {
         console.error(`An error occurred: ${error.message}`);
