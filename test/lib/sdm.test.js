@@ -46,7 +46,8 @@ const {
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
-  sdmRolesErrorMessage
+  sdmRolesErrorMessage,
+  attachmentIDRegex
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
