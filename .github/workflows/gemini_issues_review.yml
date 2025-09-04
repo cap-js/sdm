@@ -1,15 +1,19 @@
-name: Gemini AI PR Reviewer
+name: Gemini AI Issue Summarizer
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  # This workflow now triggers when a new issue is opened
+  issues:
+    types: [opened]
 
 jobs:
-  review:
+  summarize:
+    # Ensure the job only runs for new issues and not from the bot itself
+    if: github.event.issue.author.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      issues: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm install @actions/github @google/generative-ai @octokit/core
 
-      - name: Run Gemini PR Review Script
+      - name: Run Gemini Issue Summarizer Script
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
