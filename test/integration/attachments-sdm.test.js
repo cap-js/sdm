@@ -45,11 +45,11 @@ describe('Attachments Integration Tests --CREATE', () => {
     }
   });   
 
-  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => { 
-    const file = 
-    { 
-      filename: "sample.pdf", 
-      filepath: "./test/integration/sample.pdf" 
+  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => {
+    const file =
+    {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
     }
 
     const postData = {
@@ -508,6 +508,3 @@ describe('Attachments Integration Tests --DELETE', () => {
     }
   });
 });
-
-
-
