@@ -197,7 +197,7 @@ describe("util", () => {
         expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
         expect(xssec.v3.requests.requestUserToken).toBeCalled();
         expect(consoleErrorSpy).toBeCalledWith(
-          "Response error while fetching access token 500"
+          "Response error while fetching access token Error: test error"
         );
         expect(err).toBeInstanceOf(Error);
       } finally {
