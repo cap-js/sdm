@@ -1020,4 +1020,5 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
     });
   });
+
 });
