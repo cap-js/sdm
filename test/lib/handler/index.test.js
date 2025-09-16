@@ -404,6 +404,39 @@ describe("handlers", () => {
 
       expect(getConfigurations).toHaveBeenCalledTimes(1);
     });
+
+    it("should append correct fields for internet shortcut mimeType", async () => {
+      const response = { data: "response" };
+      axios.post.mockResolvedValue(response);
+
+      const data = {
+        filename: "link.url",
+        mimeType: "application/internet-shortcut",
+        linkUrl: "http://example.com"
+      };
+      const credentials = { uri: "http://test.com/" };
+      const token = "token";
+      const parentId = "parentId";
+
+      await createAttachment(data, credentials, token, parentId);
+
+      // Get the last created FormData mock instance
+      const formDataInstance = formDataMockedInstances[formDataMockedInstances.length - 1];
+
+      expect(formDataInstance.append).toHaveBeenCalledWith("cmisaction", "createDocument");
+      expect(formDataInstance.append).toHaveBeenCalledWith("objectId", parentId);
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[0]", "cmis:name");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[0]", data.filename);
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[1]", "cmis:objectTypeId");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[1]", "cmis:document");
+      expect(formDataInstance.append).toHaveBeenCalledWith("succinct", "true");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[2]", "cmis:secondaryObjectTypeIds");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[2]", "sap:createLink");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[3]", "sap:linkRepositoryId");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[3]", "123");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[4]", "sap:linkExternalURL");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[4]", data.linkUrl);
+    });
   });
 
   describe("deleteAttachmentsOfFolder()", () => {

@@ -2,6 +2,8 @@ using { sap.attachments.Attachments } from '@cap-js/attachments';
 extend aspect Attachments with {
     folderId : String @title: 'Folder ID' @readonly;
     repositoryId : String @title: 'Repository ID' @readonly default null;
+    linkUrl: String @(title: '{i18n>LinkURL}') default null;
+    type: String @(title: '{i18n>Type}') @(UI: {IsImageURL: true}) default 'sap-icon://document';
 };
 annotate Attachments with @UI:{
   HeaderInfo: {
