@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.7.0
+
+### Added
+- Support for CDS v9
+- Support repository onboarding for multitenant use case.
+- Support repository offboarding for multitenant use case.
+
+### Fixed
+- Entity ID retrieval to support both OData containment modes for compatibility with CDS v8/9
+- Missing response object in xssec token exchange error callbacks.
+
 ## Version 1.6.0
 
 ### Added
