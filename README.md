@@ -15,6 +15,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Draft functionality : Provides the capability of working with draft attachments.
 - Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
 - Custom properties in attachments : Provides the capability to define custom properties for attachments in SDM.
+- Link as attachments: Provides the capability to support link or URL as attachments.
 
 ### Table of Contents
 
@@ -22,6 +23,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Setup](#setup)
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Support for Custom Properties](#support-for-custom-properties)
+- [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -167,6 +169,188 @@ Custom properties are supported via the usage of CMIS secondary type properties.
    > **Note**
    >
    > SDM supports secondary properties with data types `String`, `Boolean`, `Decimal`, `Integer` and `DateTime`.
+
+## Support for link type attachments
+
+> **Note:** Row-press is the new recommended approach for handling actions on attachment rows. With row-press enabled, the Attachments column will no longer appear as a separate action button. Instead, clicking on a row will automatically perform the appropriate action — opening a link or downloading a file, based on the attachment type.
+
+This plugin provides the capability to create, open, rename and delete attachments of link type.
+
+### Steps to Enable Row-Press for Open Link
+
+1. **Add the `openAttachment` action to application's service definition**
+   
+   See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/srv/service.cds#L19) from a sample incidents-management app.
+
+   ```cds
+   action openAttachment() returns String;
+   ```
+
+2. **Add a custom controller extension** 
+
+   In webapp/controller/custom.controller.js, copy and paste below content.
+   
+   See this [example](https://github.com/cap-js/incidents-app/blob/sdmIncidents/app/incidents/webapp/controller/custom.controller.js) from a sample incidents-management app.
+   
+   ```js
+   sap.ui.define(
+      [
+      "sap/ui/core/mvc/ControllerExtension",
+      "sap/m/library"
+      ], 
+      function (ControllerExtension,library) {
+         "use strict";
+    
+         return ControllerExtension.extend("ns.incidents.controller.custom", {
+            onRowPress: function(oContext) {
+               this.base.editFlow
+               .invokeAction("ProcessorService.openAttachment", {
+                  contexts: oContext.getParameter("bindingContext")
+               })
+               .then(function (res) {
+                  let odataurl = "";
+                  if(res.getObject().value == "None") {
+                     const lastSlashIndex = res.oModel.getServiceUrl().lastIndexOf('/');
+                     let str = res.oModel.getServiceUrl();
+                     if (lastSlashIndex !== -1) {
+                        str = str.substring(0, lastSlashIndex)  + str.substring(lastSlashIndex + 1);
+                     }
+                     odataurl = str+res.oBinding.oContext.sPath+"/content";
+                  } else {
+                     odataurl = res.getObject().value;
+                  }
+                  library.URLHelper.redirect(odataurl, true);              
+               });
+            }
+        });
+      }
+   ); 
+   ```
+   
+   - Replace `ns.incidents` in `ControllerExtension.extend` with the `id` in `manifest.json` file. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4).
+   - Replace `ProcessorService` in `invokeAction("ProcessorService.openAttachment")` with the name of your service.
+
+3. **Add controlConfiguration for Row Press**
+
+   In your `sap.ui5.routing.targets` section, under the relevant Object Page (e.g., `IncidentsObjectPage`), add or extend the `controlConfiguration` for the facet you want to enhance by copy and pasting below content. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L158).
+
+   ```json
+   "controlConfiguration": {
+      "attachments/@com.sap.vocabularies.UI.v1.LineItem": {
+         "tableSettings": {
+            "type": "ResponsiveTable",
+            "selectionMode": "Auto",
+            "rowPress": ".extension.ns.incidents.controller.custom.onRowPress"
+         }
+      }
+   }
+   ```
+   - Replace `attachments` with your entity’s facet name as needed.
+   - Replace `ns.incidents` in `"rowPress": ".extension.ns.incidents.controller.custom.onRowPress"` with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
+
+4. **Register the Custom Controller Extension**
+   
+   In the root of your `sap.ui5` section, add or extend the `extends` property to register your custom controller by copy and pasting below content. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L191).
+
+   ```json
+   "extends": {
+      "extensions": {
+         "sap.ui.controllerExtensions": {
+            "sap.fe.templates.ObjectPage.ObjectPageController#ns.incidents::IncidentsObjectPage": {
+               "controllerName": "ns.incidents.controller.custom"
+            }
+         }
+      }
+   }
+   ```
+   - Replace `ns.incidents` in `"sap.fe.templates.ObjectPage.ObjectPageController#ns.incidents::IncidentsObjectPage"` with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
+   - Replace `IncidentsObjectPage` in `"sap.fe.templates.ObjectPage.ObjectPageController#ns.incidents::IncidentsObjectPage"` with id of the relevant Object Page (e.g., IncidentsObjectPage). Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L145) from a sample incidents-management app.
+   - Replace `ns.incidents` in `"controllerName": "ns.incidents.controller.custom"`with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
+
+### Steps to Enable Create Link Feature in CAP Application
+
+> **Note:** Enabling row-press for open link (see steps above) is a prerequisite for link support.
+
+1. **Add the `createLink` action to application's service definition** 
+   
+   See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/srv/service.cds#L14) from a sample incidents-management app:
+
+   ```cds
+   action createLink(
+         in:many $self,
+         @mandatory @Common.Label:'Name' name: String @UI.Placeholder: 'Enter a name for the link',
+         @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+         @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+      ); 
+   ```
+   - Purpose: Enables users to create links with name and URL.
+   - Validation: Ensures only valid HTTP(S) URLs are accepted.
+   - UI Support: Provides labels and placeholders for better user experience.
+
+### UI Annotation Setup
+
+To enable the creation of links, you need to add a new button to the attachments table toolbar. This button will appear as a **menu button labeled "Create"** on the toolbar of the attachments table. When clicked, it will display a menu with the **"Link"** option, allowing users to create a new link-type attachment.
+
+Add the following annotation block to your `app/<entity-folder>/<annotation-file>.cds` file. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/annotations.cds#L188).
+
+```cds
+annotate service.Incidents.attachments with @UI: {
+  HeaderInfo: {
+        $Type         : 'UI.HeaderInfoType',
+        TypeName      : '{i18n>Attachment}',
+        TypeNamePlural: '{i18n>Attachments}',
+  },
+  LineItem  : [
+    {Value: type, @HTML5.CssDefaults: {width: '10%'}},
+    {Value: filename, @HTML5.CssDefaults: {width: '25%'}},
+    {Value: content, @HTML5.CssDefaults: {width: '0%'}},
+    {Value: createdAt, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: createdBy, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: note, @HTML5.CssDefaults: {width: '25%'}},
+    {
+      $Type  : 'UI.DataFieldForActionGroup',
+      ID     : 'TableActionGroup',
+      Label  : 'Create',
+      ![@UI.Hidden]: {$edmJson: {$Eq: [ {$Path: 'IsActiveEntity'}, true ]}},
+      Actions: [
+        {
+          $Type : 'UI.DataFieldForAction',
+          Label : 'Link',
+          Action: 'ProcessorService.createLink',
+        }
+      ]
+    },
+  ]
+}
+{
+  url @readonly;
+  note @(title: '{i18n>Note}');
+  filename @(title: '{i18n>Filename}');
+  modifiedAt @(odata.etag: null);
+  content
+      @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
+      @(title: '{i18n>Attachment}');
+  folderId @UI.Hidden;
+  mimeType @UI.Hidden;
+  status @UI.Hidden;
+  repositoryId @UI.Hidden;
+}
+```
+
+- Replace `service.Incidents.attachments` with the correct path for your entity and element (for example, `my.YourEntity.yourElement`) where you have defined `composition of many Attachments`.
+- Replace `ProcessorService` in `Action: 'ProcessorService.createLink'` with the name of your service.
+
+### Updating Tenant Databases for Link Feature
+To support the Link feature, additional database columns are introduced.
+Upon re-deployment of your multitenant application, you may encounter "invalid column" errors if tenant database containers are not updated.
+
+To resolve this, ensure the following task is added to the mta.yaml for the sidecar application.
+```yaml
+tasks:
+   -  name: upgrade-db
+      command: cds-mtx upgrade '*'
+```
+This will automatically update tenant databases during deployment.
 
 ## Support for Multitenancy
 
