@@ -51,7 +51,6 @@ const {
   versionedRepositoryErr,
   nameConstrainErr,
   sdmRolesErrorMessage,
-  userNotAuthorisedErrorLink,
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -2238,7 +2237,6 @@ describe("SDMAttachmentsService", () => {
       };
       cds.model.definitions = {
         MyEntity: { entity: "MyEntity" },
-        "MyEntity": { entity: "MyEntity" },
         "MyEntity.drafts": { entity: "MyEntityDrafts" }
       };
     });
