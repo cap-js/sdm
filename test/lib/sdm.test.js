@@ -1419,7 +1419,7 @@ describe("SDMAttachmentsService", () => {
       };
       const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: '12345', filename: 'sample.txt' },
+        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'sample.txt' },
         { HasActiveEntity: true, ID: '67890', filename: 'other.txt' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1526,7 +1526,7 @@ describe("SDMAttachmentsService", () => {
           } }, reject: jest.fn() };
           const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
+        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1600,7 +1600,7 @@ describe("SDMAttachmentsService", () => {
       };
       const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: '12345', filename: 'validname' },
+        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'validname' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1611,7 +1611,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(req);
 
       expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "12345", content: 'some content', filename: 'validname' }], draftAttachments, req, token);  
+      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req, token);  
       expect(req.data.content).toBeNull();
     });
   });
