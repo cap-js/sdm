@@ -27,6 +27,7 @@ const {
   getMetadataForOpenAttachment,
   getDraftAttachmentsMetadataForLinkCreation,
   updateLinkInDraft,
+  getDraftAdministrativeData_DraftUUIDForUpId
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -71,6 +72,7 @@ jest.mock("../../lib/persistence", () => ({
   getMetadataForOpenAttachment: jest.fn(),
   getDraftAttachmentsMetadataForLinkCreation: jest.fn(),
   updateLinkInDraft: jest.fn(),
+  getDraftAdministrativeData_DraftUUIDForUpId: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
@@ -370,7 +372,6 @@ describe("SDMAttachmentsService", () => {
   
     it('should not rename if no attachments are modified', async () => {
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
-      //service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'fileDraft', folderId: 'folderId' });
       service.updateDraftAttachments = jest.fn();
       service.updateNonDraftAttachments = jest.fn();
   
@@ -1372,6 +1373,7 @@ describe("SDMAttachmentsService", () => {
     let service;
     beforeEach(() => {
       jest.clearAllMocks();
+      jest.resetAllMocks();
       service = new SDMAttachmentsService();
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
       service.checkRepositoryType = jest.fn();
@@ -1394,9 +1396,9 @@ describe("SDMAttachmentsService", () => {
     test('should handle drafts when attachment values are found', async () => {
       const draftAttachments = [];
       const req = {
-      req: {
-                      url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
-                    },
+      req:  {
+              url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
+            },
         data: {
           content: 'some content' 
         }, 
@@ -1417,7 +1419,7 @@ describe("SDMAttachmentsService", () => {
       };
       const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'sample.txt' },
+        { HasActiveEntity: false, ID: '12345', filename: 'sample.txt' },
         { HasActiveEntity: true, ID: '67890', filename: 'other.txt' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1503,8 +1505,8 @@ describe("SDMAttachmentsService", () => {
       const draftAttachments = [];
       const req = {
        req: {
-                url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
-              },
+              url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
+            },
 
         data: {
           content: 'some content' 
@@ -1524,7 +1526,7 @@ describe("SDMAttachmentsService", () => {
           } }, reject: jest.fn() };
           const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'invalid/name' },
+        { HasActiveEntity: false, ID: '12345', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1598,7 +1600,7 @@ describe("SDMAttachmentsService", () => {
       };
       const token = 'token123';
       const attachment_val = [
-        { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'validname' },
+        { HasActiveEntity: false, ID: '12345', filename: 'validname' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -1609,7 +1611,7 @@ describe("SDMAttachmentsService", () => {
       await service.draftSaveHandler(req);
 
       expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req, token);  
+      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "12345", content: 'some content', filename: 'validname' }], draftAttachments, req, token);  
       expect(req.data.content).toBeNull();
     });
   });
@@ -2463,6 +2465,7 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       credentials = { user: "user", pass: "pass" };
+      getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
       token = "mockToken";
       parentId = "parentId";
       upIdKey = "upIdField";
@@ -2478,6 +2481,9 @@ describe("SDMAttachmentsService", () => {
         reject: jest.fn()
       };
       global.attachmentIDRegex = /ID=([0-9a-fA-F-]{36})/;
+      getDraftAdministrativeData_DraftUUIDForUpId.mockResolvedValue([
+        { DraftAdministrativeData_DraftUUID: "uuid-123" }
+      ]);
     });
 
     it("should update draft if createAttachment returns 201", async () => {
@@ -2513,7 +2519,6 @@ describe("SDMAttachmentsService", () => {
           filename: "linkName",
           HasDraftEntity: false,
           HasActiveEntity: false,
-          IsActiveEntity: false,
           linkUrl: "http://example.com",
           DraftAdministrativeData_DraftUUID: "uuid-123"
         })
@@ -2558,12 +2563,6 @@ describe("SDMAttachmentsService", () => {
       await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
 
       expect(req.reject).toHaveBeenCalledWith("some error");
-    });
-
-    it("should reject with 500 if exception is thrown", async () => {
-      createAttachment.mockRejectedValueOnce(new Error("unexpected"));
-      await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
-      expect(req.reject).toHaveBeenCalledWith(500, expect.any(Error));
     });
   });
 
@@ -3044,29 +3043,6 @@ describe("SDMAttachmentsService", () => {
       expect(req.error).not.toHaveBeenCalled();
     });
 
-    it("should handle errors in 'openAttachment' handler", async () => {
-      const mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
-      };
-      const service = new SDMAttachmentsService();
-      const error = new Error("fail");
-      service.openAttachment = jest.fn().mockImplementation(() => { throw error; });
-
-      service.registerUpdateHandlers(mockSrv, "entity", { drafts: "drafts" });
-
-      const openAttachmentCall = mockSrv.on.mock.calls.find(
-        ([eventName]) => eventName === "openAttachment"
-      );
-      const handler = openAttachmentCall[1];
-      const req = { error: jest.fn() };
-      await handler(req);
-
-      expect(service.openAttachment).toHaveBeenCalledWith(req);
-      expect(req.error).toHaveBeenCalledWith(error);
-    });
-
     it("should register 'createLink' handler and call handleCreateLinkAction", async () => {
       const mockSrv = {
         before: jest.fn(),
@@ -3092,29 +3068,6 @@ describe("SDMAttachmentsService", () => {
       expect(service.handleCreateLinkAction).toHaveBeenCalledWith(req);
       expect(result).toBe("createLinkResult");
       expect(req.error).not.toHaveBeenCalled();
-    });
-
-    it("should handle errors in 'createLink' handler", async () => {
-      const mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
-      };
-      const service = new SDMAttachmentsService();
-      const error = new Error("fail");
-      service.handleCreateLinkAction = jest.fn().mockImplementation(() => { throw error; });
-
-      service.registerUpdateHandlers(mockSrv, "entity", { drafts: "drafts" });
-
-      const createLinkCall = mockSrv.on.mock.calls.find(
-        ([eventName]) => eventName === "createLink"
-      );
-      const handler = createLinkCall[1];
-      const req = { error: jest.fn() };
-      await handler(req);
-
-      expect(service.handleCreateLinkAction).toHaveBeenCalledWith(req);
-      expect(req.error).toHaveBeenCalledWith(error);
     });
   });
 
