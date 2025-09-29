@@ -128,6 +128,7 @@ describe("SDMAttachmentsService", () => {
   
     afterEach(() => {
       jest.clearAllMocks();
+      jest.resetAllMocks();
     });
   
     it("should fetch repository info and check versioned status if not found in cache", async () => {
@@ -144,7 +145,7 @@ describe("SDMAttachmentsService", () => {
       cache.get.mockReturnValue(undefined);
       getClientCredentialsToken.mockResolvedValue("mock-token");
       getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
-      isRepositoryVersioned.mockResolvedValue(false);
+      isRepositoryVersioned.mockReturnValue(false);
   
       await service.checkRepositoryType(mockReq);
   
