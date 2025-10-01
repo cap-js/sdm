@@ -227,7 +227,7 @@ This plugin provides the capability to create, open, rename and delete attachmen
    ); 
    ```
    
-   - Replace `ns.incidents` in `ControllerExtension.extend` with the `id` in `manifest.json` file. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4).
+   - Replace `ns.incidents` in `ControllerExtension.extend` with the `id` in `manifest.json` file or `id` in `component.js` file. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4).
    - Replace `ProcessorService` in `invokeAction("ProcessorService.openAttachment")` with the name of your service.
 
 3. **Add controlConfiguration for Row Press**
@@ -276,12 +276,16 @@ This plugin provides the capability to create, open, rename and delete attachmen
    See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/srv/service.cds#L14) from a sample incidents-management app:
 
    ```cds
-   action createLink(
+   entity Incidents.attachments as projection on my.Incidents.attachments
+   actions {
+      @(Common.SideEffects : {TargetEntities: ['']},)
+      action createLink(
          in:many $self,
          @mandatory @Common.Label:'Name' name: String @UI.Placeholder: 'Enter a name for the link',
          @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
          @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
-      ); 
+      );
+   }
    ```
    - Purpose: Enables users to create links with name and URL.
    - Validation: Ensures only valid HTTP(S) URLs are accepted.
