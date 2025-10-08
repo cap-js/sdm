@@ -44,7 +44,7 @@ class Api {
 
     }
 
-    async saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID){
+    async saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID, treatWarningsAsErrors = false){
         //Saving the entity (draft)
         let response;
         try{
@@ -55,7 +55,26 @@ class Api {
             );
             let sapMessages = "";
             sapMessages = response.headers['sap-messages'];
+            
             if (response.status === 201 || response.status === 200) {
+                if (sapMessages) {
+                    try {
+                        const messages = JSON.parse(sapMessages);
+                        const severityThreshold = treatWarningsAsErrors ? 3 : 4;
+                        const errorMessages = messages.filter(msg => 
+                            (msg.severity && msg.severity >= severityThreshold) || 
+                            (msg.numericSeverity && msg.numericSeverity >= severityThreshold)
+                        );
+                        if (errorMessages.length > 0) {
+                            return {
+                                status: "FAILED",
+                                message: errorMessages[0].message || errorMessages[0].details || "Validation error occurred"
+                            };
+                        }
+                    } catch {
+                        // Parse error - ignore
+                    }
+                }
                 return {
                     status: "OK",
                     sapMessages: sapMessages
@@ -67,6 +86,13 @@ class Api {
                 };
             }
         } catch (error) {
+            if (error.response?.data?.error?.message) {
+                return {
+                    status: "FAILED",
+                    message: error.response.data.error.message
+                };
+            }
+            
             return {
                 status: "FAILED",
                 message: "Save entity draft API call failed : " + error.message
@@ -313,6 +339,96 @@ class Api {
             return {
                 status: "FAILED",
                 message: "Delete attachment API call failed : " + error.message
+            };
+        }
+    }
+
+    async createLink(appUrl, serviceName, entityName, incidentID, srvpath, name, url) {
+        let response;
+        try {
+            const linkData = {
+                name: name,
+                url: url
+            };
+            
+            response = await axios.post(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments/${srvpath}.createLink`,
+                linkData,
+                this.config
+            )
+            
+            if (response.status === 204) {
+                return {
+                    status: "OK"
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Create link did not return 204 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            // Extract server error message if available
+            let errorMessage = "Create Link API call failed : " + error.message;
+            if (error.response && error.response.data && error.response.data.error && error.response.data.error.message) {
+                errorMessage = error.response.data.error.message;
+            }
+            return {
+                status: "FAILED",
+                message: errorMessage
+            };
+        }
+    }
+
+    async getAttachmentsList(appUrl, serviceName, entityName, incidentID) {
+        let response;
+        try {
+            response = await axios.get(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
+                this.config
+            );
+            if (response.status === 200 && response.data && response.data.value) {
+                return {
+                    status: "OK",
+                    attachments: response.data.value
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Get attachments list did not return 200 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Get attachments list API call failed : " + error.message
+            };
+        }
+    }
+
+    async openAttachment(appUrl, serviceName, entityName, incidentID, srvpath, attachment) {
+        let response;
+        try {
+            response = await axios.post(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)/${srvpath}.openAttachment`,
+                {},
+                this.config
+            )
+            if (response.status === 200) {
+                return {
+                    status: "OK",
+                    data: response.data
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Open attachment did not return 200 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Open attachment API call failed : " + error.message
             };
         }
     }
