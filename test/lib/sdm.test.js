@@ -53,8 +53,7 @@ const {
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
-  sdmRolesErrorMessage,
-  userNotAuthorisedErrorLink
+  sdmRolesErrorMessage
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
