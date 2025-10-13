@@ -16,6 +16,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Display attachments specific to repository: Lists attachments contained in the repository that is configured with the CAP application.
 - Custom properties in attachments : Provides the capability to define custom properties for attachments in SDM.
 - Link as attachments: Provides the capability to support link or URL as attachments.
+- Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
 
 ### Table of Contents
 
@@ -24,6 +25,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Use @cap-js/sdm plugin](#use-cap-jssdm-plugin)
 - [Support for Custom Properties](#support-for-custom-properties)
 - [Support for Link type attachments](#support-for-link-type-attachments)
+- [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -266,6 +268,95 @@ This plugin provides the capability to create, open, rename and delete attachmen
    - Replace `ns.incidents` in `"sap.fe.templates.ObjectPage.ObjectPageController#ns.incidents::IncidentsObjectPage"` with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
    - Replace `IncidentsObjectPage` in `"sap.fe.templates.ObjectPage.ObjectPageController#ns.incidents::IncidentsObjectPage"` with id of the relevant Object Page (e.g., IncidentsObjectPage). Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L145) from a sample incidents-management app.
    - Replace `ns.incidents` in `"controllerName": "ns.incidents.controller.custom"`with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
+## Support for edit of link type attachments
+
+This plugin provides the capability to update/edit the URL of attachments of link type.
+
+### Steps to Enable Edit Link Feature in CAP Application
+
+1. **Add the `editLink` action to application's service definition**
+
+   See this [example](https://github.com/cap-java/sdm/blob/a1fc26f3aa92ffd4f9203d815f51107838d5f677/cap-notebook/demoapp/srv/admin-service.cds#L18) from a sample Bookshop app:
+
+   ```cds
+   action editLink(
+         @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+         @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+      ); 
+   ```
+    - Purpose: Enables users to edit URL of previously created links.
+    - Validation: Ensures only valid HTTP(S) URLs are accepted.
+    - UI Support: Provides labels and placeholders for better user experience.
+
+### UI Annotation Setup
+
+To enable the editing of links, you need to add a new button to the attachments table toolbar. This button will appear as an **inline button labeled "Edit Link"** on the attachment row of the attachments table for only link type attachments. When clicked, it will display a menu with the **"Edit Link"** option, allowing users to edit the URL of an existing link-type attachment.
+
+Add the following annotation block to your app/incidents/annotations.cds file. See this [example](https://github.com/cap-java/sdm/blob/4288ce6f58bc415a171a9e0340fa075aeac835ff/cap-notebook/demoapp/app/common.cds#L60)
+
+```cds
+annotate service.Incidents.attachments with @UI: {
+  HeaderInfo: {
+        $Type         : 'UI.HeaderInfoType',
+        TypeName      : '{i18n>Attachment}',
+        TypeNamePlural: '{i18n>Attachments}',
+  },
+  LineItem  : [
+    {Value: type, @HTML5.CssDefaults: {width: '10%'}},
+    {Value: filename, @HTML5.CssDefaults: {width: '25%'}},
+    {Value: content, @HTML5.CssDefaults: {width: '0%'}},
+    {Value: createdAt, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: createdBy, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: note, @HTML5.CssDefaults: {width: '25%'}},
+    {
+      $Type  : 'UI.DataFieldForActionGroup',
+      ID     : 'TableActionGroup',
+      Label  : 'Create',
+      ![@UI.Hidden]: {$edmJson: {$Eq: [ {$Path: 'IsActiveEntity'}, true ]}},
+      Actions: [
+        {
+          $Type : 'UI.DataFieldForAction',
+          Label : 'Link',
+          Action: 'ProcessorService.createLink',
+        }
+      ]
+    },
+    {
+      @UI.Hidden: {$edmJson:{$If:[{$Eq:[{$Path: 'IsActiveEntity' },true]},true,{$If:[{$Ne:[{$Path:'mimeType'},'application/internet-shortcut']},true,false]}]}},
+      $Type : 'UI.DataFieldForAction',
+      Label : 'Edit Link',
+      Action: 'ProcessorService.editLink', // -> Ensure the service name is correct
+      Inline: true,
+      IconUrl: 'sap-icon://edit',
+      @HTML5.CssDefaults: {width: '4%'}
+    }
+  ]
+}
+{
+  url @readonly;
+  note @(title: '{i18n>Note}');
+  filename @(title: '{i18n>Filename}');
+  modifiedAt @(odata.etag: null);
+  content
+      @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
+      @(title: '{i18n>Attachment}');
+  folderId @UI.Hidden;
+  mimeType @UI.Hidden;
+  status @UI.Hidden;
+  repositoryId @UI.Hidden;
+}
+
+annotate service.Incidents.attachments with {
+  customProperty1 @Common.ValueListWithFixedValues;
+}
+```
+
+- Ensure service.Incidents.attachments is the correct path for your entity and its attachments element where you have defined composition of many Attachments.
+- Ensure ProcessorService in Action: 'ProcessorService.editLink' is the name of your service.
+- Repeat this annotation for other entities if you have defined composition of many Attachments in multiple places.
+
+
+## Known Restrictions
 
 ### Steps to Enable Create Link Feature in CAP Application
 
