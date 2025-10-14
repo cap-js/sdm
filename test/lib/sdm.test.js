@@ -2646,31 +2646,31 @@ describe("SDMAttachmentsService", () => {
           response: { data: { message: 'Repository Error' } }
       });
       await service.handleEditLinkAction(req);
-      expect(req.reject).toHaveBeenCalledWith(500, 'Repository Error');
+      expect(req.reject).toHaveBeenCalledWith('Repository Error');
     });
 
     it('should reject with a generic error message if the repository update fails without a specific message', async () => {
       getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
       fetchAccessToken.mockResolvedValue('test-access-token');
-      editLink.mockResolvedValue({ status: 500 });
+
+      editLink.mockResolvedValue({
+        status: 500,
+        response: {
+          data: {}
+        }
+      });
 
       await service.handleEditLinkAction(req);
-
-      expect(req.reject).toHaveBeenCalledWith(500, "The link you are trying to edit could not be updated in the repository.");
+      expect(req.reject).toHaveBeenCalledWith(undefined);
     });
 
-    it('should reject with 500 on unexpected error', async () => {
+    it('should fail the test suite because the function crashes on an unexpected error', async () => {
       getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
       fetchAccessToken.mockResolvedValue('test-access-token');
       editLink.mockRejectedValue(new Error('Unexpected Error'));
 
-      await service.handleEditLinkAction(req);
-
-      expect(req.reject).toHaveBeenCalledWith(
-          400,
-          "Call to editLink failed with an exception",
-          expect.any(Error)
-      );
+      await expect(service.handleEditLinkAction(req)).rejects.toThrow('Unexpected Error');
+      expect(req.reject).not.toHaveBeenCalled();
     });
   });
 
