@@ -2635,7 +2635,7 @@ describe("SDMAttachmentsService", () => {
     it('should reject with 404 if link to be edited is not found', async () => {
       getAttachmentById.mockResolvedValue(null);
       await service.handleEditLinkAction(req);
-      expect(req.reject).toHaveBeenCalledWith(404, "Link to be edited not found or is invalid.");
+      expect(req.reject).toHaveBeenCalledWith(404, "The link you are trying to edit does not exist or invalid.");
     });
 
     it('should reject with a specific error message if the repository update fails', async () => {
@@ -2656,7 +2656,7 @@ describe("SDMAttachmentsService", () => {
 
       await service.handleEditLinkAction(req);
 
-      expect(req.reject).toHaveBeenCalledWith(500, "Failed to update the link in the repository.");
+      expect(req.reject).toHaveBeenCalledWith(500, "The link you are trying to edit could not be updated in the repository.");
     });
 
     it('should reject with 500 on unexpected error', async () => {
@@ -2668,7 +2668,7 @@ describe("SDMAttachmentsService", () => {
 
       expect(req.reject).toHaveBeenCalledWith(
           400,
-          "call to editLink failed with an exception",
+          "Call to editLink failed with an exception",
           expect.any(Error)
       );
     });
