@@ -276,7 +276,7 @@ This plugin provides the capability to update/edit the URL of attachments of lin
 
 1. **Add the `editLink` action to application's service definition**
 
-   See this [example](https://github.com/cap-java/sdm/blob/a1fc26f3aa92ffd4f9203d815f51107838d5f677/cap-notebook/demoapp/srv/admin-service.cds#L18) from a sample Bookshop app:
+   See this [example](https://github.com/cap-js/incidents-app/blob/sdmIncidents/srv/service.cds#L19) from a sample incidents-app:
 
    ```cds
    action editLink(
@@ -292,7 +292,7 @@ This plugin provides the capability to update/edit the URL of attachments of lin
 
 To enable the editing of links, you need to add a new button to the attachments table toolbar. This button will appear as an **inline button labeled "Edit Link"** on the attachment row of the attachments table for only link type attachments. When clicked, it will display a menu with the **"Edit Link"** option, allowing users to edit the URL of an existing link-type attachment.
 
-Add the following annotation block to your app/incidents/annotations.cds file. See this [example](https://github.com/cap-java/sdm/blob/4288ce6f58bc415a171a9e0340fa075aeac835ff/cap-notebook/demoapp/app/common.cds#L60)
+Add the following annotation block to your app/incidents/annotations.cds file. See this [example](https://github.com/cap-js/incidents-app/blob/sdmIncidents/app/incidents/annotations.cds#L215)
 
 ```cds
 annotate service.Incidents.attachments with @UI: {
@@ -351,9 +351,9 @@ annotate service.Incidents.attachments with {
 }
 ```
 
-- Ensure service.Incidents.attachments is the correct path for your entity and its attachments element where you have defined composition of many Attachments.
-- Ensure ProcessorService in Action: 'ProcessorService.editLink' is the name of your service.
-- Repeat this annotation for other entities if you have defined composition of many Attachments in multiple places.
+- Ensure `service.Incidents.attachments` is the correct path for your entity and its attachments element where you have defined `composition of many Attachments`.
+- Ensure ProcessorService in Action: `ProcessorService.editLink` is the name of your service.
+- Repeat this annotation for other entities if you have defined `composition of many Attachments` in multiple places.
 
 
 ## Known Restrictions
