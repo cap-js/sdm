@@ -6,7 +6,7 @@ jest.mock("node-cache", () => {
     set: jest.fn(),
   }));
 });
-let formDataMockedInstances = [];
+let mockFormDataInstances = [];
 
 jest.mock("form-data", () => {
   const FormData = function () {
@@ -14,7 +14,7 @@ jest.mock("form-data", () => {
       append: jest.fn(),
       getHeaders: jest.fn().mockReturnValue({}),
     };
-    formDataMockedInstances.push(instance);
+  mockFormDataInstances.push(instance);
     return instance;
   };
   return FormData;
@@ -38,7 +38,8 @@ const {
   deleteFolderWithAttachments,
   getAttachment,
   getRepositoryInfo,
-  updateAttachment
+  updateAttachment,
+  editLink
 } = require("../../../lib/handler/index");
 const { errorMessage } = require("../../../lib/util/messageConsts");
 
@@ -421,7 +422,7 @@ describe("handlers", () => {
       await createAttachment(data, credentials, token, parentId);
 
       // Get the last created FormData mock instance
-      const formDataInstance = formDataMockedInstances[formDataMockedInstances.length - 1];
+      const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
 
       expect(formDataInstance.append).toHaveBeenCalledWith("cmisaction", "createDocument");
       expect(formDataInstance.append).toHaveBeenCalledWith("objectId", parentId);
@@ -436,6 +437,77 @@ describe("handlers", () => {
       expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[3]", "123");
       expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[4]", "sap:linkExternalURL");
       expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[4]", data.linkUrl);
+    });
+  });
+
+  describe("editLink", () => {
+    let objectId, filename, linkUrl, credentials, token;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+      objectId = 'test-object-id';
+      filename = 'MyLink';
+      linkUrl = 'https://www.successfactors.com';
+      credentials = { uri: 'http://test-uri.com/' };
+      token = 'test-token';
+    });
+
+    it('should successfully edit a link and return the response', async () => {
+      const mockResponse = { status: 200, data: 'OK' };
+      axios.post.mockResolvedValue(mockResponse);
+
+      const response = await editLink(objectId, filename, linkUrl, credentials, token);
+
+      const expectedUrl = `${credentials.uri}browser/123/root`;
+      const expectedFilename = `${filename}.url`;
+      const urlShortcut = `[InternetShortcut]\nURL=${linkUrl}`;
+      const fileContent = Buffer.from(urlShortcut, 'utf-8');
+
+      // Check if axios.post was called correctly
+      expect(axios.post).toHaveBeenCalledTimes(1);
+      const postCallArgs = axios.post.mock.calls[0];
+      expect(postCallArgs[0]).toBe(expectedUrl);
+      expect(postCallArgs[2].headers.Authorization).toBe(`Bearer ${token}`);
+
+      // Check FormData content
+      const formDataInstance = mockFormDataInstances[0];
+      expect(formDataInstance.append).toHaveBeenCalledWith("cmisaction", "setContent");
+      expect(formDataInstance.append).toHaveBeenCalledWith("objectId", objectId);
+      expect(formDataInstance.append).toHaveBeenCalledWith("filename", expectedFilename);
+      expect(formDataInstance.append).toHaveBeenCalledWith("charset", "UTF-8");
+      expect(formDataInstance.append).toHaveBeenCalledWith("succinct", "true");
+      expect(formDataInstance.append).toHaveBeenCalledWith("media", fileContent, {
+          filename: expectedFilename,
+          contentType: "application/internet-shortcut",
+      });
+
+      expect(response).toEqual(mockResponse);
+    });
+
+    it('should use "link.url" as filename if filename is not provided', async () => {
+      axios.post.mockResolvedValue({ status: 200 });
+
+      await editLink(objectId, null, linkUrl, credentials, token);
+
+      const formDataInstance = mockFormDataInstances[0];
+      const expectedFilename = 'link.url';
+
+      expect(formDataInstance.append).toHaveBeenCalledWith("filename", expectedFilename);
+      expect(formDataInstance.append).toHaveBeenCalledWith("media", expect.any(Buffer), {
+          filename: expectedFilename,
+          contentType: "application/internet-shortcut",
+      });
+    });
+
+    it('should return an error if the server request fails', async () => {
+      const mockError = new Error('Request failed');
+      axios.post.mockRejectedValue(mockError);
+
+      const response = await editLink(objectId, filename, linkUrl, credentials, token);
+
+      expect(response).toBe(mockError);
+      expect(axios.post).toHaveBeenCalledTimes(1);
     });
   });
 
