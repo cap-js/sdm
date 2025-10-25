@@ -432,6 +432,33 @@ class Api {
             };
         }
     }
+
+    async openAttachmentSaved(appUrl, serviceName, entityName, incidentID, srvpath, attachment) {
+        let response;
+        try {
+            response = await axios.post(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(ID=${attachment},IsActiveEntity=true)/${srvpath}.openAttachment`,
+                {},
+                this.config
+            )
+            if (response.status === 200) {
+                return {
+                    status: "OK",
+                    data: response.data
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Open attachment saved did not return 200 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Open attachment saved API call failed : " + error.message
+            };
+        }
+    }
 }
 
 module.exports = Api;
