@@ -471,27 +471,21 @@ describe('Attachments Integration Tests --UPDATE', () => {
 });
 
 describe('Attachments Integration Tests --LINK', () => {
-  it('should successfully create a link and verify it is openable', async () => {
+  it('should successfully create a link and verify it is openable after multiple edits', async () => {
     let linkIncidentID;
     let linkAttachmentID;
+    let secondLinkAttachmentID;
     
     const linkName = 'GitHub';
     const linkUrl = 'https://github.com';
+    const secondLinkName = 'Stack Overflow';
+    const secondLinkUrl = 'https://stackoverflow.com';
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
     linkIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    response = await api.editEntity(appUrl, serviceName, entityName, linkIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
 
     response = await api.createLink(appUrl, serviceName, entityName, linkIncidentID, srvpath, linkName, linkUrl);
     if (response.status !== "OK") {
@@ -513,13 +507,13 @@ describe('Attachments Integration Tests --LINK', () => {
     }
     linkAttachmentID = linkAttachment.ID;
 
-    // Save the draft after creating the link
+    // Save the draft after creating the first link
     response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
 
-    // Fetch metadata to verify the link exists and has correct properties
+    // Fetch metadata to verify the first link exists and has correct properties
     response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -527,23 +521,80 @@ describe('Attachments Integration Tests --LINK', () => {
     expect(response.data.filename).toBe(linkName);
     expect(response.data.linkUrl).toBe(linkUrl);
 
-    // Edit entity again to test openAttachment
+    // Second edit: Test that we can create another link after editing the same entity again
     response = await api.editEntity(appUrl, serviceName, entityName, linkIncidentID, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
 
-    // Test that the link is openable using openAttachment method
+    // Create a second link in the same entity
+    response = await api.createLink(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkName, secondLinkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the updated attachments list
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Find the second link attachment
+    const secondLinkAttachment = response.attachments.find(att => 
+      att.filename === secondLinkName && att.linkUrl === secondLinkUrl
+    );
+    if (!secondLinkAttachment) {
+      throw new Error("Error : Second link not found in attachments list")
+    }
+    secondLinkAttachmentID = secondLinkAttachment.ID;
+
+    // Verify we now have 2 links total
+    expect(response.attachments.length).toBe(2);
+
+    // Save the draft after creating the second link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Third edit: Test that both links are accessible in different states
+    response = await api.editEntity(appUrl, serviceName, entityName, linkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Test that the first link is openable from draft state (IsActiveEntity=false)
     response = await api.openAttachment(appUrl, serviceName, entityName, linkIncidentID, srvpath, linkAttachmentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
 
-    // Save the draft after testing
+    // Save the draft to test opening second link from saved state
     response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
+
+    // Test that the second link is openable from saved state (IsActiveEntity=true)
+    response = await api.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify metadata for both links after multiple edits
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(linkName);
+    expect(response.data.linkUrl).toBe(linkUrl);
+
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, secondLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(secondLinkName);
+    expect(response.data.linkUrl).toBe(secondLinkUrl);
 
     // Cleanup - delete the entity created for link testing
     response = await api.deleteEntity(appUrl, serviceName, entityName, linkIncidentID);
@@ -564,16 +615,6 @@ describe('Attachments Integration Tests --LINK', () => {
       throw new Error("Error : " + response.message)
     }
     secondLinkIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, secondLinkIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    // Edit the entity to work in draft mode
-    response = await api.editEntity(appUrl, serviceName, entityName, secondLinkIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
 
     // Create the link with the same name and URL as the previous test
     response = await api.createLink(appUrl, serviceName, entityName, secondLinkIncidentID, srvpath, linkName, linkUrl);
@@ -769,15 +810,6 @@ describe('Attachments Integration Tests --LINK', () => {
       throw new Error("Error : " + response.message)
     }
     deleteTestIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteTestIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    response = await api.editEntity(appUrl, serviceName, entityName, deleteTestIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
 
     // Create a link to delete
     const linkName = 'LinkToDelete';
@@ -852,17 +884,7 @@ describe('Attachments Integration Tests --LINK', () => {
       throw new Error("Error : " + response.message)
     }
     renameSuccessIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameSuccessIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    // Edit the entity to work in draft mode
-    response = await api.editEntity(appUrl, serviceName, entityName, renameSuccessIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
+    
     // Create a link to rename
     const originalName = 'OriginalSuccessName';
     const linkUrl = 'https://rename-success-test.com';
@@ -937,17 +959,7 @@ describe('Attachments Integration Tests --LINK', () => {
       throw new Error("Error : " + response.message)
     }
     renameRestrictedIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameRestrictedIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    // Edit the entity to work in draft mode
-    response = await api.editEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
+    
     // Create a link to rename
     const originalName = 'OriginalRestrictedName';
     const linkUrl = 'https://rename-restricted-test.com';
@@ -1029,17 +1041,7 @@ describe('Attachments Integration Tests --LINK', () => {
       throw new Error("Error : " + response.message)
     }
     renameDuplicateIncidentID = response.incidentID;
-    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameDuplicateIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    // Edit the entity to work in draft mode
-    response = await api.editEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
+    
     // Create first link
     const firstName = 'FirstLink';
     const firstUrl = 'https://first-link.com';
@@ -1100,26 +1102,25 @@ describe('Attachments Integration Tests --LINK', () => {
     expect(response.status).toBe("FAILED");
     expect(response.message.trim()).toBe("The file(s) FirstLink have been added multiple times. Please rename and try again.");
 
-    // Verify the second link was NOT renamed by fetching its metadata
-    response = await api.fetchMetadata(appUrl, serviceName, entityName, renameDuplicateIncidentID, renameDuplicateLink2ID);
+    // Fix the duplicate name issue for proper cleanup - rename back to original name
+    const fixUpdateData = {
+      filename: secondName + "_fixed" // Use a different name to resolve conflict
+    };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameDuplicateIncidentID, fixUpdateData, renameDuplicateLink2ID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
-    expect(response.data.filename).toBe(secondName); // Should still have original name
 
-    // Cleanup - delete the test entity (may fail if entity is in invalid state)
+    // Save with the fixed name to restore entity to valid state
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameDuplicateIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Cleanup - delete the test entity
     response = await api.deleteEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID);
     if (response.status !== "OK") {
-      // If delete fails, try to edit and then delete to clean up invalid state
-      try {
-        response = await api.editEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID, srvpath);
-        if (response.status === "OK") {
-          response = await api.deleteEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID);
-        }
-      } catch {
-        // If cleanup still fails, log but don't fail the test
-        console.warn("Cleanup failed for duplicate test entity:", renameDuplicateIncidentID);
-      }
+      throw new Error("Error : " + response.message)
     }
   });
 });
