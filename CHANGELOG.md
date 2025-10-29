@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.8.0
+
+### Added
+- Support for Link type Attachments
+- Support to Edit URL in Link type Attachments
+
 ## Version 1.7.0
 
 ### Added
