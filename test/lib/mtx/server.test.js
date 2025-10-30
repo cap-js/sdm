@@ -15,6 +15,7 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
         jest.resetModules();
         consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
         const MOCK_CONFIG = { sdm: { repositoryConfig: { description: "A test repository" } } };
         const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
         const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'SDMRepositoryConfig.js');
@@ -79,10 +80,44 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
         });
 
         describe('Onboarding Logic', () => {
+            // --- NEW: consoleInfoSpy declared in this specific scope ---
+            let consoleInfoSpy;
+
+            beforeEach(() => {
+                // --- NEW: consoleInfoSpy spied on in this specific beforeEach ---
+                consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation(() => { });
+            });
+
+            afterEach(() => {
+                // --- NEW: consoleInfoSpy restored in this specific afterEach ---
+                consoleInfoSpy.mockRestore();
+            });
+
             it('should successfully onboard a tenant repository on subscribe', async () => {
                 const req = { data: { tenant: 't1', metadata: { subscribedSubdomain: 'tenant-a-subdomain' } } };
                 await subscribeCallback({}, req);
                 expect(axios.post).toHaveBeenCalled();
+            });
+
+            it('should skip onboarding successfully if 409 Conflict indicates repository already exists', async () => {
+                // Arrange: Mock axios to return 409 with an "already exists" message
+                axios.post.mockRejectedValue({
+                    response: {
+                        status: 409,
+                        // This data string triggers the uncovered 'already exists' path
+                        data: `Repository '${MOCK_EXTERNAL_ID}' already exists`
+                    }
+                });
+
+                const req = { data: { tenant: 't_skip', metadata: { subscribedSubdomain: 'tenant-skip-subdomain' } } };
+
+                // Act & Assert: The key assertion is that it should NOT throw/reject
+                await expect(subscribeCallback({}, req)).resolves.not.toThrow();
+
+                // --- FIX: Updated the expected string to match the actual log output ---
+                const expectedLogMessage = `Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
+                // consoleInfoSpy is now guaranteed to be defined here
+                expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
             });
 
             it('should throw if buildRepositoryObject fails', async () => {
