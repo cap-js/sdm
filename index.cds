@@ -4,7 +4,12 @@ extend aspect Attachments with {
     repositoryId : String @title: 'Repository ID' @readonly default null;
     linkUrl: String @(title: '{i18n>LinkURL}') default null;
     type: String @(title: '{i18n>Type}') @(UI: {IsImageURL: true}) default 'sap-icon://document';
+
+    // Add support for non-draft entities
+    entityId: String @title: 'Entity ID';  // Link to parent entity
+    isActive: Boolean @title: 'Is Active' default false;  // Track active state
 };
+
 annotate Attachments with @UI:{
   HeaderInfo: {
     $Type         : 'UI.HeaderInfoType',
@@ -30,4 +35,6 @@ annotate Attachments with @UI:{
   mimeType @UI.Hidden;
   status @UI.Hidden;
   repositoryId @UI.Hidden;
+  entityId @UI.Hidden;
+  isActive @UI.Hidden;
 }
