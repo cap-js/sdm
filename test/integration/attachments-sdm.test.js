@@ -678,16 +678,16 @@ describe('Attachments Integration Tests --LINK', () => {
     }
 
     // Test 1: URL without proper protocol
-    // try {
-    //   const invalidUrl = 'example.com';
-    //   response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, 'ValidName', invalidUrl);
-    //   if (response.status === "OK") {
-    //     throw new Error("Error : Link creation should have failed for invalid URL format")
-    //   }
-    //   expect(response.message).toBe("Expected exact error message for invalid URL");
-    // } catch (error) {
-    //   expect(error.message).toBe("Expected exact error message for invalid URL");
-    // }
+    try {
+      const invalidUrl = 'example.com';
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, 'ValidName', invalidUrl);
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for invalid URL format")
+      }
+      expect(response.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
+    } catch (error) {
+      expect(error.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
+    }
 
     // Test 2: Link name has restricted characters (/)
     try {
