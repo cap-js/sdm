@@ -2,7 +2,7 @@
 
 # CAP plugin for SAP Document Management Service
 
-The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with [SAP Document Management Service](https://discovery-center.cloud.sap/serviceCatalog/document-management-service-integration-option). This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.  
+The **@cap-js/sdm** package is [cds-plugin](https://cap.cloud.sap/docs/node.js/cds-plugins#cds-plugin-packages) that provides an easy CAP-level integration with [SAP Document Management Service](https://discovery-center.cloud.sap/serviceCatalog/document-management-service-integration-option). This package supports handling of attachments(documents) by using an aspect Attachments in SAP Document Management Service.
 This plugin can be consumed by the CAP application deployed on BTP to store their documents in the form of attachments in Document Management Repository.
 
 # Key features
@@ -124,9 +124,9 @@ Custom properties are supported via the usage of CMIS secondary type properties.
 1. If the repository does not contain secondary types and properties, create CMIS secondary types and properties using the [Create Secondary Type API](https://api.sap.com/api/CreateSecondaryTypeApi/overview). The property definition must contain the following section for the CAP plugin to process the property.
 
    ```json
-   "mcm:miscellaneous": {        
-      "isPartOfTable": "true"  
-   } 
+   "mcm:miscellaneous": {
+      "isPartOfTable": "true"
+   }
    ```
 
    With this, the secondary type and properties definition will be as per the sample given below
@@ -140,22 +140,22 @@ Custom properties are supported via the usage of CMIS secondary type properties.
          ...
          "propertyDefinitions": {
             "Working:DocumentInfoRecord": {
-                  "id": "Working:DocumentInfoRecord",
-                  "displayName": "Document Info Record",
-                  ...
-                  "mcm:miscellaneous": {     <-- Required section in the property definition
-                     "isPartOfTable": "true"
-                  }
+               "id": "Working:DocumentInfoRecord",
+               "displayName": "Document Info Record",
+               ...
+               "mcm:miscellaneous": {     <-- Required section in the property definition
+                  "isPartOfTable": "true"
+               }
             }
          }
       }
       ```
 
 2. Using secondary properties in CAP Application.
-   - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file. 
-   - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`. 
-   - In this field set the name of the secondary property in SDM. 
-   
+   - Extend the `Attachments` aspect with the secondary properties in the previously created _db/attachments.cds_ file.
+   - Annotate the secondary properties with `@SDM.Attachments.AdditionalProperty.name`.
+   - In this field set the name of the secondary property in SDM.
+
    Refer the following example from a sample Incidents Management app:
 
       ```cds
@@ -163,7 +163,7 @@ Custom properties are supported via the usage of CMIS secondary type properties.
          customProperty : String
             @SDM.Attachments.AdditionalProperty: {
                name: 'Working:DocumentInfoRecordString'
-            }  
+            }
             @(title: 'DocumentInfoRecordString');
       }
       ```
@@ -181,28 +181,28 @@ This plugin provides the capability to create, open, rename and delete attachmen
 ### Steps to Enable Row-Press for Open Link
 
 1. **Add the `openAttachment` action to application's service definition**
-   
+
    See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/srv/service.cds#L19) from a sample incidents-management app.
 
    ```cds
    action openAttachment() returns String;
    ```
 
-2. **Add a custom controller extension** 
+2. **Add a custom controller extension**
 
    In webapp/controller/custom.controller.js, copy and paste below content.
-   
+
    See this [example](https://github.com/cap-js/incidents-app/blob/sdmIncidents/app/incidents/webapp/controller/custom.controller.js) from a sample incidents-management app.
-   
+
    ```js
    sap.ui.define(
       [
       "sap/ui/core/mvc/ControllerExtension",
       "sap/m/library"
-      ], 
+      ],
       function (ControllerExtension,library) {
          "use strict";
-    
+
          return ControllerExtension.extend("ns.incidents.controller.custom", {
             onRowPress: function(oContext) {
                this.base.editFlow
@@ -221,14 +221,14 @@ This plugin provides the capability to create, open, rename and delete attachmen
                   } else {
                      odataurl = res.getObject().value;
                   }
-                  library.URLHelper.redirect(odataurl, true);              
+                  library.URLHelper.redirect(odataurl, true);
                });
             }
         });
       }
-   ); 
+   );
    ```
-   
+
    - Replace `ns.incidents` in `ControllerExtension.extend` with the `id` in `manifest.json` file or `id` in `component.js` file. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4).
    - Replace `ProcessorService` in `invokeAction("ProcessorService.openAttachment")` with the name of your service.
 
@@ -251,7 +251,7 @@ This plugin provides the capability to create, open, rename and delete attachmen
    - Replace `ns.incidents` in `"rowPress": ".extension.ns.incidents.controller.custom.onRowPress"` with the `id` in `manifest.json` file. Refer this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L4) from a sample incidents-management app.
 
 4. **Register the Custom Controller Extension**
-   
+
    In the root of your `sap.ui5` section, add or extend the `extends` property to register your custom controller by copy and pasting below content. See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/app/incidents/webapp/manifest.json#L191).
 
    ```json
@@ -280,9 +280,9 @@ This plugin provides the capability to update/edit the URL of attachments of lin
 
    ```cds
    action editLink(
-         @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
-         @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
-      ); 
+        @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+        @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+   );
    ```
     - Purpose: Enables users to edit URL of previously created links.
     - Validation: Ensures only valid HTTP(S) URLs are accepted.
@@ -362,8 +362,8 @@ annotate service.Incidents.attachments with {
 
 > **Note:** Enabling row-press for open link (see steps above) is a prerequisite for link support.
 
-1. **Add the `createLink` action to application's service definition** 
-   
+1. **Add the `createLink` action to application's service definition**
+
    See this [example](https://github.com/cap-js/incidents-app/blob/2126273e16e8a7d5efa18e06de12e06bade8adb5/srv/service.cds#L14) from a sample incidents-management app:
 
    ```cds
@@ -456,11 +456,11 @@ Refer the following example from a sample Incidents Management app which demonst
 1. Add the cds.xt.DeploymentService to the package.json file
 
     ```json
-   "cds": {
-    "requires": {
+    "cds": {
+      "requires": {
         "cds.xt.DeploymentService": {
-            "preset": "in-sidecar"
-         }
+          "preset": "in-sidecar"
+        }
       }
     }
     ```
@@ -474,13 +474,13 @@ Refer the following example from a sample Incidents Management app which demonst
     module.exports = {
         sdm: {
             repositoryConfig: {
-            displayName: "SDM Repository",
-            description: "Onboarded on tenant subscription",
-            repositoryType: "internal",
-            isVersionEnabled: "false",
-            isVirusScanEnabled: "false",
-            skipVirusScanForLargeFile: "true",
-            hashAlgorithms: "SHA-256"
+                displayName: "SDM Repository",
+                description: "Onboarded on tenant subscription",
+                repositoryType: "internal",
+                isVersionEnabled: "false",
+                isVirusScanEnabled: "false",
+                skipVirusScanForLargeFile: "true",
+                hashAlgorithms: "SHA-256"
             }
         }
     };
@@ -505,7 +505,7 @@ When the application is deployed as a SaaS application with above code, a reposi
       path: gen/srv
       requires:
          - name: sdm-di-instance
-  
+
    resources:
       - name: sdm-di-instance
       type: org.cloudfoundry.managed-service
@@ -529,7 +529,7 @@ When the application is deployed as a SaaS application with above code, a reposi
    ```sh
    * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
-   ```  
+   ```
 
 6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
