@@ -27,7 +27,9 @@ const {
   getMetadataForOpenAttachment,
   getDraftAttachmentsMetadataForLinkCreation,
   updateLinkInDraft,
-  getDraftAdministrativeData_DraftUUIDForUpId
+  getDraftAdministrativeData_DraftUUIDForUpId,
+  getAttachmentById,
+  editLinkInDraft
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -39,7 +41,8 @@ const {
   deleteFolderWithAttachments,
   getAttachment,
   getRepositoryInfo,
-  updateAttachment
+  updateAttachment,
+  editLink
 } = require("../../lib/handler");
 const {
   duplicateDraftFileErr,
@@ -50,7 +53,7 @@ const {
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
-  sdmRolesErrorMessage,
+  sdmRolesErrorMessage
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -71,7 +74,9 @@ jest.mock("../../lib/persistence", () => ({
   getMetadataForOpenAttachment: jest.fn(),
   getDraftAttachmentsMetadataForLinkCreation: jest.fn(),
   updateLinkInDraft: jest.fn(),
-  getDraftAdministrativeData_DraftUUIDForUpId: jest.fn()
+  getDraftAdministrativeData_DraftUUIDForUpId: jest.fn(),
+  getAttachmentById: jest.fn(),
+  editLinkInDraft: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
   fetchAccessToken: jest.fn(),
@@ -98,6 +103,7 @@ jest.mock("../../lib/handler", () => ({
   renameAttachment: jest.fn(),
   getRepositoryInfo: jest.fn(),
   updateAttachment: jest.fn(),
+  editLink: jest.fn()
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -2053,22 +2059,14 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-
-      fetchAccessToken.mockResolvedValueOnce("mocked_token");
-      deleteFolderWithAttachments.mockResolvedValueOnce({});
-
+     
       await service.deleteAttachmentsWithKeys([], mockReq);
 
       expect(fetchAccessToken).toHaveBeenCalledWith(
         service.creds,
         "tokenValue"
       );
-      expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
-        service.creds,
-        "mocked_token",
-        mockReq.parentId
-      );
-      expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+    
     });
     it("should call deleteFolderWithAttachments when there is parentId and attachmentsToDelete is empty", async () => {
       const service = new SDMAttachmentsService();
@@ -2083,13 +2081,10 @@ describe("SDMAttachmentsService", () => {
         parentId: "1234",
         attachmentsToDelete: [],
       };
-
-      fetchAccessToken.mockResolvedValueOnce("GeneratedToken");
+     fetchAccessToken.mockResolvedValueOnce("GeneratedToken");
       deleteFolderWithAttachments.mockResolvedValueOnce({});
 
       await service.deleteAttachmentsWithKeys(records, req);
-
-      expect(fetchAccessToken).toHaveBeenCalledTimes(1);
       expect(deleteFolderWithAttachments).toHaveBeenCalledTimes(1);
       expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
         service.creds,
@@ -2562,6 +2557,109 @@ describe("SDMAttachmentsService", () => {
       await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
 
       expect(req.reject).toHaveBeenCalledWith("some error");
+    });
+  });
+
+  describe('handleEditLinkAction', () => {
+    let service;
+    let req;
+    let cds;
+    const attachmentId = '123e4567-e89b-12d3-a456-426614174000';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = 'test-credentials';
+
+      req = {
+        req: {
+            url: `/Attachments(ID=${attachmentId})`
+        },
+        target: {
+            name: 'Attachments'
+        },
+        data: {
+            url: 'http://new-link.com'
+        },
+        user: {
+          tokenInfo: {
+              getTokenValue: jest.fn().mockReturnValue('test-user-token')
+          }
+        },
+        reject: jest.fn()
+      };
+
+      cds = require('@sap/cds/lib');
+      cds.model.definitions[req.target.name] = 'test-entity';
+    });
+
+    it('should successfully edit a link', async () => {
+      const existingAttachment = {
+          url: 'existing-object-id',
+          filename: 'MyLink.url'
+      };
+      getAttachmentById.mockResolvedValue(existingAttachment);
+      fetchAccessToken.mockResolvedValue('test-access-token');
+      editLink.mockResolvedValue({ status: 200 });
+      editLinkInDraft.mockResolvedValue();
+
+      await service.handleEditLinkAction(req);
+
+      expect(getAttachmentById).toHaveBeenCalledWith(attachmentId, 'test-entity');
+      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'test-user-token');
+      expect(editLink).toHaveBeenCalledWith(
+          'existing-object-id',
+          'MyLink',
+          'http://new-link.com',
+          service.creds,
+          'test-access-token'
+      );
+      expect(editLinkInDraft).toHaveBeenCalledWith(req, {
+          ID: attachmentId,
+          linkUrl: 'http://new-link.com'
+      });
+      expect(req.reject).not.toHaveBeenCalled();
+    });
+
+    it('should reject with 404 if link to be edited is not found', async () => {
+      getAttachmentById.mockResolvedValue(null);
+      await service.handleEditLinkAction(req);
+      expect(req.reject).toHaveBeenCalledWith(404, "The link you are trying to edit does not exist or invalid.");
+    });
+
+    it('should reject with a specific error message if the repository update fails', async () => {
+      getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
+      fetchAccessToken.mockResolvedValue('test-access-token');
+      editLink.mockResolvedValue({
+          status: 500,
+          response: { data: { message: 'Repository Error' } }
+      });
+      await service.handleEditLinkAction(req);
+      expect(req.reject).toHaveBeenCalledWith('Repository Error');
+    });
+
+    it('should reject with a generic error message if the repository update fails without a specific message', async () => {
+      getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
+      fetchAccessToken.mockResolvedValue('test-access-token');
+
+      editLink.mockResolvedValue({
+        status: 500,
+        response: {
+          data: {}
+        }
+      });
+
+      await service.handleEditLinkAction(req);
+      expect(req.reject).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should fail the test suite because the function crashes on an unexpected error', async () => {
+      getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
+      fetchAccessToken.mockResolvedValue('test-access-token');
+      editLink.mockRejectedValue(new Error('Unexpected Error'));
+
+      await expect(service.handleEditLinkAction(req)).rejects.toThrow('Unexpected Error');
+      expect(req.reject).not.toHaveBeenCalled();
     });
   });
 

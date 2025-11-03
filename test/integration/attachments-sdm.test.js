@@ -1162,4 +1162,29 @@ describe('Attachments Integration Tests --DELETE', () => {
       throw new Error("Error : " + response.message)
     }
   });
+   it('should create an entity, edit and delete it without attachments', async () => {
+
+      let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+      incidentID = response.incidentID;
+
+      response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+      let editresponse = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
+          if (editresponse.status !== "OK") {
+            throw new Error("Error : " + editresponse.message)
+          }
+            response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+                if (response.status !== "OK") {
+                  throw new Error("Error : " + response.message)
+                }
+            let deleteresponse = await api.deleteEntity(appUrl, serviceName, entityName, incidentID);
+              if (deleteresponse.status !== "OK") {
+                throw new Error("Error : " + deleteresponse.message)
+              }
+    });
 });
