@@ -1,11 +1,13 @@
 name: Gemini AI PR Reviewer
-
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  # This triggers the bot only when a comment is created on an issue or pull request.
+  issue_comment:
+    types: [created]
 
 jobs:
   review:
+    # Ensure this job only runs if the comment was made on a Pull Request
+    if: github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -13,15 +15,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install dependencies
+        # Assuming your dependencies are in package.json. If not, this is fine.
         run: npm install @actions/github @google/generative-ai @octokit/core
-
       - name: Run Gemini PR Review Script
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
