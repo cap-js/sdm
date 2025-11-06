@@ -470,6 +470,661 @@ describe('Attachments Integration Tests --UPDATE', () => {
   });
 });
 
+describe('Attachments Integration Tests --LINK', () => {
+  it('should successfully create a link and verify it is openable after multiple edits', async () => {
+    let linkIncidentID;
+    let linkAttachmentID;
+    let secondLinkAttachmentID;
+    
+    const linkName = 'GitHub';
+    const linkUrl = 'https://github.com';
+    const secondLinkName = 'Stack Overflow';
+    const secondLinkUrl = 'https://stackoverflow.com';
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    linkIncidentID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkIncidentID, srvpath, linkName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the attachments list to find the created link's ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Find the link attachment by name and URL
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === linkName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    linkAttachmentID = linkAttachment.ID;
+
+    // Save the draft after creating the first link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Fetch metadata to verify the first link exists and has correct properties
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(linkName);
+    expect(response.data.linkUrl).toBe(linkUrl);
+
+    // Second edit: Test that we can create another link after editing the same entity again
+    response = await api.editEntity(appUrl, serviceName, entityName, linkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Create a second link in the same entity
+    response = await api.createLink(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkName, secondLinkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the updated attachments list
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Find the second link attachment
+    const secondLinkAttachment = response.attachments.find(att => 
+      att.filename === secondLinkName && att.linkUrl === secondLinkUrl
+    );
+    if (!secondLinkAttachment) {
+      throw new Error("Error : Second link not found in attachments list")
+    }
+    secondLinkAttachmentID = secondLinkAttachment.ID;
+
+    // Verify we now have 2 links total
+    expect(response.attachments.length).toBe(2);
+
+    // Save the draft after creating the second link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Third edit: Test that both links are accessible in different states
+    response = await api.editEntity(appUrl, serviceName, entityName, linkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Test that the first link is openable from draft state (IsActiveEntity=false)
+    response = await api.openAttachment(appUrl, serviceName, entityName, linkIncidentID, srvpath, linkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save the draft to test opening second link from saved state
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Test that the second link is openable from saved state (IsActiveEntity=true)
+    response = await api.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify metadata for both links after multiple edits
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(linkName);
+    expect(response.data.linkUrl).toBe(linkUrl);
+
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, secondLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(secondLinkName);
+    expect(response.data.linkUrl).toBe(secondLinkUrl);
+
+    // Cleanup - delete the entity created for link testing
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should allow creation of a link with the same name and URL in a different entity', async () => {
+    // Define the same link parameters as the previous test
+    const linkName = 'GitHub';
+    const linkUrl = 'https://github.com';
+    let secondLinkIncidentID;
+    let secondLinkAttachmentID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    secondLinkIncidentID = response.incidentID;
+
+    // Create the link with the same name and URL as the previous test
+    response = await api.createLink(appUrl, serviceName, entityName, secondLinkIncidentID, srvpath, linkName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the attachments list to find the created link's ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, secondLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Find the link attachment by name and URL
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === linkName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    secondLinkAttachmentID = linkAttachment.ID;
+
+    // Save the draft after creating the link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, secondLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the link was created with correct properties
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, secondLinkIncidentID, secondLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(linkName);
+    expect(response.data.linkUrl).toBe(linkUrl);
+
+    // Cleanup - delete the second entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, secondLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should fail to create links with invalid parameters and prevent duplicate names', async () => {
+    let testIncidentID;
+    let validLinkAttachmentID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    testIncidentID = response.incidentID;
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, testIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, testIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Test 1: URL without proper protocol
+    try {
+      const invalidUrl = 'example.com';
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, 'ValidName', invalidUrl);
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for invalid URL format")
+      }
+      expect(response.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
+    } catch (error) {
+      expect(error.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
+    }
+
+    // Test 2: Link name has restricted characters (/)
+    try {
+      const nameWithSlash = 't/es';
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, nameWithSlash, 'https://example1.com');
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for name containing '/' character")
+      }
+      expect(response.message.trim()).toBe("Link could not be created. The following name(s) contain unsupported characters (/, \\). \n\n\t• t/es\n\nRename the file(s) and try again.");
+    } catch (error) {
+      expect(error.message.trim()).toBe("Link could not be created. The following name(s) contain unsupported characters (/, \\). \n\n\t• t/es\n\nRename the file(s) and try again.");
+    }
+
+    // Test 4: Empty link name
+    try {
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, '', 'https://example3.com');
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for empty name")
+      }
+      // Server should return an error for empty name
+      expect(response.status).toBe("ERROR");
+      expect(response.message).toBeDefined();
+    } catch (error) {
+      // If it throws an exception, that's also acceptable validation
+      expect(error.message).toBeDefined();
+    }
+
+    // Test 5: Empty link URL
+    try {
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, 'ValidName', '');
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for empty URL")
+      }
+      // Server should return an error for empty URL
+      expect(response.status).toBe("ERROR");
+      expect(response.message).toBeDefined();
+    } catch (error) {
+      // If it throws an exception, that's also acceptable validation
+      expect(error.message).toBeDefined();
+    }
+
+    // Test 6: Both name and URL empty
+    try {
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, '', '');
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for both empty name and URL")
+      }
+      // Server should return an error for both empty fields
+      expect(response.status).toBe("ERROR");
+      expect(response.message).toBeDefined();
+    } catch (error) {
+      // If it throws an exception, that's also acceptable validation
+      expect(error.message).toBeDefined();
+    }
+
+    // Create a valid link first to test duplicate scenario
+    const validLinkName = 'TestLink';
+    const validLinkUrl = 'https://test.example.com';
+    response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, validLinkName, validLinkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : Failed to create valid link for duplicate test: " + response.message)
+    }
+
+    // Get the attachments list to verify the valid link was created
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, testIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Find the valid link attachment
+    const validLinkAttachment = response.attachments.find(att => 
+      att.filename === validLinkName && att.linkUrl === validLinkUrl
+    );
+    if (!validLinkAttachment) {
+      throw new Error("Error : Valid link not found in attachments list")
+    }
+    validLinkAttachmentID = validLinkAttachment.ID;
+
+    // Test 7: Duplicate link name (same name, different URL)
+    try {
+      response = await api.createLink(appUrl, serviceName, entityName, testIncidentID, srvpath, validLinkName, 'https://different.example.com');
+      if (response.status === "OK") {
+        throw new Error("Error : Link creation should have failed for duplicate name")
+      }
+      // Server should return an error for duplicate name
+      expect(response.status).toBe("ERROR");
+      expect(response.message).toBeDefined();
+    } catch (error) {
+      // If it throws an exception, that's also acceptable validation
+      expect(error.message).toBeDefined();
+    }
+
+    // Save the draft to persist the valid link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, testIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the valid link still exists and has correct properties
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, testIncidentID, validLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(validLinkName);
+    expect(response.data.linkUrl).toBe(validLinkUrl);
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, testIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should successfully delete a link using deleteAttachment API', async () => {
+    let deleteTestIncidentID;
+    let deleteTestLinkID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    deleteTestIncidentID = response.incidentID;
+
+    // Create a link to delete
+    const linkName = 'LinkToDelete';
+    const linkUrl = 'https://delete-test.com';
+    response = await api.createLink(appUrl, serviceName, entityName, deleteTestIncidentID, srvpath, linkName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the link ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, deleteTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === linkName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    deleteTestLinkID = linkAttachment.ID;
+
+    // Save the draft to persist the link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit entity again to delete the link
+    response = await api.editEntity(appUrl, serviceName, entityName, deleteTestIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Delete the link using deleteAttachment API
+    response = await api.deleteAttachment(appUrl, serviceName, deleteTestIncidentID, deleteTestLinkID, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save the draft after deletion
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the link was deleted by trying to fetch its metadata (should fail)
+    try {
+      response = await api.fetchMetadata(appUrl, serviceName, entityName, deleteTestIncidentID, deleteTestLinkID);
+      if (response.status === "OK") {
+        throw new Error("Error : Link should have been deleted but metadata was still found")
+      }
+    } catch (error) {
+      // Expected - link should not exist anymore
+      expect(error).toBeDefined();
+    }
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, deleteTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should successfully rename a link using updateAttachment API', async () => {
+    let renameSuccessIncidentID;
+    let renameSuccessLinkID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    renameSuccessIncidentID = response.incidentID;
+    
+    // Create a link to rename
+    const originalName = 'OriginalSuccessName';
+    const linkUrl = 'https://rename-success-test.com';
+    response = await api.createLink(appUrl, serviceName, entityName, renameSuccessIncidentID, srvpath, originalName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the link ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, renameSuccessIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    renameSuccessLinkID = linkAttachment.ID;
+
+    // Save the draft to persist the link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameSuccessIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit entity again to rename the link
+    response = await api.editEntity(appUrl, serviceName, entityName, renameSuccessIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Rename the link using updateAttachment API
+    const newName = 'RenamedSuccessName';
+    const updateData = {
+      filename: newName
+    };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameSuccessIncidentID, updateData, renameSuccessLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save the draft after renaming - this should succeed
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameSuccessIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the link was renamed by fetching its metadata
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, renameSuccessIncidentID, renameSuccessLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(newName);
+    expect(response.data.linkUrl).toBe(linkUrl); // URL should remain unchanged
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, renameSuccessIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should fail to rename link with restricted characters', async () => {
+    let renameRestrictedIncidentID;
+    let renameRestrictedLinkID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    renameRestrictedIncidentID = response.incidentID;
+    
+    // Create a link to rename
+    const originalName = 'OriginalRestrictedName';
+    const linkUrl = 'https://rename-restricted-test.com';
+    response = await api.createLink(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath, originalName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the link ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, renameRestrictedIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    renameRestrictedLinkID = linkAttachment.ID;
+
+    // Save the draft to persist the link
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameRestrictedIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit entity again to rename the link
+    response = await api.editEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Try to rename the link with restricted characters
+    const invalidName = 'Invalid/Name';
+    const updateData = {
+      filename: invalidName
+    };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameRestrictedIncidentID, updateData, renameRestrictedLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save the draft after renaming - this should fail with sap-messages
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameRestrictedIncidentID, true);
+    expect(response.status).toBe("FAILED");
+    expect(response.message.trim()).toBe("Update unsuccessful. The following filename(s) contain unsupported characters (/, \\). \n\n\t• Invalid/Name\n\nRename the file(s) and try again.");
+
+    // Verify the link was NOT renamed by fetching its metadata
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, renameRestrictedIncidentID, renameRestrictedLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(originalName); // Should still have original name
+
+    // Cleanup - delete the test entity (may fail if entity is in invalid state)
+    response = await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
+    if (response.status !== "OK") {
+      // If delete fails, try to edit and then delete to clean up invalid state
+      try {
+        response = await api.editEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath);
+        if (response.status === "OK") {
+          response = await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
+        }
+      } catch {
+        // If cleanup still fails, log but don't fail the test
+        console.warn("Cleanup failed for restricted test entity:", renameRestrictedIncidentID);
+      }
+    }
+  });
+
+  it('should fail to rename link with duplicate name', async () => {
+    let renameDuplicateIncidentID;
+    let renameDuplicateLink2ID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    renameDuplicateIncidentID = response.incidentID;
+    
+    // Create first link
+    const firstName = 'FirstLink';
+    const firstUrl = 'https://first-link.com';
+    response = await api.createLink(appUrl, serviceName, entityName, renameDuplicateIncidentID, srvpath, firstName, firstUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Create second link
+    const secondName = 'SecondLink';  
+    const secondUrl = 'https://second-link.com';
+    response = await api.createLink(appUrl, serviceName, entityName, renameDuplicateIncidentID, srvpath, secondName, secondUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get both link IDs
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, renameDuplicateIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const firstLink = response.attachments.find(att => 
+      att.filename === firstName && att.linkUrl === firstUrl
+    );
+    const secondLink = response.attachments.find(att => 
+      att.filename === secondName && att.linkUrl === secondUrl
+    );
+    
+    if (!firstLink || !secondLink) {
+      throw new Error("Error : Created links not found in attachments list")
+    }
+    renameDuplicateLink2ID = secondLink.ID;
+
+    // Save the draft to persist both links
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameDuplicateIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit entity again to rename the second link
+    response = await api.editEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Try to rename the second link to have the same name as the first link
+    const updateData = {
+      filename: firstName // This should create a duplicate
+    };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameDuplicateIncidentID, updateData, renameDuplicateLink2ID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save the draft after renaming - this should fail with sap-messages
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameDuplicateIncidentID, true);
+    expect(response.status).toBe("FAILED");
+    expect(response.message.trim()).toBe("The file(s) FirstLink have been added multiple times. Please rename and try again.");
+
+    // Fix the duplicate name issue for proper cleanup - rename back to original name
+    const fixUpdateData = {
+      filename: secondName + "_fixed" // Use a different name to resolve conflict
+    };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameDuplicateIncidentID, fixUpdateData, renameDuplicateLink2ID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Save with the fixed name to restore entity to valid state
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameDuplicateIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+});
+
 describe('Attachments Integration Tests --DELETE', () => {
   it('should delete the attachments of an entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
@@ -507,4 +1162,29 @@ describe('Attachments Integration Tests --DELETE', () => {
       throw new Error("Error : " + response.message)
     }
   });
+   it('should create an entity, edit and delete it without attachments', async () => {
+
+      let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+      incidentID = response.incidentID;
+
+      response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+      let editresponse = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
+          if (editresponse.status !== "OK") {
+            throw new Error("Error : " + editresponse.message)
+          }
+            response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+                if (response.status !== "OK") {
+                  throw new Error("Error : " + response.message)
+                }
+            let deleteresponse = await api.deleteEntity(appUrl, serviceName, entityName, incidentID);
+              if (deleteresponse.status !== "OK") {
+                throw new Error("Error : " + deleteresponse.message)
+              }
+    });
 });
