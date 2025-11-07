@@ -57,13 +57,7 @@ let {
   editLinkNotFoundErr,
   userNotAuthorisedErrorEditLink,
   linkNameConstraintMessage,
-  unsupportedProperties,
-  unsupportedPropertiesErrorMessage,
-  badRequestErrorMessage,
-  emptyFileNameErr,
-  renameFileErr,
-  noSDMRolesErrorMessage,
-  renameOtherFilesErr
+  unsupportedProperties
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -1364,7 +1358,7 @@ describe("SDMAttachmentsService", () => {
     test('should handle drafts when attachment values are found', async () => {
       const draftAttachments = [];
       const req = {
-        req:  {
+        req:{
           url: '/Incidents_attachments(up__ID=c66fcc09-90c5-4026-acde-19ef5297cd7f,ID=afc3d040-60ae-4bf2-a44f-1da4043f4257,IsActiveEntity=false)/content' // Example URL containing an ID; ensure the format matches your actual usage
         },
         data: {
@@ -1888,8 +1882,8 @@ describe("SDMAttachmentsService", () => {
     
     it('should attach URLs to delete and call deleteAttachmentsWithKeys with correct data', async () => {
       const req = {
-        target: {   name: 'DraftAttachments'  },
-        data:  { ID: 'some-other-id'},
+        target: {name: 'DraftAttachments' },
+        data:{ ID: 'some-other-id'},
         user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } },
       };
       
@@ -2280,7 +2274,7 @@ describe("SDMAttachmentsService", () => {
         user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue("tokenValue") } }
       };
       cds.model.definitions['MyEntity'] = { entity: "MyEntity" };
-      getConfigurations.mockReturnValue({  repositoryId: "repo123" });
+      getConfigurations.mockReturnValue({repositoryId: "repo123" });
       getDraftAttachmentsMetadataForLinkCreation.mockResolvedValue([{ filename: "existingLink" }]);
       fetchAccessToken.mockResolvedValueOnce("mockToken");
     });
