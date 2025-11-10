@@ -73,7 +73,7 @@ describe("handlers", () => {
         headers: { Authorization: `Bearer ${mockToken}` },
         responseType: "stream",
       });
-      expect(document).toEqual(mockResponse.data);
+      expect(document.data).toEqual(mockResponse.data);
     });
 
     it("throws error on unsuccessful read", async () => {
