@@ -56,7 +56,6 @@ const {
   versionedRepositoryErr,
   nameConstrainErr,
   sdmRolesErrorMessage,
-  userNotAuthorisedErrorLink,
   userNotAuthorisedErrorEditLink,
   userNotAuthorisedOpenLink
 } = require("../../lib/util/messageConsts");
