@@ -1398,6 +1398,9 @@ describe("SDMAttachmentsService", () => {
         reject: jest.fn()
       };
 
+      // Set up credentials for this test
+      service.creds = { uri: "http://mock-uri/" };
+
       const cds = require("@sap/cds/lib");
       cds.model.definitions = {
         MyEntity: { entity: "MyEntity" },
@@ -1413,6 +1416,7 @@ describe("SDMAttachmentsService", () => {
       fetchAccessToken.mockResolvedValue("mockToken");
       decodeAccessToken.mockReturnValue({ "sdm-roles": [] }); // No SDM roles
       checkIfSDMRolesExistInToken.mockReturnValue(false);
+      getAttachment.mockResolvedValue({ status: 403 }); // Mock unauthorized response
 
       await service.openAttachment(req);
 
@@ -2450,11 +2454,13 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       cds = require("@sap/cds/lib");
       service = new SDMAttachmentsService();
+      service.creds = { uri: "http://mock-uri/" }; // Add mock credentials
 
       // Mock role checking functions
       fetchAccessToken.mockResolvedValue("mockToken");
       decodeAccessToken.mockReturnValue({ "sdm-roles": ["user"] });
       checkIfSDMRolesExistInToken.mockReturnValue(true);
+      getAttachment.mockResolvedValue({ status: 200 }); // Mock getAttachment
 
       req = {
         target: { name: "MyEntity" },
