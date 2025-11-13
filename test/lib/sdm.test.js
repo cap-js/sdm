@@ -1424,6 +1424,74 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('additional edge case coverage', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { uri: 'http://mock-uri' };
+    });
+
+    it('should handle onCreate when response.status is 403', async () => {
+      const data = [{
+        filename: 'test.txt',
+        content: Buffer.from('test content')
+      }];
+      const token = 'mock-token';
+      const parentId = 'parent-123';
+      const req = {
+        reject: jest.fn()
+      };
+
+      getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+      createAttachment.mockResolvedValue({
+        status: 403,
+        response: {
+          data: {}
+        }
+      });
+
+      await service.onCreate(data, service.creds, token, req, parentId);
+
+      expect(req.reject).toHaveBeenCalledWith(403, expect.any(String));
+    });
+
+    it('should handle _updateAttachments when updatedSecondaryProperties is empty', async () => {
+      const req = {
+        data: {
+          attachments: [{
+            ID: 'attachment-123',
+            filename: 'test.txt'
+          }]
+        }
+      };
+      const token = 'mock-token';
+      const attachment = {
+        ID: 'attachment-123',
+        filename: 'test.txt'
+      };
+      const attachmentsEntity = { name: 'TestEntity' };
+      const secondaryPropertiesWithInvalidDefinitions = {};
+      const secondaryTypeProperties = new Map();
+      const filenameInSDM = 'test.txt';
+
+      getPropertiesForID.mockResolvedValue({});
+      
+      const result = await service._updateAttachments(
+        req,
+        token, 
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        filenameInSDM
+      );
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('handleWarning', () => {
     let service;
     let propertyTitles;
