@@ -4,6 +4,7 @@ const Api = require('./api');
 const expect = require('@sap/cds/lib/test/expect');
 
 let token;
+let noSDMRoleToken;
 let incidentID;
 let appUrl = credentials.appUrl
 let serviceName = 'processor';
@@ -25,6 +26,16 @@ beforeAll(async () => {
     }
   );
   token = authRes.data.access_token;
+  const authResNoSDMRole = await axios.get(
+      `${credentials.authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+      {
+        auth: {
+          username: credentials.clientID,
+          password: credentials.clientSecret
+        }
+      }
+    );
+    noSDMRoleToken = authResNoSDMRole.data.access_token;
   const config = {
     headers: { 'Authorization': "Bearer " + token }
   };
@@ -105,6 +116,35 @@ describe('Attachments Integration Tests --CREATE', () => {
       throw new Error("Error : " + response.message)
     }
   });
+  it('should not upload an attachment when user does not have SDM role', async () => {
+      const file =
+      {
+        filename: "sample3.pdf",
+        filepath: "./test/integration/sample3.pdf"
+      }
+
+      const postData = {
+        up__ID: incidentID,
+        mimeType: "application/pdf",
+        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+        createdBy: "test@test.com",
+        modifiedBy: "test@test.com"
+      };
+ const config = {
+        headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+      };
+      apiNoSDMRole = new Api(config);
+      let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
+      response = await apiNoSDMRole.createAttachment(appUrl, serviceName, entityName, incidentID, postData, file);
+     expect(response.message).toBe("Create attachment API call (put) failed : Request failed with status code 403");
+response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+});
 
   it('should not allow upload of duplicate files in same entity', async () => {
     const file =
@@ -222,6 +262,15 @@ describe('Attachments Integration Tests --READ', () => {
         throw new Error("Error : " + response.message)
       }
     }
+    const config = {
+        headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+      };
+      apiNoSDMRole = new Api(config);
+      const response = await apiNoSDMRole.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[0]);
+      console.log(response.message);
+      expect(response.message).toBe("Read attachment API call failed : Request failed with status code 403");
+
+
   });
 
   it('should not read an attachment that doesnt exist', async () => {
@@ -580,6 +629,15 @@ describe('Attachments Integration Tests --LINK', () => {
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
+
+// Test that the second link throws authorization error for use without sdm role
+//here use the noSDMRoleUsername
+const config = {
+    headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+  };
+  apiNoSDMRole = new Api(config);
+    response = await apiNoSDMRole.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
+     expect(response.message).toBe("Open attachment saved API call failed : Request failed with status code 403");
 
     // Verify metadata for both links after multiple edits
     response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
