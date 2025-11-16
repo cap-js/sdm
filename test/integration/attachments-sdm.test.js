@@ -5,6 +5,8 @@ const expect = require('@sap/cds/lib/test/expect');
 
 let token;
 let noSDMRoleToken;
+let api;
+let apiNoSDMRole;
 let incidentID;
 let appUrl = credentials.appUrl
 let serviceName = 'processor';
