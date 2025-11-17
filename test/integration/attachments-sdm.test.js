@@ -1315,6 +1315,82 @@ describe('Attachments Integration Tests --LINK', () => {
       }
     }
   });
+
+  it('should discard draft edited link and revert to original URL', async () => {
+    let discardTestIncidentID;
+    let discardTestLinkID;
+
+    // Create entity
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    discardTestIncidentID = response.incidentID;
+
+    // Create link type attachment (original URL)
+    const originalName = 'DiscardTestLink';
+    const originalUrl = 'https://abc.com';
+    response = await api.createLink(appUrl, serviceName, entityName, discardTestIncidentID, srvpath, originalName, originalUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the link ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === originalUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    discardTestLinkID = linkAttachment.ID;
+
+    // Save entity
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit same entity
+    response = await api.editEntity(appUrl, serviceName, entityName, discardTestIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit same link type attachment (new URL)
+    const updatedUrl = 'https://xyz.com';
+    response = await api.editLink(appUrl, serviceName, entityName, discardTestIncidentID, discardTestLinkID, srvpath, updatedUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Discard draft
+    response = await api.discardDraft(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Read attachment - should revert back to original URL (https://abc.com)
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, discardTestIncidentID, discardTestLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the link reverted back to the original URL
+    expect(response.data.filename).toBe(originalName);
+    expect(response.data.linkUrl).toBe(originalUrl); // Should be https://abc.com, not https://xyz.com
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      // Log cleanup failure but don't fail the test since the main functionality passed
+      console.warn("Cleanup failed for discardTestIncidentID:", response.message);
+    }
+  });
 });
 
 describe('Attachments Integration Tests --DELETE', () => {

@@ -182,6 +182,33 @@ class Api {
         }
     }
 
+    async discardDraft(appUrl, serviceName, entityName, incidentID){
+        let response;
+        try{
+            // Discard draft by deleting the entity with IsActiveEntity=false
+            response = await axios.delete(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)`,
+                this.config
+            )
+            if(response.status == 204){
+                return {
+                    status: "OK",
+                };
+            }
+            else{
+                return {
+                    status: "FAILED",
+                    message: "Discard draft did not return 204 status code. Actual code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Discard draft API call failed : " + error.message
+            };
+        }
+    }
+
     async createAttachment(appUrl, serviceName, entityName, incidentID, postData, file){
         let response;
         postData['filename'] = file.filename;
