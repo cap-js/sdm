@@ -10,7 +10,9 @@ const {
   getPropertyTitles,
   getSecondaryPropertiesWithInvalidDefinition,
   getSecondaryTypeProperties,
-  getUpdatedSecondaryProperties
+  getUpdatedSecondaryProperties,
+  checkIfSDMRolesExistInToken,
+  decodeAccessToken
 } = require("../../lib/util");
 const {
   getDraftAttachments,
@@ -54,8 +56,9 @@ let {
   versionedRepositoryErr,
   nameConstrainErr,
   sdmRolesErrorMessage,
-  editLinkNotFoundErr,
   userNotAuthorisedErrorEditLink,
+  userNotAuthorisedOpenLink,
+  editLinkNotFoundErr,
   linkNameConstraintMessage,
   unsupportedProperties
 } = require("../../lib/util/messageConsts");
@@ -93,7 +96,9 @@ jest.mock("../../lib/util", () => ({
   getPropertyTitles: jest.fn(),
   getSecondaryPropertiesWithInvalidDefinition: jest.fn(),
   getSecondaryTypeProperties: jest.fn(),
-  getUpdatedSecondaryProperties: jest.fn()
+  getUpdatedSecondaryProperties: jest.fn(),
+  checkIfSDMRolesExistInToken: jest.fn(),
+  decodeAccessToken: jest.fn()
 }));
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
@@ -244,6 +249,7 @@ describe("SDMAttachmentsService", () => {
 
     it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
       const req = {
+        reject: jest.fn(),
         user: {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
@@ -313,6 +319,7 @@ describe("SDMAttachmentsService", () => {
     it("should interact with DB, fetch access token and readAttachment with correct parameters when cache returns non-versioned repo type", async () => {
       NodeCache.prototype.get.mockImplementation(() => "non-versioned");
       const req = {
+        reject: jest.fn(),
         user: {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue("tokenValue"),
@@ -1153,6 +1160,342 @@ describe("SDMAttachmentsService", () => {
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.secondaryKey1).toBe('newValue1'); // Ensure matching property is updated
       expect(updatedAttachment.secondaryKey2).toBeUndefined(); // Ensure non-matching property is not updated
+    });
+  });
+
+  describe('clearSecondaryPropertiesCache', () => {
+    let service;
+    let cache;
+    const repositoryId = 'mockRepositoryId';
+    const cacheKey = `validSecondaryProperties_${repositoryId}`;
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+  
+      // Mock the global cache object
+      cache = {
+        has: jest.fn(),
+        del: jest.fn(),
+      };
+      global.cache = cache; // Assign the mocked cache to the global object
+  
+      service = new SDMAttachmentsService();
+    });
+  
+    afterEach(() => {
+      delete global.cache; // Clean up the global cache mock
+    });
+  
+    it('should remove the cache key if it exists', () => {
+      // Mock the cache to have the key
+      NodeCache.prototype.has.mockReturnValue(true);
+  
+      // Call the method
+      service.clearSecondaryPropertiesCache(repositoryId);
+  
+      // Verify the cache key is removed
+      expect(NodeCache.prototype.has).toHaveBeenCalledWith(cacheKey);
+      expect(NodeCache.prototype.del).toHaveBeenCalledWith(cacheKey);
+    });
+  
+    it('should do nothing if the cache key does not exist', () => {
+      // Mock the cache to not have the key
+      NodeCache.prototype.has.mockReturnValue(false);
+  
+      // Call the method
+      service.clearSecondaryPropertiesCache(repositoryId);
+  
+      // Verify the cache key is not removed
+      expect(NodeCache.prototype.has).toHaveBeenCalledWith(cacheKey);
+      expect(NodeCache.prototype.del).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handleEditLinkAction - additional scenarios", () => {
+    let service;
+    let req;
+    let cds;
+    const attachmentId = '123e4567-e89b-12d3-a456-426614174000';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = 'test-credentials';
+
+      req = {
+        req: {
+            url: `/Attachments(ID=${attachmentId})`
+        },
+        target: {
+            name: 'Attachments'
+        },
+        data: {
+            url: 'http://new-link.com'
+        },
+        user: {
+          tokenInfo: {
+              getTokenValue: jest.fn().mockReturnValue('test-user-token')
+          }
+        },
+        reject: jest.fn()
+      };
+
+      cds = require('@sap/cds/lib');
+      cds.model.definitions[req.target.name] = 'test-entity';
+    });
+
+    it('should handle edit link when status is 403 (user not authorized)', async () => {
+      getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
+      fetchAccessToken.mockResolvedValue('test-access-token');
+      editLink.mockResolvedValue({
+          status: 403,
+          response: { data: {} }
+      });
+      
+      await service.handleEditLinkAction(req);
+      expect(req.reject).toHaveBeenCalledWith(400, userNotAuthorisedErrorEditLink);
+    });
+  });
+
+  describe('registerUpdateHandlers', () => {
+    let service;
+    let mockSrv;
+    let entity;
+    let target;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      
+      mockSrv = {
+        before: jest.fn(),
+        after: jest.fn(),
+        on: jest.fn()
+      };
+
+      entity = {
+        drafts: 'entity.drafts'
+      };
+
+      target = {
+        drafts: 'target.drafts'
+      };
+    });
+
+    it('should register all handlers correctly', () => {
+      service.registerUpdateHandlers(mockSrv, entity, target);
+
+      // Verify before handlers
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        ["DELETE","UPDATE"], 
+        entity, 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        ["DELETE"], 
+        entity.drafts, 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        ["DELETE"], 
+        [target.drafts], 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "READ", 
+        [target, target.drafts], 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "SAVE", 
+        entity, 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "PUT", 
+        target.drafts, 
+        expect.any(Function)
+      );
+
+      // Verify after handlers
+      expect(mockSrv.after).toHaveBeenCalledWith(
+        ["DELETE","UPDATE"], 
+        [entity, entity.drafts], 
+        expect.any(Function)
+      );
+
+      // Verify on handlers
+      expect(mockSrv.on).toHaveBeenCalledWith('openAttachment', expect.any(Function));
+      expect(mockSrv.on).toHaveBeenCalledWith('createLink', expect.any(Function));
+      expect(mockSrv.on).toHaveBeenCalledWith('editLink', expect.any(Function));
+    });
+
+    it('should not register PUT handler when target.drafts is undefined', () => {
+      const targetWithoutDrafts = {};
+      service.registerUpdateHandlers(mockSrv, entity, targetWithoutDrafts);
+
+      // Verify PUT handler for drafts is not called
+      const putCalls = mockSrv.before.mock.calls.filter(call => call[0] === 'PUT');
+      expect(putCalls).toHaveLength(0);
+    });
+  });
+
+  describe('additional coverage tests', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+
+    it('should handle _updateAttachments when Object.keys length is 0', async () => {
+      const req = { data: { attachments: [{ ID: '123', filename: 'test.txt' }] } };
+      const token = 'test-token';
+      const attachment = { ID: '123', filename: 'test.txt' };
+      const attachmentsEntity = {};
+      const secondaryPropertiesWithInvalidDefinitions = {};
+      const secondaryTypeProperties = new Map();
+      const filenameInSDM = 'test.txt';
+
+      // Mock functions to return empty objects
+      getPropertiesForID.mockResolvedValue({});
+      getUpdatedSecondaryProperties.mockReturnValue({});
+
+      const result = await service._updateAttachments(
+        req, token, attachment, attachmentsEntity, 
+        secondaryPropertiesWithInvalidDefinitions, secondaryTypeProperties, filenameInSDM
+      );
+
+      expect(result).toEqual([]);
+      expect(updateAttachment).not.toHaveBeenCalled();
+    });
+
+    it('should test filterDuplicates with unique values', () => {
+      const fileNames = ['file1.txt', 'file2.txt', 'file3.txt'];
+      const result = service.filterDuplicates(fileNames);
+      expect(result).toEqual([]);
+    });
+
+    it('should test filterDuplicates with duplicates', () => {
+      const fileNames = ['file1.txt', 'file2.txt', 'file1.txt', 'file3.txt', 'file2.txt'];
+      const result = service.filterDuplicates(fileNames);
+      expect(result).toEqual(['file1.txt', 'file2.txt']);
+    });
+
+    it('should handle getAttachementDataInSDM with undefined response', async () => {
+      getAttachment.mockResolvedValue(undefined);
+
+      const result = await service.getAttachementDataInSDM('uri', 'token', 'objectId');
+
+      expect(result).toEqual({
+        filename: undefined,
+        folderId: undefined
+      });
+    });
+
+    it('should handle openAttachment when user does not have SDM roles', async () => {
+      const req = {
+        target: { name: "MyEntity" },
+        req: { url: "/MyEntity(ID=123e4567-e89b-12d3-a456-426614174000)" },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mockToken")
+          }
+        },
+        reject: jest.fn()
+      };
+
+      // Set up credentials for this test
+      service.creds = { uri: "http://mock-uri/" };
+
+      const cds = require("@sap/cds/lib");
+      cds.model.definitions = {
+        MyEntity: { entity: "MyEntity" },
+        "MyEntity.drafts": { entity: "MyEntityDrafts" }
+      };
+
+      getMetadataForOpenAttachment.mockResolvedValueOnce({
+        filename: "file.url",
+        mimeType: "application/internet-shortcut",
+        linkUrl: "http://example.com"
+      });
+
+      fetchAccessToken.mockResolvedValue("mockToken");
+      decodeAccessToken.mockReturnValue({ "sdm-roles": [] }); // No SDM roles
+      checkIfSDMRolesExistInToken.mockReturnValue(false);
+      getAttachment.mockResolvedValue({ status: 403 }); // Mock unauthorized response
+
+      await service.openAttachment(req);
+
+      expect(req.reject).toHaveBeenCalledWith(403, userNotAuthorisedOpenLink);
+    });
+  });
+
+  describe('additional edge case coverage', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { uri: 'http://mock-uri' };
+    });
+
+    it('should handle onCreate when response.status is 403', async () => {
+      const data = [{
+        filename: 'test.txt',
+        content: Buffer.from('test content')
+      }];
+      const token = 'mock-token';
+      const parentId = 'parent-123';
+      const req = {
+        reject: jest.fn()
+      };
+
+      getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+      createAttachment.mockResolvedValue({
+        status: 403,
+        response: {
+          data: {}
+        }
+      });
+
+      await service.onCreate(data, service.creds, token, req, parentId);
+
+      expect(req.reject).toHaveBeenCalledWith(403, expect.any(String));
+    });
+
+    it('should handle _updateAttachments when updatedSecondaryProperties is empty', async () => {
+      const req = {
+        data: {
+          attachments: [{
+            ID: 'attachment-123',
+            filename: 'test.txt'
+          }]
+        }
+      };
+      const token = 'mock-token';
+      const attachment = {
+        ID: 'attachment-123',
+        filename: 'test.txt'
+      };
+      const attachmentsEntity = { name: 'TestEntity' };
+      const secondaryPropertiesWithInvalidDefinitions = {};
+      const secondaryTypeProperties = new Map();
+      const filenameInSDM = 'test.txt';
+
+      getPropertiesForID.mockResolvedValue({});
+      
+      const result = await service._updateAttachments(
+        req,
+        token, 
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        filenameInSDM
+      );
+
+      expect(result).toEqual([]);
     });
   });
 
@@ -2132,10 +2475,22 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service.creds = { uri: "http://mock-uri/" }; // Add mock credentials
+
+      // Mock role checking functions
+      fetchAccessToken.mockResolvedValue("mockToken");
+      decodeAccessToken.mockReturnValue({ "sdm-roles": ["user"] });
+      checkIfSDMRolesExistInToken.mockReturnValue(true);
+      getAttachment.mockResolvedValue({ status: 200 }); // Mock getAttachment
 
       req = {
         target: { name: "MyEntity" },
-        req: { url: "/MyEntity(ID=123e4567-e89b-12d3-a456-426614174000)" }
+        req: { url: "/MyEntity(ID=123e4567-e89b-12d3-a456-426614174000)" },
+        user: {
+          tokenInfo: {
+            getTokenValue: jest.fn().mockReturnValue("mockToken")
+          }
+        }
       };
       cds.model.definitions = {
         MyEntity: { entity: "MyEntity" },
@@ -3327,6 +3682,7 @@ describe("SDMAttachmentsService", () => {
         after: jest.fn(),
         on: jest.fn(),
       };
+
       const service = new SDMAttachmentsService();
       service.openAttachment = jest.fn().mockResolvedValue("openAttachmentResult");
 
@@ -3402,6 +3758,5 @@ describe("SDMAttachmentsService", () => {
       expect(req.error).not.toHaveBeenCalled();
     });
   });
-
 
 });
