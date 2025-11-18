@@ -33,7 +33,7 @@ jobs:
           echo "Installing CF CLI using the official installer..."
           
           # Download the official installer script
-          wget -q https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github -O cf-cli.tgz
+          wget -q "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github" -O cf-cli.tgz
           
           # Extract and install
           tar -xzf cf-cli.tgz
