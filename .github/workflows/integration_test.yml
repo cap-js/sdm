@@ -30,11 +30,23 @@ jobs:
           sudo apt-get install -y jq
           
           # Download CF CLI directly from GitHub releases (more reliable)
+          echo "Getting latest CF CLI version..."
           CF_CLI_VERSION=$(curl -s https://api.github.com/repos/cloudfoundry/cli/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          wget -q "https://github.com/cloudfoundry/cli/releases/download/v${CF_CLI_VERSION}/cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb"
-          sudo dpkg -i "cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb"
+          echo "Latest CF CLI version: $CF_CLI_VERSION"
+          
+          # Download the deb package
+          echo "Downloading CF CLI..."
+          wget -q "https://github.com/cloudfoundry/cli/releases/download/v${CF_CLI_VERSION}/cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb" -O cf-cli.deb
+          
+          # Install the package
+          echo "Installing CF CLI..."
+          sudo dpkg -i cf-cli.deb
+          
+          # Fix any dependency issues if they exist
+          sudo apt-get install -f -y
           
           # Verify installation
+          echo "Verifying CF CLI installation..."
           cf version
 
       - name: Determine Cloud Foundry Space
