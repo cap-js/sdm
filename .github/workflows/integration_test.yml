@@ -29,21 +29,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
           
-          # Download CF CLI directly from GitHub releases (more reliable)
-          echo "Getting latest CF CLI version..."
-          CF_CLI_VERSION=$(curl -s https://api.github.com/repos/cloudfoundry/cli/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          echo "Latest CF CLI version: $CF_CLI_VERSION"
+          # Use a simpler approach - install CF CLI from snap or use the official installer
+          echo "Installing CF CLI using the official installer..."
           
-          # Download the deb package
-          echo "Downloading CF CLI..."
-          wget -q "https://github.com/cloudfoundry/cli/releases/download/v${CF_CLI_VERSION}/cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb" -O cf-cli.deb
+          # Download the official installer script
+          wget -q https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github -O cf-cli.tgz
           
-          # Install the package
-          echo "Installing CF CLI..."
-          sudo dpkg -i cf-cli.deb
-          
-          # Fix any dependency issues if they exist
-          sudo apt-get install -f -y
+          # Extract and install
+          tar -xzf cf-cli.tgz
+          sudo mv cf8 /usr/local/bin/cf
+          sudo chmod +x /usr/local/bin/cf
           
           # Verify installation
           echo "Verifying CF CLI installation..."
