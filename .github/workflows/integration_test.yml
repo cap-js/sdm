@@ -23,20 +23,34 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cloud Foundry CLI and jq
+      - name: Install jq
         run: |
-          # Install jq first
           sudo apt-get update
           sudo apt-get install -y jq
+
+      - name: Install Cloud Foundry CLI
+        run: |
+          # Use curl instead of wget and try a more direct approach
+          echo "Installing CF CLI..."
           
-          # Use a simpler approach - install CF CLI from snap or use the official installer
-          echo "Installing CF CLI using the official installer..."
+          # Download using curl with better error handling
+          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github" -o cf-cli.tgz
           
-          # Download the official installer script
-          wget -q "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github" -O cf-cli.tgz
+          # Check if download was successful
+          if [ ! -f cf-cli.tgz ]; then
+            echo "Failed to download CF CLI"
+            exit 1
+          fi
           
           # Extract and install
           tar -xzf cf-cli.tgz
+          
+          # Check if cf8 binary exists
+          if [ ! -f cf8 ]; then
+            echo "CF CLI binary not found in archive"
+            exit 1
+          fi
+          
           sudo mv cf8 /usr/local/bin/cf
           sudo chmod +x /usr/local/bin/cf
           
