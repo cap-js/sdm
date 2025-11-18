@@ -25,10 +25,12 @@ jobs:
 
       - name: Install Cloud Foundry CLI and jq
         run: |
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "🔧 Installing Cloud Foundry CLI..."
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
           echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
-          sudo apt install cf8-cli jq
+          sudo apt install cf-cli jq
+          # sudo apt install cf8-cli jq
 
       - name: Determine Cloud Foundry Space
         id: determine_space
