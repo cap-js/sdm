@@ -25,12 +25,17 @@ jobs:
 
       - name: Install Cloud Foundry CLI and jq
         run: |
-          # Download and add the GPG key to the trusted keyring
-          wget -qO- https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo gpg --dearmor -o /usr/share/keyrings/cloudfoundry-cli.gpg
-          # Add the repository with the signed-by option
-          echo "deb [signed-by=/usr/share/keyrings/cloudfoundry-cli.gpg] https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          # Install jq first
           sudo apt-get update
-          sudo apt-get install cf8-cli jq
+          sudo apt-get install -y jq
+          
+          # Download CF CLI directly from GitHub releases (more reliable)
+          CF_CLI_VERSION=$(curl -s https://api.github.com/repos/cloudfoundry/cli/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          wget -q "https://github.com/cloudfoundry/cli/releases/download/v${CF_CLI_VERSION}/cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb"
+          sudo dpkg -i "cf8-cli_${CF_CLI_VERSION}_linux_x86-64.deb"
+          
+          # Verify installation
+          cf version
 
       - name: Determine Cloud Foundry Space
         id: determine_space
