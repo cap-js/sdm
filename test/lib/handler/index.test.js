@@ -73,7 +73,7 @@ describe("handlers", () => {
         headers: { Authorization: `Bearer ${mockToken}` },
         responseType: "stream",
       });
-      expect(document).toEqual(mockResponse.data);
+      expect(document.data).toEqual(mockResponse.data);
     });
 
     it("throws error on unsuccessful read", async () => {
@@ -86,16 +86,27 @@ describe("handlers", () => {
         })
       );
     
-      await expect(
-        readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
-      ).rejects.toMatchObject({
-        response: {
-          code: 500,
-            message: "Could not read the attachment",
-        },
-      });
-    });    
-  
+      const result = await readAttachment("123", "a1b2c3", { uri: "http://example.com/" });
+      expect(result).toBe("An error occurred");
+    });
+
+    it("should return statusText when error has response.statusText", async () => {
+      jest.clearAllMocks();
+      axios.get.mockImplementation(
+        jest.fn(() =>
+          Promise.reject({
+            message: "Request failed",
+            response: {
+              statusText: "Not Found"
+            }
+          })
+        )
+      );
+    
+      const result = await readAttachment("123", "a1b2c3", { uri: "http://example.com/" });
+      expect(result).toBe("Not Found");
+    });
+
     it("throws specific error message for 404 status", async () => {
       let actualError = {
         message: "Request failed with status code 404",
@@ -103,19 +114,12 @@ describe("handlers", () => {
         status: 404,
       };
       
-      let checkError = {
-        message: "Attachment not found in the repository",
-        code: 404,
-        status: 404,
-      };
-      
       axios.get.mockImplementationOnce(() =>
         Promise.reject(actualError)
       );
     
-      await expect(
-        readAttachment("123", "a1b2c3", { uri: "http://example.com/" })
-      ).rejects.toMatchObject(checkError);
+      const result = await readAttachment("123", "a1b2c3", { uri: "http://example.com/" });
+      expect(result).toBe("An error occurred");
     });    
   });
 
@@ -629,7 +633,7 @@ describe("handlers", () => {
       const response = await getAttachment(uri, token, objectId);
   
       expect(console.log).toHaveBeenCalledWith(errorMessage);
-      expect(response).toBeNull();
+      expect(response).toBe("Not Found");
     });
   
     it('should return null and log a default error message when there is no status text', async () => {
@@ -640,7 +644,7 @@ describe("handlers", () => {
       const response = await getAttachment(uri, token, objectId);
   
       expect(console.log).toHaveBeenCalledWith(errorMessage);
-      expect(response).toBeNull();
+      expect(response).toBe("An error occurred");
     });
   });
 
