@@ -513,37 +513,54 @@ When the application is deployed as a SaaS application with above code, a reposi
          service: sdm
          service-plan: standard
    ```
+3. Add the similar code to your xs-security.json as shown below which enables to have your application specific and SDM roles coupled in to a role collection:
 
-3. Build the project by running following command from root folder of incidents-app.
+```
+  "role-collections": [
+ {
+   "name": "@@Sample_Bookshop_Role Collection@@",
+   "description": "SDM and application roles",
+   "role-template-references": [
+     "$XSAPPNAME.admin",
+     "$XSSERVICENAME(sdm).SDM_User"
+   ]
+ }
+```
+Here the name of role collection can be choice of yours and role template references can point to application roles.
+"$XSSERVICENAME(sdm).SDM_User" should be added to use SDM and "sdm" name should be the instance name from mta.yaml.
+
+> **Note:** If such a role collection is not configured then unauthorized user end up in misusing the attachments.
+
+4. Build the project by running following command from root folder of incidents-app.
    ```sh
    mbt build
    ```
    Above step will generate .mtar file inside mta_archives folder.
 
-4. Deploy the application
+5. Deploy the application
    ```sh
    cf deploy mta_archives/*.mtar
    ```
 
-5. Launch the application
+6. Launch the application
    ```sh
    * Navigate to Html5Applications menu in BTP subaccount and open the application (nsincidents v1.0.0) in a browser.
    * Click on incident with title Solar panel broken.
    ```  
 
-6. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
+7. The `Attachments` type has generated an out-of-the-box Attachments table (see highlighted box) at the bottom of the Object page:
    <img width="1300" alt="Attachments Table" style="border-radius:0.5rem;" src="etc/facet.png">
 
-7. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. The file is then stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
+8. **Upload a file** by going into Edit mode and either using the **Upload** button on the Attachments table or by drag/drop. The file is then stored in SAP Document Management Integration Option. We demonstrate this by uploading the PDF file from [_xmpl/db/content/Solar Panel Report.pdf_](./xmpl/db/content/Solar%20Panel%20Report.pdf):
    <img width="1300" alt="Upload an attachment" style="border-radius:0.5rem;" src="etc/upload.gif">
 
-8. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
+9. **Open a file** by clicking on the attachment. We demonstrate this by opening the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/open.gif">
 
-9. **Rename a file** by going into Edit mode and setting a new name for the file in the filename field. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
+10. **Rename a file** by going into Edit mode and setting a new name for the file in the filename field. Then click the **Save** button to have that file renamed in SAP Document Management Integration Option. We demonstrate this by renaming the previously uploaded PDF file: `Solar Panel Report.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/rename.gif">
 
-10. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
+11. **Delete a file** by going into Edit mode and selecting the file(s) and by using the **Delete** button on the Attachments table. Then click the **Save** button to have that file deleted from the resource (SAP Document Management Integration Option). We demonstrate this by deleting the previously uploaded PDF file: `Solar Panel Report_2024.pdf`
    <img width="1300" alt="Delete an attachment" style="border-radius:0.5rem;" src="etc/delete.gif">
 
 ## Running the unit tests
