@@ -530,7 +530,7 @@ When the application is deployed as a SaaS application with above code, a reposi
    Here the name of role collection can be choice of yours and role template references can point to application roles. 
    "$XSSERVICENAME(sdm).SDM_User" should be added to use SDM and "sdm" name should be the instance name from mta.yaml.
 
-  Note: If such a role collection is not configured then unauthorized user end up in misusing the attachments.
+> **Note:** If such a role collection is not configured then unauthorized user end up in misusing the attachments.
 
 4. Build the project by running following command from root folder of incidents-app.
    ```sh
