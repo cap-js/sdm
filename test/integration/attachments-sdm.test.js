@@ -2,13 +2,15 @@ const axios = require('axios');
 const credentials = require('./credentials.json');
 const Api = require('./api');
 const expect = require('@sap/cds/lib/test/expect');
+const tenancyModel = process.env.TENANCY_MODEL || 'single';
+const tenant = process.env.TENANT;
 
 let token;
 let noSDMRoleToken;
 let api;
 let apiNoSDMRole;
 let incidentID;
-let appUrl = credentials.appUrl
+let appUrl;
 let serviceName = 'processor';
 let entityName = 'Incidents';
 let srvpath = 'ProcessorService';
@@ -18,26 +20,61 @@ let incidentIDCustomProperty1;
 let incidentIDCustomProperty2;
 
 beforeAll(async () => {
-  const authRes = await axios.get(
-    `${credentials.authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
-    {
-      auth: {
-        username: credentials.clientID,
-        password: credentials.clientSecret
-      }
-    }
-  );
-  token = authRes.data.access_token;
-  const authResNoSDMRole = await axios.get(
-      `${credentials.authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+  let clientId;
+  let clientSecret;
+  let authUrl;
+
+  if (tenancyModel === 'multi') {
+    console.log('Running integration tests | Multitenant Scenario');
+    appUrl = credentials.appUrlMT; 
+    clientId = credentials.clientIDMT;
+    clientSecret = credentials.clientSecretMT;
+
+    if (tenant === 'TENANT1') {
+      authUrl = credentials.authUrlMTSDC;
+    } else if (tenant === 'TENANT2') {
+      authUrl = credentials.authUrlMTGWC;
+    } 
+  } else {
+    console.log('Running integration tests | Single tenant Scenario');
+    appUrl = credentials.appUrl;
+    clientId = credentials.clientID;
+    clientSecret = credentials.clientSecret;
+    authUrl = credentials.authUrl;
+  }
+
+  try {
+    const authRes = await axios.get(
+      `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
       {
         auth: {
-          username: credentials.clientID,
-          password: credentials.clientSecret
+          username: clientId,
+          password: clientSecret
+        }
+      }
+    );
+    token = authRes.data.access_token;
+  } catch (error) {
+    console.error("Failed to generate Token:", error.message);
+    throw error;
+  }
+
+  try {
+    const authResNoSDMRole = await axios.get(
+      `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+      {
+        auth: {
+          username: clientId,
+          password: clientSecret
         }
       }
     );
     noSDMRoleToken = authResNoSDMRole.data.access_token;
+  } catch (error) {
+    console.error("Failed to generate No-Role Token:", error.message);
+    throw error;
+  }
+
   const config = {
     headers: { 'Authorization': "Bearer " + token }
   };
@@ -744,6 +781,7 @@ const config = {
       if (response.status === "OK") {
         throw new Error("Error : Link creation should have failed for invalid URL format")
       }
+      console.log("one: "+response.message);
       expect(response.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
     } catch (error) {
       expect(error.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
