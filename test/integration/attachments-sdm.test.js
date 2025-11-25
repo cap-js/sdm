@@ -781,7 +781,6 @@ const config = {
       if (response.status === "OK") {
         throw new Error("Error : Link creation should have failed for invalid URL format")
       }
-      console.log("one: "+response.message);
       expect(response.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
     } catch (error) {
       expect(error.message).toBe("Enter a value matching the pattern ^(https?:\\/\\/)(([a-zA-Z0-9\\-]+\\.)+[a-zA-Z]{2,}|localhost)(:\\d{2,5})?(\\/[^\\s]*)?$.");
