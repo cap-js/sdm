@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.8.1
+
+### Fixed
+- Allow update or creation of subscription in case a repository with the configured external ID already exists by skipping the onboarding step.
+- Token handling to support scenario where no attachments are added
+- Link doesn't get reverted in SDM when changes are discarded on the UI 
+- Error handling for scenario where user doesn't have SDM Roles
+
 ## Version 1.8.0
 
 ### Added
