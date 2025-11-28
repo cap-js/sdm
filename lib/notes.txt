@@ -1,0 +1,34 @@
+SDM Attachments Service: Non-Draft Implementation Design & Documentation
+
+Executive Summary
+
+This document outlines the design and implementation of non-draft attachment functionality for the SDM (SAP Document Management) Attachments Service. The implementation extends the existing draft-based attachment system to support both draft and active (non-draft) attachment lifecycles, following CAP (Cloud Application Programming) framework patterns.
+
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    SDM Attachments Service                      │
+├─────────────────────────────────────────────────────────────────┤
+│  Draft Attachments          │         Active Attachments        │
+│  ┌─────────────────┐        │        ┌─────────────────┐        │
+│  │   Draft CRUD    │        │        │   Active CRUD   │        │
+│  │   Operations    │        │        │   Operations    │        │
+│  └─────────────────┘        │        └─────────────────┘        │
+│           │                 │                  │                │
+│           ▼                 │                  ▼                │
+│  ┌─────────────────┐        │        ┌─────────────────┐        │
+│  │ Draft Lifecycle │◄───────┼────────►│ Active Lifecycle│        │
+│  │ Management      │        │        │ Management      │        │
+│  └─────────────────┘        │        └─────────────────┘        │
+├─────────────────────────────────────────────────────────────────┤
+│                  Unified Persistence Layer                      │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐   │
+│  │   Draft DB      │ │  Active DB      │ │  Statistics     │   │
+│  │   Operations    │ │  Operations     │ │  & Analytics    │   │
+│  └─────────────────┘ └─────────────────┘ └─────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                     SDM Integration Layer                       │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐   │
+│  │   File Upload   │ │   Link Creation │ │   Folder Mgmt   │   │
+│  │   & Storage     │ │   & Management  │ │   & Structure   │   │
+│  └─────────────────┘ └─────────────────┘ └─────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
