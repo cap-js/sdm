@@ -151,6 +151,9 @@ jobs:
           }
           EOL
           
+          echo "Generated credentials.json (with masked secrets):"
+          cat "$JSON_FILE" | jq 'del(.password, .clientSecret, .clientSecretMT, .noSDMRoleUserPassword)'
+          
           npm install
           
           echo "Running Single Tenant Integration Tests..."
