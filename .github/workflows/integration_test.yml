@@ -99,6 +99,13 @@ jobs:
             echo "Warning: Multitenant service not found. Using fallback secrets for MT credentials."
             echo "CLIENT_SECRET_MT=${{ secrets.CLIENT_SECRET_MT }}" >> $GITHUB_ENV
             echo "CLIENT_ID_MT=${{ secrets.CLIENT_ID_MT }}" >> $GITHUB_ENV
+            echo "DEBUG: Fallback MT credentials set from secrets"
+            if [ -z "${{ secrets.CLIENT_ID_MT }}" ]; then
+              echo "ERROR: CLIENT_ID_MT secret is not configured in GitHub!"
+            fi
+            if [ -z "${{ secrets.CLIENT_SECRET_MT }}" ]; then
+              echo "ERROR: CLIENT_SECRET_MT secret is not configured in GitHub!"
+            fi
           else
             echo "Multitenant service found, fetching credentials..."
             bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
@@ -132,6 +139,12 @@ jobs:
           JSON_FILE="test/integration/credentials.json"
           appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
           appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          
+          echo "DEBUG: Checking environment variables before creating credentials.json"
+          echo "CLIENT_ID_MT is set: $([ -n "${{ env.CLIENT_ID_MT }}" ] && echo 'YES' || echo 'NO')"
+          echo "CLIENT_SECRET_MT is set: $([ -n "${{ env.CLIENT_SECRET_MT }}" ] && echo 'YES' || echo 'NO')"
+          echo "AUTHURLMT1 is set: $([ -n "${{ secrets.AUTHURLMT1 }}" ] && echo 'YES' || echo 'NO')"
+          echo "AUTHURLMT2 is set: $([ -n "${{ secrets.AUTHURLMT2 }}" ] && echo 'YES' || echo 'NO')"
           
           cat > "$JSON_FILE" <<EOL
           {
