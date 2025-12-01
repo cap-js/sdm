@@ -44,19 +44,29 @@ jobs:
           SDM_PACKAGE=$(ls cap-js-sdm-*.tgz)
           echo "Created package: $SDM_PACKAGE"
           
-          echo "📦 Installing SDM in incidents app..."
-          cp $SDM_PACKAGE ../cap-js-incidents-app/
+          echo "📦 Moving SDM package to incidents app..."
+          mv $SDM_PACKAGE ../cap-js-incidents-app/
           cd ../cap-js-incidents-app
-          npm i $SDM_PACKAGE
+          
+          echo "📦 Removing old package-lock.json to force regeneration..."
+          rm -f package-lock.json
+          
+          echo "📦 Installing SDM in incidents app..."
+          npm install $SDM_PACKAGE
           
           echo "✅ Projects prepared successfully!"
           echo "Files in incidents app directory:"
-          ls -la *.tgz
+          ls -la *.tgz || echo "No .tgz files found"
       
       - name: Build and deploy 🚀
         run: |
           echo "🏗️ Building and deploying multitenant application..."
           cd cap-js-incidents-app
+          
+          # Ensure the tarball is present
+          echo "Checking for SDM tarball:"
+          ls -la cap-js-sdm-*.tgz || echo "Warning: No SDM tarball found!"
+          
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
