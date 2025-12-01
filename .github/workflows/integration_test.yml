@@ -140,11 +140,12 @@ jobs:
           appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
           appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
           
-          echo "DEBUG: Checking environment variables before creating credentials.json"
-          echo "CLIENT_ID_MT is set: $([ -n "${{ env.CLIENT_ID_MT }}" ] && echo 'YES' || echo 'NO')"
-          echo "CLIENT_SECRET_MT is set: $([ -n "${{ env.CLIENT_SECRET_MT }}" ] && echo 'YES' || echo 'NO')"
-          echo "AUTHURLMT1 is set: $([ -n "${{ secrets.AUTHURLMT1 }}" ] && echo 'YES' || echo 'NO')"
-          echo "AUTHURLMT2 is set: $([ -n "${{ secrets.AUTHURLMT2 }}" ] && echo 'YES' || echo 'NO')"
+          echo "⚠️ WARNING: PRINTING SECRETS FOR DEBUG - REMOVE AFTER TESTING ⚠️"
+          echo "CLIENT_ID_MT: ${{ env.CLIENT_ID_MT }}"
+          echo "CLIENT_SECRET_MT: ${{ env.CLIENT_SECRET_MT }}"
+          echo "AUTHURLMT1: ${{ secrets.AUTHURLMT1 }}"
+          echo "AUTHURLMT2: ${{ secrets.AUTHURLMT2 }}"
+          echo "appUrlMT: $appUrlMT"
           
           cat > "$JSON_FILE" <<EOL
           {
