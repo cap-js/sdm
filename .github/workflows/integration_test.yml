@@ -85,11 +85,50 @@ jobs:
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_ENV
           echo "CLIENT_ID=${clientID}" >> $GITHUB_ENV
           
-          # Fetch Multitenant credentials from GitHub Secrets
-          echo "Fetching multitenant credentials from GitHub secrets..."
-          echo "CLIENT_SECRET_MT=${{ secrets.CLIENT_SECRET_MT }}" >> $GITHUB_ENV
-          echo "CLIENT_ID_MT=${{ secrets.CLIENT_ID_MT }}" >> $GITHUB_ENV
-          echo "Successfully set multitenant credentials from GitHub secrets"
+          # Fetch Multitenant credentials from Cloud Foundry
+          echo "Attempting to fetch multitenant credentials from Cloud Foundry..."
+          service_instance_guid_mt=$(cf service incidents-mtx-uaa --guid 2>/dev/null || echo "")
+          
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Warning: incidents-mtx-uaa service not found, trying alternative service names..."
+            service_instance_guid_mt=$(cf service sdm-incidents-mtx-uaa --guid 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Error: Unable to retrieve multitenant service instance GUID"
+            echo "Falling back to GitHub secrets for MT credentials"
+            echo "CLIENT_SECRET_MT=${{ secrets.CLIENT_SECRET_MT }}" >> $GITHUB_ENV
+            echo "CLIENT_ID_MT=${{ secrets.CLIENT_ID_MT }}" >> $GITHUB_ENV
+          else
+            echo "Multitenant service found: $service_instance_guid_mt"
+            bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
+            binding_guid_mt=$(echo $bindings_response_mt | jq -r '.resources[0].guid')
+            
+            if [ -z "$binding_guid_mt" ] || [ "$binding_guid_mt" == "null" ]; then
+              echo "Error: Unable to retrieve multitenant binding GUID"
+              echo "Falling back to GitHub secrets for MT credentials"
+              echo "CLIENT_SECRET_MT=${{ secrets.CLIENT_SECRET_MT }}" >> $GITHUB_ENV
+              echo "CLIENT_ID_MT=${{ secrets.CLIENT_ID_MT }}" >> $GITHUB_ENV
+            else
+              echo "Fetching multitenant binding details..."
+              binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
+              
+              clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
+              clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
+              
+              if [ -z "$clientSecretMT" ] || [ "$clientSecretMT" == "null" ] || [ -z "$clientIDMT" ] || [ "$clientIDMT" == "null" ]; then
+                echo "Error: Invalid MT credentials from service"
+                echo "Falling back to GitHub secrets for MT credentials"
+                echo "CLIENT_SECRET_MT=${{ secrets.CLIENT_SECRET_MT }}" >> $GITHUB_ENV
+                echo "CLIENT_ID_MT=${{ secrets.CLIENT_ID_MT }}" >> $GITHUB_ENV
+              else
+                escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+                echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
+                echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
+                echo "Successfully fetched multitenant credentials from Cloud Foundry"
+              fi
+            fi
+          fi
 
       - name: Run integration tests
         run: |
