@@ -146,8 +146,8 @@ jobs:
             "clientIDMT": "${{ env.CLIENT_ID_MT }}",
             "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
             "appUrlMT": "$appUrlMT",
-            "authUrlMT1": "${{ secrets.AUTHURLMT1 }}",
-            "authUrlMT2": "${{ secrets.AUTHURLMT2 }}"
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}"
           }
           EOL
           
