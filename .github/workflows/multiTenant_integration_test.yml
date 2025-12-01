@@ -1,6 +1,9 @@
 name: Multi Tenancy Integration Test 🚀
 
 on:
+  push:
+    branches:
+      - MultitenantIntegrationTest-backup
   workflow_dispatch:
     inputs:
       cf_space:
@@ -11,7 +14,7 @@ on:
       branch_name:
         description: 'Specify the branch to use for integration tests'
         required: true
-        default: main
+        default: developcap
 
 permissions:
   pull-requests: read
@@ -42,7 +45,9 @@ jobs:
       - name: Determine Cloud Foundry Space 🌌
         id: determine_space
         run: |
-          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+          if [ "${{ github.event_name }}" == "push" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
           else
             space="${{ github.event.inputs.cf_space }}"
