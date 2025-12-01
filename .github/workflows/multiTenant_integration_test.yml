@@ -9,7 +9,7 @@ on:
       cf_space:
         description: 'Specify the Cloud Foundry space to run integration tests on'
         required: true
-        default: developcap
+        default: Deepika
 
       branch_name:
         description: 'Specify the branch to use for integration tests'
