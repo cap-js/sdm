@@ -119,10 +119,20 @@ jobs:
             echo "✅ Created symlink: cap-js-sdm-1.7.1.tgz -> $SDM_PACKAGE"
           fi
           
-          # Build and deploy
+          # Build
           mbt build
+          
+          # Deploy with custom route using space-based suffix
           cf install-plugin multiapps -f
-          cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
+          
+          # Use space name in lowercase for route suffix to avoid conflicts
+          SPACE_SUFFIX=$(echo "${{ env.space }}" | tr '[:upper:]' '[:lower:]')
+          
+          echo "🚀 Deploying with custom routes for space: ${{ env.space }}"
+          cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f \
+            --module-host-suffix "-${SPACE_SUFFIX}" \
+            --delete-services --delete-service-keys
+          
           echo "✅ Deployment completed!"
 
   integration-test:
