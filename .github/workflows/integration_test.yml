@@ -1,6 +1,9 @@
 name: Integration Test
 
 on:
+  push:
+    branches:
+      - testBranch
   workflow_dispatch:
     inputs:
       cf_space:
