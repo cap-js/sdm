@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - testBranch
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - testBranch
   workflow_dispatch:
     inputs:
       cf_space:
@@ -36,12 +40,20 @@ jobs:
       - name: Determine Cloud Foundry Space
         id: determine_space
         run: |
-          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            space="Deepika"
+            echo "Using space 'Deepika' for PR trigger"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            space="Deepika"
+            echo "Using space 'Deepika' for push trigger"
+          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
+            echo "Using default space from secrets"
           else
             space="${{ github.event.inputs.cf_space }}"
+            echo "Using custom space: $space"
           fi
-          echo "Space determined for use"
+          echo "Space determined for use: $space"
           echo "space=$space" >> $GITHUB_ENV
 
       - name: Login to Cloud Foundry
