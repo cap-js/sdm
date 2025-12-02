@@ -48,15 +48,18 @@ jobs:
           mv $SDM_PACKAGE ../cap-js-incidents-app/
           cd ../cap-js-incidents-app
           
-          echo "📦 Removing old package-lock.json to force regeneration..."
-          rm -f package-lock.json
-          
-          echo "📦 Installing SDM in incidents app..."
+          echo "📦 Installing SDM and updating package files..."
           npm install $SDM_PACKAGE
           
+          echo "🔧 Committing the updated package files to ensure MTA build uses correct version..."
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add package.json package-lock.json $SDM_PACKAGE
+          git commit -m "Update SDM package to $(basename $SDM_PACKAGE .tgz | cut -d'-' -f4)" || echo "No changes to commit"
+          
           echo "✅ Projects prepared successfully!"
-          echo "Files in incidents app directory:"
-          ls -la *.tgz || echo "No .tgz files found"
+          echo "Verifying package reference in package.json:"
+          grep "@cap-js/sdm" package.json
       
       - name: Build and deploy 🚀
         run: |
@@ -71,6 +74,8 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
+          
+          # Build and deploy
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
