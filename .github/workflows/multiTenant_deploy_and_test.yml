@@ -14,7 +14,7 @@ on:
       branch_name:
         description: 'Specify the branch to use for deployment'
         required: true
-        default: MultitenantIntegrationTest-backup
+        default: sdm-mtx-develop
 
 permissions:
   pull-requests: read
@@ -43,7 +43,7 @@ jobs:
         id: determine_branch
         run: |
           if [ "${{ github.event_name }}" == "push" ]; then
-            branch="MultitenantIntegrationTest-backup"
+            branch="sdm-mtx-develop"
           else
             branch="${{ github.event.inputs.branch_name }}"
           fi
