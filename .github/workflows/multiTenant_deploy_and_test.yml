@@ -206,28 +206,27 @@ jobs:
         run: |
           echo "🚀 Starting multi-tenant integration tests..."
           
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          echo "app url: ${appUrlMT}"
+          
+          # JSON file path
           JSON_FILE="test/integration/credentials.json"
           
-          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          # Modify JSON file using jq (similar to single-tenant workflow)
+          jq --arg appUrlMT "$appUrlMT" \
+             --arg authUrlMTSDC "${{ secrets.AUTHURLMT1 }}" \
+             --arg authUrlMTGWC "${{ secrets.AUTHURLMT2 }}" \
+             --arg clientIDMT "${{ env.CLIENT_ID_MT }}" \
+             --arg clientSecretMT "${{ env.CLIENT_SECRET_MT }}" \
+             --arg username "${{ secrets.CF_USER }}" \
+             --arg password "${{ secrets.CF_PASSWORD }}" \
+             --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+             --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+          '.appUrlMT = $appUrlMT | .authUrlMTSDC = $authUrlMTSDC | .authUrlMTGWC = $authUrlMTGWC | .clientIDMT = $clientIDMT | .clientSecretMT = $clientSecretMT | .username = $username | .password = $password | .noSDMRoleUsername = $noSDMRoleUsername | .noSDMRoleUserPassword = $noSDMRoleUserPassword' \
+          $JSON_FILE > "temp.json" && mv "temp.json" $JSON_FILE
           
-          cat > "$JSON_FILE" <<EOL
-          {
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
-            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
-            "appUrlMT": "$appUrlMT",
-            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
-            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}"
-          }
-          EOL
-          
-          echo "Generated credentials.json (with masked secrets):"
-          cat "$JSON_FILE" | jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword)'
-          
-          npm install
+          cat $JSON_FILE
+          npm i
           
           echo ""
           echo "📋 Running Multi-Tenant Integration Tests (Tenant 1)..."
