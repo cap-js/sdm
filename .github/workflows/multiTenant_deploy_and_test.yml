@@ -103,10 +103,21 @@ jobs:
           echo "Checking for SDM tarball:"
           ls -la cap-js-sdm-*.tgz || echo "Warning: No SDM tarball found!"
           
+          # Get the actual SDM package name
+          SDM_PACKAGE=$(ls cap-js-sdm-*.tgz)
+          echo "Using SDM package: $SDM_PACKAGE"
+          
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
+          
+          # Create symlink for version mismatch workaround
+          # The generated package.json references 1.7.1 but we have 1.8.2
+          if [ ! -f "cap-js-sdm-1.7.1.tgz" ] && [ -f "$SDM_PACKAGE" ]; then
+            ln -s "$SDM_PACKAGE" "cap-js-sdm-1.7.1.tgz"
+            echo "✅ Created symlink: cap-js-sdm-1.7.1.tgz -> $SDM_PACKAGE"
+          fi
           
           # Build and deploy
           mbt build
