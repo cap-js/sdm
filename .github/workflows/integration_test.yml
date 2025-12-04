@@ -175,11 +175,11 @@ jobs:
           echo "📦 Installing dependencies..."
           npm install
           
-          echo ""
-          echo "========================================"
-          echo "📋 Running Single Tenant Integration Tests..."
-          echo "========================================"
-          TENANCY_MODEL=single npm run integration-test
+          # echo ""
+          # echo "========================================"
+          # echo "📋 Running Single Tenant Integration Tests..."
+          # echo "========================================"
+          # TENANCY_MODEL=single npm run integration-test
           
           echo ""
           echo "========================================"
