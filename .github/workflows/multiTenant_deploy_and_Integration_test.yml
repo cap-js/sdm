@@ -82,6 +82,17 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
+          # Run CDS build first to generate the mtx/sidecar/gen directory
+          npx cds build --production
+          # Now update the GENERATED package.json files with the correct tgz reference
+          TGZ_FILE=$(ls -1 cap-js-sdm-*.tgz | head -n 1)
+          echo "Updating generated package.json files with: $TGZ_FILE"
+          # Update mtx/sidecar/gen/package.json (the one that MTA build actually uses)
+          if [ -f mtx/sidecar/gen/package.json ]; then
+            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../../$TGZ_FILE\"|g" mtx/sidecar/gen/package.json
+            echo "Updated mtx/sidecar/gen/package.json"
+          fi
+          # Now run MTA build
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
