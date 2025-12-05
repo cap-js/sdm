@@ -59,14 +59,14 @@ jobs:
           git clone --single-branch --branch sdm-mtx-develop https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
           cd sdm
           npm pack
-          echo "Current directory"
-          pwd
-          ls -la *.tgz
-          # Copy the tgz file to both locations
-          cp *.tgz ../cap-js-incidents-app/
-          cp *.tgz ../
+          echo "Current directory: $(pwd)"
+          TGZ_FILE=$(ls -1 cap-js-sdm-*.tgz | head -n 1)
+          echo "Packed file: $TGZ_FILE"
+          # Copy the tgz file to the locations needed during build
+          cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app
+          cp $TGZ_FILE ../                            # For mtx module build (../../../ from build tmp dir)
           cd ../cap-js-incidents-app
-          npm i *.tgz
+          npm i cap-js-sdm-*.tgz
       
       - name: Build and deploy
         run: |
