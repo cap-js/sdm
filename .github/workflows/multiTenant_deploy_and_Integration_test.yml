@@ -66,6 +66,12 @@ jobs:
           cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app
           cp $TGZ_FILE ../                            # For mtx module build (../../../ from build tmp dir)
           cd ../cap-js-incidents-app
+          # Update root package.json with correct tgz file reference
+          sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:$TGZ_FILE\"|g" package.json
+          # Also update mtx/sidecar/package.json if it exists (uses relative path from sidecar to workspace root)
+          if [ -f mtx/sidecar/package.json ]; then
+            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../../$TGZ_FILE\"|g" mtx/sidecar/package.json
+          fi
           npm i cap-js-sdm-*.tgz
       
       - name: Build and deploy
