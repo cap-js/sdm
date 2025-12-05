@@ -1,4 +1,4 @@
-name: Integration Test 🚀
+name: Integration Test
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       cf_space:
         description: 'Specify the Cloud Foundry space to run integration tests on'
         required: false
-        default: developcap
+        default: Deepika
 
       branch_name:
         description: 'Specify the branch to use for integration tests'
@@ -23,17 +23,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository ✅
+      - name: Checkout repository
         uses: actions/checkout@v2
         with:
           ref: ${{ github.event.inputs.branch_name || github.ref }}
 
-      - name: Setup Node.js environment ⚙️
+      - name: Setup Node.js environment 
         uses: actions/setup-node@v2.1.5
         with:
           node-version: '20'
 
-      - name: Install Cloud Foundry CLI and jq 📦
+      - name: Install Cloud Foundry CLI and jq 
         run: |
           echo "🔧 Installing Cloud Foundry CLI and jq..."
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
@@ -41,50 +41,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install cf8-cli jq
 
-      - name: Determine Cloud Foundry Space 🌌
+      - name: Determine Cloud Foundry Space 
         id: determine_space
         run: |
           if [ "${{ github.event_name }}" == "push" ]; then
-            space="${{ secrets.CF_SPACE }}"
+            # For push events to MultitenantIntegrationTest branch, use Deepika space
+            space="Deepika"
           elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
           elif [ -n "${{ github.event.inputs.cf_space }}" ]; then
             space="${{ github.event.inputs.cf_space }}"
           else
-            space="${{ secrets.CF_SPACE }}"
+            space="Deepika"
           fi
-          echo "🌍 Space determined for use: $space"
+          echo "Space determined for use: $space"
           echo "space=$space" >> $GITHUB_ENV
 
-      - name: Login to Cloud Foundry 🔑
+      - name: Login to Cloud Foundry
         run: |
-          echo "🔄 Logging in to Cloud Foundry..."
+          echo "Logging in to Cloud Foundry..."
           cf login -a ${{ secrets.CF_API }} \
             -u ${{ secrets.CF_USER }} \
             -p ${{ secrets.CF_PASSWORD }} \
             -o ${{ secrets.CF_ORG }} \
             -s ${{ env.space }}
 
-      - name: Fetch Single Tenant Credentials 🔍
+      - name: Fetch Single Tenant Credentials 
         id: fetch_credentials_single
         run: |
-          echo "📋 Fetching client details for single tenant..."
+          echo "Fetching client details for single tenant..."
           service_instance_guid=$(cf service sdm-incidents-auth --guid 2>/dev/null || echo "")
           
           if [ -z "$service_instance_guid" ]; then
-            echo "Warning: sdm-incidents-auth service not found, trying alternative service names..."
+            echo " Warning: sdm-incidents-auth service not found, trying alternative service names..."
             service_instance_guid=$(cf service incidents-auth --guid 2>/dev/null || echo "")
           fi
           
           if [ -z "$service_instance_guid" ]; then
-            echo "❌ Error: Unable to retrieve single tenant service instance GUID"; exit 1;
+            echo " Error: Unable to retrieve single tenant service instance GUID"; exit 1;
           fi
           
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
           binding_guid=$(echo $bindings_response | jq -r '.resources[0].guid')
           
           if [ -z "$binding_guid" ] || [ "$binding_guid" == "null" ]; then
-            echo "❌ Error: Unable to retrieve single tenant binding GUID"; exit 1;
+            echo " Error: Unable to retrieve single tenant binding GUID"; exit 1;
           fi
           
           binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
@@ -93,18 +94,18 @@ jobs:
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           
           if [ -z "$clientSecret" ] || [ "$clientSecret" == "null" ] || [ -z "$clientID" ] || [ "$clientID" == "null" ]; then
-            echo "❌ Error: Invalid single tenant credentials from service"; exit 1;
+            echo " Error: Invalid single tenant credentials from service"; exit 1;
           fi
           
           escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_ENV
           echo "CLIENT_ID=${clientID}" >> $GITHUB_ENV
-          echo "✅ Single-tenant client details fetched successfully!"
+          echo "Single-tenant client details fetched successfully!"
 
-      - name: Fetch Multi Tenant Credentials 🔍
+      - name: Fetch Multi Tenant Credentials 
         id: fetch_credentials_mt
         run: |
-          echo "📋 Fetching client details for multi tenant..."
+          echo "Fetching client details for multi tenant..."
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           
           if [ -z "$service_instance_guid_mt" ]; then
@@ -113,14 +114,14 @@ jobs:
           fi
           
           if [ -z "$service_instance_guid_mt" ]; then
-            echo "❌ Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+            echo " Error: Unable to retrieve multitenant service instance GUID"; exit 1;
           fi
           
           bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
           binding_guid_mt=$(echo $bindings_response_mt | jq -r '.resources[0].guid')
           
           if [ -z "$binding_guid_mt" ] || [ "$binding_guid_mt" == "null" ]; then
-            echo "❌ Error: Unable to retrieve multitenant binding GUID"; exit 1;
+            echo " Error: Unable to retrieve multitenant binding GUID"; exit 1;
           fi
           
           binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
@@ -129,17 +130,17 @@ jobs:
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
           
           if [ -z "$clientSecretMT" ] || [ "$clientSecretMT" == "null" ] || [ -z "$clientIDMT" ] || [ "$clientIDMT" == "null" ]; then
-            echo "❌ Error: Invalid MT credentials from service"; exit 1;
+            echo " Error: Invalid MT credentials from service"; exit 1;
           fi
           
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
-          echo "✅ Multi-tenant client details fetched successfully!"
+          echo " Multi-tenant client details fetched successfully!"
 
-      - name: Run Integration Tests 🎯
+      - name: Run Integration Tests 
         run: |
-          echo "🚀 Starting integration tests..."
+          echo " Starting integration tests..."
           
           JSON_FILE="test/integration/credentials.json"
           
@@ -168,30 +169,30 @@ jobs:
           }
           EOL
           
-          echo "📄 Generated credentials.json (with masked secrets):"
+          echo " Generated credentials.json (with masked secrets):"
           cat "$JSON_FILE" | jq 'del(.password, .clientSecret, .clientSecretMT, .noSDMRoleUserPassword)'
           
           echo ""
-          echo "📦 Installing dependencies..."
+          echo " Installing dependencies..."
           npm install
           
           echo ""
           echo "========================================"
-          echo "📋 Running Single Tenant Integration Tests..."
+          echo " Running Single Tenant Integration Tests..."
           echo "========================================"
           TENANCY_MODEL=single npm run integration-test
           
           echo ""
           echo "========================================"
-          echo "📋 Running Multi-Tenant Integration Tests (Tenant 1)..."
+          echo " Running Multi-Tenant Integration Tests (Tenant 1)..."
           echo "========================================"
           TENANCY_MODEL=multi TENANT=TENANT1 npm run integration-test
           
           echo ""
           echo "========================================"
-          echo "📋 Running Multi-Tenant Integration Tests (Tenant 2)..."
+          echo " Running Multi-Tenant Integration Tests (Tenant 2)..."
           echo "========================================"
           TENANCY_MODEL=multi TENANT=TENANT2 npm run integration-test
           
           echo ""
-          echo "✅ All integration tests completed successfully!"
+          echo " All integration tests completed successfully!"

@@ -1,44 +1,23 @@
-name: Multi Tenancy Deploy and Integration Test 🚀
+name: Multi Tenancy Deploy
 
 on:
   push:
-    branches: ["MultitenantIntegrationTest"]
   pull_request:
     types: [closed]
   workflow_dispatch:
-    inputs:
-      cf_space:
-        description: 'Specify the Cloud Foundry space to run tests on'
-        required: false
-        default: Deepika
 
 permissions:
   pull-requests: read
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:        
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
-      
-      - name: Determine Cloud Foundry Space 🌌
-        id: determine_space
-        run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            space="Deepika"
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
-            space="${{ secrets.CF_SPACE }}"
-          elif [ -n "${{ github.event.inputs.cf_space }}" ]; then
-            space="${{ github.event.inputs.cf_space }}"
-          else
-            space="Deepika"
-          fi
-          echo "🌍 Space determined for use: $space"
-          echo "space=$space" >> $GITHUB_ENV
+          node-version: 20.x  
           
       - name: Login to Cloud Foundry
         run: |
@@ -48,7 +27,7 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ env.space }}
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
        
       - name: Clone and prepare projects & Build and deploy
         env:
@@ -59,38 +38,12 @@ jobs:
           git clone --single-branch --branch sdm-mtx-develop https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
           cd sdm
           npm pack
-          echo "Current directory: $(pwd)"
-          TGZ_FILE=$(ls -1 cap-js-sdm-*.tgz | head -n 1)
-          echo "Packed file: $TGZ_FILE"
-          # Copy the tgz file to the locations needed during build
-          cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app AND mtx module build
-          cp $TGZ_FILE ../                            # For workspace root access
+          echo "Current directory"
+          pwd
+          ls
+          mv *.tgz ../cap-js-incidents-app
           cd ../cap-js-incidents-app
-          echo "=== Debugging package.json files ==="
-          echo "Root package.json @cap-js/sdm reference:"
-          grep "@cap-js/sdm" package.json || echo "Not found in root package.json"
-          echo "mtx/sidecar/package.json @cap-js/sdm reference:"
-          grep "@cap-js/sdm" mtx/sidecar/package.json || echo "Not found in mtx/sidecar/package.json"
-          echo "=== Updating package.json files with $TGZ_FILE ==="
-          # Update root package.json with correct tgz file reference
-          sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:$TGZ_FILE\"|g" package.json
-          # Also update mtx/sidecar/package.json if it exists (uses relative path from mtx build temp to cap-js-incidents-app root)
-          # Path: .cap-js-incidents-app_mta_build_tmp/incidents-mtx-mtx/ -> ../../ -> cap-js-incidents-app/
-          if [ -f mtx/sidecar/package.json ]; then
-            echo "Updating source mtx/sidecar/package.json with: ../../$TGZ_FILE"
-            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../$TGZ_FILE\"|g" mtx/sidecar/package.json
-            # Remove package-lock.json if it exists to prevent npm from using cached paths
-            if [ -f mtx/sidecar/package-lock.json ]; then
-              echo "Removing mtx/sidecar/package-lock.json"
-              rm mtx/sidecar/package-lock.json
-            fi
-          fi
-          echo "=== After sed updates ==="
-          echo "Root package.json @cap-js/sdm reference:"
-          grep "@cap-js/sdm" package.json || echo "Not found in root package.json"
-          echo "mtx/sidecar/package.json @cap-js/sdm reference:"
-          grep "@cap-js/sdm" mtx/sidecar/package.json || echo "Not found in mtx/sidecar/package.json"
-          npm i cap-js-sdm-*.tgz
+          npm i *.tgz
       
       - name: Build and deploy
         run: |
@@ -99,134 +52,6 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
-          # Run MTA build (which will run cds build internally)
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
-
-  integration-test:
-    needs: deploy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository ✅
-        uses: actions/checkout@v2
-
-      - name: Setup Node.js environment ⚙️
-        uses: actions/setup-node@v2.1.5
-        with:
-          node-version: '20'
-
-      - name: Determine Cloud Foundry Space 🌌
-        id: determine_space
-        run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            space="Deepika"
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
-            space="${{ secrets.CF_SPACE }}"
-          elif [ -n "${{ github.event.inputs.cf_space }}" ]; then
-            space="${{ github.event.inputs.cf_space }}"
-          else
-            space="Deepika"
-          fi
-          echo "🌍 Space determined for use: $space"
-          echo "space=$space" >> $GITHUB_ENV
-
-      - name: Install Cloud Foundry CLI and jq 📦
-        run: |
-          echo "🔧 Installing Cloud Foundry CLI and jq..."
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
-          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-          sudo apt-get update
-          sudo apt-get install cf8-cli jq
-
-      - name: Login to Cloud Foundry 🔑
-        run: |
-          echo "🔄 Logging in to Cloud Foundry..."
-          cf login -a ${{ secrets.CF_API }} \
-            -u ${{ secrets.CF_USER }} \
-            -p ${{ secrets.CF_PASSWORD }} \
-            -o ${{ secrets.CF_ORG }} \
-            -s ${{ env.space }}
-
-      - name: Fetch Multi Tenant Credentials 🔍
-        id: fetch_credentials_mt
-        run: |
-          echo "📋 Fetching client details for multi tenant..."
-          service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
-          
-          if [ -z "$service_instance_guid_mt" ]; then
-            echo "Warning: incidents-mtx-auth service not found, trying alternative service names..."
-            service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
-          fi
-          
-          if [ -z "$service_instance_guid_mt" ]; then
-            echo "❌ Error: Unable to retrieve multitenant service instance GUID"; exit 1;
-          fi
-          
-          bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
-          binding_guid_mt=$(echo $bindings_response_mt | jq -r '.resources[0].guid')
-          
-          if [ -z "$binding_guid_mt" ] || [ "$binding_guid_mt" == "null" ]; then
-            echo "❌ Error: Unable to retrieve multitenant binding GUID"; exit 1;
-          fi
-          
-          binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
-          
-          clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
-          clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
-          
-          if [ -z "$clientSecretMT" ] || [ "$clientSecretMT" == "null" ] || [ -z "$clientIDMT" ] || [ "$clientIDMT" == "null" ]; then
-            echo "❌ Error: Invalid MT credentials from service"; exit 1;
-          fi
-          
-          escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
-          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
-          echo "✅ Multi-tenant client details fetched successfully!"
-
-      - name: Run Multi-Tenant Integration Tests 🎯
-        run: |
-          echo "🚀 Starting multi-tenant integration tests..."
-          
-          JSON_FILE="test/integration/credentials.json"
-          
-          # Multi tenant app URL
-          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
-          
-          # Generate credentials.json with multi-tenant credentials
-          cat > "$JSON_FILE" <<EOL
-          {
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
-            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
-            "appUrlMT": "$appUrlMT",
-            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
-            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}"
-          }
-          EOL
-          
-          echo "📄 Generated credentials.json (with masked secrets):"
-          cat "$JSON_FILE" | jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword)'
-          
-          echo ""
-          echo "📦 Installing dependencies..."
-          npm install
-          
-          echo ""
-          echo "========================================"
-          echo "📋 Running Multi-Tenant Integration Tests (Tenant 1)..."
-          echo "========================================"
-          TENANCY_MODEL=multi TENANT=TENANT1 npm run integration-test
-          
-          echo ""
-          echo "========================================"
-          echo "📋 Running Multi-Tenant Integration Tests (Tenant 2)..."
-          echo "========================================"
-          TENANCY_MODEL=multi TENANT=TENANT2 npm run integration-test
-          
-          echo ""
-          echo "✅ All multi-tenant integration tests completed successfully!"
