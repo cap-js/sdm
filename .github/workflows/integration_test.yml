@@ -45,13 +45,13 @@ jobs:
         id: determine_space
         run: |
           if [ "${{ github.event_name }}" == "push" ]; then
-            space="Deepika"
+            space="${{ secrets.CF_SPACE }}"
           elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
           elif [ -n "${{ github.event.inputs.cf_space }}" ]; then
             space="${{ github.event.inputs.cf_space }}"
           else
-            space="Deepika"
+            space="${{ secrets.CF_SPACE }}"
           fi
           echo "🌍 Space determined for use: $space"
           echo "space=$space" >> $GITHUB_ENV
@@ -175,11 +175,11 @@ jobs:
           echo "📦 Installing dependencies..."
           npm install
           
-          # echo ""
-          # echo "========================================"
-          # echo "📋 Running Single Tenant Integration Tests..."
-          # echo "========================================"
-          # TENANCY_MODEL=single npm run integration-test
+          echo ""
+          echo "========================================"
+          echo "📋 Running Single Tenant Integration Tests..."
+          echo "========================================"
+          TENANCY_MODEL=single npm run integration-test
           
           echo ""
           echo "========================================"
