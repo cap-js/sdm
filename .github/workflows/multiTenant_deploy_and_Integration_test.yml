@@ -63,14 +63,15 @@ jobs:
           TGZ_FILE=$(ls -1 cap-js-sdm-*.tgz | head -n 1)
           echo "Packed file: $TGZ_FILE"
           # Copy the tgz file to the locations needed during build
-          cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app
-          cp $TGZ_FILE ../                            # For mtx module build (../../../ from build tmp dir)
+          cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app AND mtx module build
+          cp $TGZ_FILE ../                            # For workspace root access
           cd ../cap-js-incidents-app
           # Update root package.json with correct tgz file reference
           sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:$TGZ_FILE\"|g" package.json
-          # Also update mtx/sidecar/package.json if it exists (uses relative path from sidecar to workspace root)
+          # Also update mtx/sidecar/package.json if it exists (uses relative path from mtx build temp to cap-js-incidents-app root)
+          # Path: .cap-js-incidents-app_mta_build_tmp/incidents-mtx-mtx/ -> ../../ -> cap-js-incidents-app/
           if [ -f mtx/sidecar/package.json ]; then
-            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../../$TGZ_FILE\"|g" mtx/sidecar/package.json
+            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../$TGZ_FILE\"|g" mtx/sidecar/package.json
           fi
           npm i cap-js-sdm-*.tgz
       
