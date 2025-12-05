@@ -1,19 +1,15 @@
 name: Integration Test
 
 on:
-  push:
-    branches: ["MultitenantIntegrationTest"]
   workflow_dispatch:
     inputs:
       cf_space:
         description: 'Specify the Cloud Foundry space to run integration tests on'
-        required: false
-        default: Deepika
+        required: true
 
       branch_name:
         description: 'Specify the branch to use for integration tests'
-        required: false
-        default: MultitenantIntegrationTest
+        required: true
 
 permissions:
   pull-requests: read
@@ -35,7 +31,6 @@ jobs:
 
       - name: Install Cloud Foundry CLI and jq 
         run: |
-          echo "🔧 Installing Cloud Foundry CLI and jq..."
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
           echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt-get update
@@ -44,15 +39,12 @@ jobs:
       - name: Determine Cloud Foundry Space 
         id: determine_space
         run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            # For push events to MultitenantIntegrationTest branch, use Deepika space
-            space="Deepika"
-          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
           elif [ -n "${{ github.event.inputs.cf_space }}" ]; then
             space="${{ github.event.inputs.cf_space }}"
           else
-            space="Deepika"
+            space="${{ secrets.CF_SPACE }}"
           fi
           echo "Space determined for use: $space"
           echo "space=$space" >> $GITHUB_ENV

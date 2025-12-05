@@ -2,8 +2,6 @@ name: Multi Tenancy Deploy
 
 on:
   push:
-    branches:
-      - MultitenantIntegrationTest
   pull_request:
     types: [closed]
   workflow_dispatch:
@@ -13,23 +11,9 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Determine Cloud Foundry space
-        id: determine-space
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # For push events to MultitenantIntegrationTest branch, use Deepika space
-            space="Deepika"
-          else
-            # For merged PRs, use CF_SPACE secret
-            space="${{ secrets.CF_SPACE }}"
-          fi
-          echo "space=$space" >> $GITHUB_OUTPUT
-          echo "Deploying to space: $space"
-        
+    steps:        
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
@@ -43,11 +27,7 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf-cli
-          cf login -a ${{ secrets.CF_API }} \
-            -u ${{ secrets.CF_USER }} \
-            -p ${{ secrets.CF_PASSWORD }} \
-            -o ${{ secrets.CF_ORG }} \
-            -s ${{ steps.determine-space.outputs.space }}
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
        
       - name: Clone and prepare projects & Build and deploy
         env:
