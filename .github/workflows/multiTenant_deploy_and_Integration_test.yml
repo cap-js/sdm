@@ -61,8 +61,10 @@ jobs:
           npm pack
           echo "Current directory"
           pwd
-          ls
-          mv *.tgz ../cap-js-incidents-app
+          ls -la *.tgz
+          # Copy the tgz file to both locations
+          cp *.tgz ../cap-js-incidents-app/
+          cp *.tgz ../
           cd ../cap-js-incidents-app
           npm i *.tgz
       
