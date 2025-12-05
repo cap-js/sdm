@@ -66,13 +66,30 @@ jobs:
           cp $TGZ_FILE ../cap-js-incidents-app/      # For npm i in incidents app AND mtx module build
           cp $TGZ_FILE ../                            # For workspace root access
           cd ../cap-js-incidents-app
+          echo "=== Debugging package.json files ==="
+          echo "Root package.json @cap-js/sdm reference:"
+          grep "@cap-js/sdm" package.json || echo "Not found in root package.json"
+          echo "mtx/sidecar/package.json @cap-js/sdm reference:"
+          grep "@cap-js/sdm" mtx/sidecar/package.json || echo "Not found in mtx/sidecar/package.json"
+          echo "=== Updating package.json files with $TGZ_FILE ==="
           # Update root package.json with correct tgz file reference
           sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:$TGZ_FILE\"|g" package.json
           # Also update mtx/sidecar/package.json if it exists (uses relative path from mtx build temp to cap-js-incidents-app root)
           # Path: .cap-js-incidents-app_mta_build_tmp/incidents-mtx-mtx/ -> ../../ -> cap-js-incidents-app/
           if [ -f mtx/sidecar/package.json ]; then
+            echo "Updating source mtx/sidecar/package.json with: ../../$TGZ_FILE"
             sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../$TGZ_FILE\"|g" mtx/sidecar/package.json
+            # Remove package-lock.json if it exists to prevent npm from using cached paths
+            if [ -f mtx/sidecar/package-lock.json ]; then
+              echo "Removing mtx/sidecar/package-lock.json"
+              rm mtx/sidecar/package-lock.json
+            fi
           fi
+          echo "=== After sed updates ==="
+          echo "Root package.json @cap-js/sdm reference:"
+          grep "@cap-js/sdm" package.json || echo "Not found in root package.json"
+          echo "mtx/sidecar/package.json @cap-js/sdm reference:"
+          grep "@cap-js/sdm" mtx/sidecar/package.json || echo "Not found in mtx/sidecar/package.json"
           npm i cap-js-sdm-*.tgz
       
       - name: Build and deploy
@@ -82,17 +99,7 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
-          # Run CDS build first to generate the mtx/sidecar/gen directory
-          npx cds build --production
-          # Now update the GENERATED package.json files with the correct tgz reference
-          TGZ_FILE=$(ls -1 cap-js-sdm-*.tgz | head -n 1)
-          echo "Updating generated package.json files with: $TGZ_FILE"
-          # Update mtx/sidecar/gen/package.json (the one that MTA build actually uses)
-          if [ -f mtx/sidecar/gen/package.json ]; then
-            sed -i "s|\"@cap-js/sdm\": \"file:.*cap-js-sdm-.*\.tgz\"|\"@cap-js/sdm\": \"file:../../../$TGZ_FILE\"|g" mtx/sidecar/gen/package.json
-            echo "Updated mtx/sidecar/gen/package.json"
-          fi
-          # Now run MTA build
+          # Run MTA build (which will run cds build internally)
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
