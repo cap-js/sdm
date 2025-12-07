@@ -2,8 +2,8 @@ name: Multi Tenancy Deploy
 
 on:
   push:
-  pull_request:
-    types: [closed]
+    branches:
+      - MultitenantIntegrationTest
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,8 @@ jobs:
   deploy:
     if: github.event.pull_request.merged == false
     runs-on: ubuntu-latest
-    steps:        
+    
+    steps:
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
@@ -27,7 +28,11 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf login -a ${{ secrets.CF_API }} \
+            -u ${{ secrets.CF_USER }} \
+            -p ${{ secrets.CF_PASSWORD }} \
+            -o ${{ secrets.CF_ORG }} \
+            -s Deepika
        
       - name: Clone and prepare projects & Build and deploy
         env:
