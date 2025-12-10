@@ -25,14 +25,15 @@ beforeAll(async () => {
   let authUrl;
 
   if (tenancyModel === 'multi') {
-    console.log('Running integration tests | Multitenant Scenario');
     appUrl = credentials.appUrlMT; 
     clientId = credentials.clientIDMT;
     clientSecret = credentials.clientSecretMT;
 
     if (tenant === 'SDM-DEV-CONSUMER-EU12') {
+      console.log('Running integration tests | SDM-DEV-CONSUMER-EU12 tenant');
       authUrl = credentials.authUrlMTSDC;
     } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
+      console.log('Running integration tests | SDMGoogleWorkspaceConsumer tenant');
       authUrl = credentials.authUrlMTGWC;
     } 
   } else {
