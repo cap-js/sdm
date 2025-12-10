@@ -95,3 +95,4 @@ jobs:
           jq '{ appUrl, authUrl, username, password }' $JSON_FILE | sed 's/"clientID": "[^"]*"/"clientID": "***"/' | sed 's/"clientSecret": "[^"]*"/"clientSecret": "***"/'
           npm install
           npm run integration-test
+          
