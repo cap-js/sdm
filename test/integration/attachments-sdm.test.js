@@ -30,9 +30,9 @@ beforeAll(async () => {
     clientId = credentials.clientIDMT;
     clientSecret = credentials.clientSecretMT;
 
-    if (tenant === 'TENANT1') {
+    if (tenant === 'SDM-DEV-CONSUMER-EU12') {
       authUrl = credentials.authUrlMTSDC;
-    } else if (tenant === 'TENANT2') {
+    } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
       authUrl = credentials.authUrlMTGWC;
     } 
   } else {
@@ -71,7 +71,7 @@ beforeAll(async () => {
     );
     noSDMRoleToken = authResNoSDMRole.data.access_token;
   } catch (error) {
-    console.error("Failed to generate No-Role Token:", error.message);
+    console.error("Failed to generate No-SDM-Role Token:", error.message);
     throw error;
   }
 

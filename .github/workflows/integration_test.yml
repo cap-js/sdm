@@ -176,15 +176,15 @@ jobs:
           
           echo ""
           echo "========================================"
-          echo " Running Multi-Tenant Integration Tests (Tenant 1)"
+          echo " Running Multi-Tenant Integration Tests for SDM-DEV-CONSUMER-EU12"
           echo "========================================"
-          TENANCY_MODEL=multi TENANT=TENANT1 npm run integration-test
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
           
           echo ""
           echo "========================================"
-          echo " Running Multi-Tenant Integration Tests (Tenant 2)"
+          echo " Running Multi-Tenant Integration Tests for SDMGoogleWorkspaceConsumer"
           echo "========================================"
-          TENANCY_MODEL=multi TENANT=TENANT2 npm run integration-test
+          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
           
           echo ""
           echo " All integration tests completed successfully!"
