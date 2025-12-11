@@ -26,7 +26,7 @@ async function fetchWithBackoff(func, maxRetries = MAX_RETRIES, initialDelay = I
             // These should not be retried as the input/model is fundamentally wrong.
             if (error.status === 400 || error.status === 404) {
                 console.error(`Fatal error (${error.status}) encountered. Aborting immediately.`);
-                throw error; 
+                throw error;
             }
 
             // Check for transient errors (e.g., 429 Rate Limit, 5xx Server Error)
@@ -95,10 +95,10 @@ async function splitDiffIntoTokens(genAI, diff, maxTokens = MAX_CHUNK_TOKENS) {
 async function updateReadme(octokit, owner, repo, aiGeneratedContent, pull_number) {
     const readmePath = "README.md";
     let readmeSha;
-    
+
     // context.payload.pull_request is guaranteed to exist here
     const headRef = context.payload.pull_request.head.ref;
-    
+
     console.log("Attempting to read existing README.md...");
     try {
         const { data } = await octokit.rest.repos.getContents({
@@ -170,7 +170,7 @@ async function performPRReview(octokit, diffContent, pull_number, genAI) {
 
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        
+
         // --- PROMPT: Instructing for point-by-point, structured feedback with code ---
         const chunkPrompt = `You are a helpful and expert AI code reviewer named Gemini. Analyze the following Git diff chunk. Your response must be highly structured and strictly focused on identifying issues and providing solutions.
 
@@ -198,7 +198,7 @@ async function performPRReview(octokit, diffContent, pull_number, genAI) {
         } catch (error) {
             // Fatal error occurred, stop processing chunks
             console.error(`Fatal error encountered during review chunk processing. Aborting review.`);
-            
+
             // Post a single error message and return immediately
             const errorMessage = `❌ **Gemini Review Failed** ❌\n\nA critical error occurred during the review process (likely due to an incorrect model configuration, API key issue, or a malformed request). The first error encountered was:\n\n\`\`\`\n${error.message}\n\`\`\`\n\n**Action Required:** Please check the model name, API key, and retry the review.`;
             await octokit.rest.issues.createComment({
@@ -236,7 +236,7 @@ async function performPRReview(octokit, diffContent, pull_number, genAI) {
     ${chunkReviews.join('\n\n---\n\n')}
     `;
     // --- END PROMPT ---
-    
+
     let reviewBody = "Review generation failed.";
     try {
         const finalReviewResult = await fetchWithBackoff(() => model.generateContent(synthesisPrompt));
@@ -371,7 +371,7 @@ async function handleNewIssue(octokit, owner, repo, issueNumber, issueTitle, iss
         await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ["duplicate"] });
         const status = similar.state === "closed" ? "closed" : "in progress";
         const resolution = extractResolution(similar.body);
-        
+
         // --- UPDATED COMMENT TO REFLECT CONTENT CHECK ---
         const duplicateComment = `### 🔁 Potential Duplicate Detected (Semantic Match)\nBased on **issue context and body**, a related issue appears to already exist: **#${similar.number} - ${similar.title}** (${status}).\n\n**Link:** ${similar.html_url}\n\n**Summary (Truncated):**\n${truncate(similar.body || '(no body)', 800)}\n\n${resolution ? `**Extracted Resolution / Status Notes:**\n${resolution}\n\n` : ''}If this is a duplicate, please consolidate discussion there and consider closing this one. If not, comment with \`not a duplicate\` and I will proceed with fresh root-cause analysis.`;
         // --- END UPDATED COMMENT ---
@@ -384,7 +384,7 @@ async function handleNewIssue(octokit, owner, repo, issueNumber, issueTitle, iss
     const repoScan = scanRepositoryForIssue(issueTitle, issueBody, process.cwd());
     console.log(`Repository scan complete. Matched contexts: ${repoScan.matches.length}`);
     const joinedContexts = repoScan.matches.map(m => `File: ${m.file}\n${m.snippet}`).join("\n---\n");
-    
+
     // --- DETAILED PROMPT FIX (from previous request) ---
     const recPrompt = `You are an expert senior engineer. A new issue was filed. Use the code contexts to hypothesize root causes and generate a detailed, prioritized remediation checklist. Your output must strictly follow the required markdown structure below.
 
@@ -426,7 +426,7 @@ async function handleNewIssue(octokit, owner, repo, issueNumber, issueTitle, iss
     ${truncate(joinedContexts, 12000)}
     `;
     // --- END DETAILED PROMPT FIX ---
-    
+
     let recommendations = "Failed to generate recommendations.";
     try {
         const recResult = await fetchWithBackoff(() => flashModel.generateContent(recPrompt));
@@ -436,7 +436,7 @@ async function handleNewIssue(octokit, owner, repo, issueNumber, issueTitle, iss
         // Post a single error message for the issue handler
         recommendations = `❌ **Gemini Analysis Failed** ❌\n\nA critical error occurred while generating the initial analysis (likely due to an incorrect model configuration, API key issue, or a malformed request). The error was:\n\n\`\`\`\n${error.message}\n\`\`\`\n\n**Action Required:** Please check the model configuration and API key.`;
     }
-    
+
     await ensureLabel(octokit, owner, repo, "awaiting-confirmation", { description: "Pending maintainer confirmation for remediation", color: "5319e7" });
     await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ["awaiting-confirmation"] });
     const confirmComment = `${recommendations}\n\n**Next Step:** Reply with \`confirm remediation\` to approve moving forward (e.g., drafting a PR or creating task list). Reply with \`refine analysis\` for a deeper pass, or \`discard recommendations\` to remove them.`;
@@ -467,7 +467,7 @@ async function fetchPastIssues(octokit, owner, repo, currentIssueNumber) {
 
 function extractResolution(body) {
     if (!body) return null;
-    const resolutionMatch = body.match(/(?:Resolution|Fix|Root Cause)[:\-]\s*([\s\S]{0,400})/i);
+    const resolutionMatch = body.match(/(?:Resolution|Fix|Root Cause)[:-]\s*([\s\S]{0,400})/i);
     return resolutionMatch ? resolutionMatch[1].trim() : null;
 }
 
@@ -493,20 +493,20 @@ async function findSimilarIssueSemantic(title, body, pastIssues, genAI) {
         try { newEmbedding = await getEmbeddingSafe(embeddingModel, newText); } catch (e) { console.warn("New issue embedding failed", e.message); }
     }
     const scored = pastIssues.map(i => ({ issue: i, score: lexicalSimilarityCandidate(newTitleTokens, newBodyTokens, i) }))
-        .sort((a,b)=>b.score-a.score).slice(0, MAX_EMBED_ISSUES);
+        .sort((a, b) => b.score - a.score).slice(0, MAX_EMBED_ISSUES);
     let best = null;
     if (newEmbedding) {
         for (const candidate of scored) {
             let emb; try { emb = await getEmbeddingSafe(embeddingModel, `${candidate.issue.title}\n${candidate.issue.body}`); } catch { continue; }
             const cosine = cosineSimilarity(newEmbedding, emb);
             // Semantic match is weighted much higher here for better accuracy based on content
-            const combined = (cosine * 0.85) + (candidate.score * 0.15); 
+            const combined = (cosine * 0.85) + (candidate.score * 0.15);
             if (!best || combined > best.score) best = { ...candidate.issue, score: combined };
         }
         // Higher threshold for semantic duplicate since it's based on content vectors
-        if (best && best.score >= 0.78) return best; 
+        if (best && best.score >= 0.78) return best;
     }
-    
+
     // Fallback: If no embedding model or no strong semantic match, use LLM for refinement on best lexical match
     const lexicalBest = scored[0];
     if (lexicalBest && lexicalBest.score >= 0.5) {
@@ -527,15 +527,15 @@ async function getEmbeddingSafe(embeddingModel, text) {
     return vector;
 }
 
-function cosineSimilarity(a,b){
-    if(!a||!b||a.length!==b.length) return 0;
-    let dot=0; let na=0; let nb=0;
-    for(let i=0;i<a.length;i++){
-        dot += a[i]*b[i];
-        na += a[i]*a[i];
-        nb += b[i]*b[i];
+function cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0; let na = 0; let nb = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
     }
-    return dot/((Math.sqrt(na)*Math.sqrt(nb))||1);
+    return dot / ((Math.sqrt(na) * Math.sqrt(nb)) || 1);
 }
 /**
  * Scan the repository for lines possibly related to an issue by keyword intersection.
@@ -595,7 +595,7 @@ async function run() {
     try {
         const octokit = getOctokit(process.env.GITHUB_TOKEN);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        
+
         const { owner, repo } = context.repo;
 
         // Determine the number based on the event payload (only issue number is available from comment event)
@@ -614,7 +614,7 @@ async function run() {
 
             if (context.payload.issue.pull_request) {
                 // This is a comment on a Pull Request (PR)
-                
+
                 // CRITICAL FIX: Fetch the full PR object for use in subsequent functions (labels, head.ref)
                 const { data: pullRequest } = await octokit.rest.pulls.get({
                     owner,
@@ -622,25 +622,25 @@ async function run() {
                     pull_number: number,
                 });
                 context.payload.pull_request = pullRequest; // Attach full PR object to context
-                
+
                 // 1. Check for explicit review command
                 if (commentBody.includes('review this pr') || commentBody.includes('gemini review')) {
                     console.log(`Explicit review command detected on PR #${number}. Initiating full review.`);
-                    
+
                     const diffContent = await getDiff(octokit, owner, repo, number);
                     await performPRReview(octokit, diffContent, number, genAI);
-                    
-                // 2. Check for general "Hey Gemini" question
-                } else if (commentBody.startsWith("hey gemini,")) { 
+
+                    // 2. Check for general "Hey Gemini" question
+                } else if (commentBody.startsWith("hey gemini,")) {
                     console.log(`"Hey Gemini," question detected on PR #${number}. Initiating response.`);
                     await handleCommentResponse(octokit, context.payload.comment.body, number, genAI);
                 } else {
                     console.log(`Comment on PR #${number} did not contain a review or question command. No action taken.`);
                 }
-                
+
             } else {
                 // This is a comment on a regular Issue
-                 if (commentBody === 'confirm remediation') {
+                if (commentBody === 'confirm remediation') {
                     // Maintainer confirmation flow
                     const issueLabels = context.payload.issue.labels.map(l => l.name);
                     if (issueLabels.includes('awaiting-confirmation')) {
@@ -648,9 +648,9 @@ async function run() {
                         await ensureLabel(octokit, owner, repo, 'remediation-approved', { description: 'Remediation steps approved by maintainer', color: '0e8a16' });
                         await octokit.rest.issues.addLabels({ owner, repo, issue_number: number, labels: ['remediation-approved'] });
                         // Remove awaiting-confirmation label
-                        const remaining = issueLabels.filter(l => l !== 'awaiting-confirmation');
-                        try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch {}
-                        await octokit.rest.issues.createComment({ owner, repo, issue_number: number, body: '✅ Remediation confirmed. Automated follow-up actions may proceed (none implemented yet).'});
+
+                        try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch (e) { /* ignore */ }
+                        await octokit.rest.issues.createComment({ owner, repo, issue_number: number, body: '✅ Remediation confirmed. Automated follow-up actions may proceed (none implemented yet).' });
                     } else {
                         console.log('Confirmation comment received but issue not in awaiting-confirmation state.');
                     }
@@ -661,7 +661,7 @@ async function run() {
                     await handleNewIssue(octokit, owner, repo, number, issueTitle, issueBody, genAI); // Re-run with fresh model pass
                 } else if (commentBody === 'discard recommendations') {
                     console.log('Discard recommendations requested.');
-                    try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch {}
+                    try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch (e) { /* ignore */ }
                     await octokit.rest.issues.createComment({ owner, repo, issue_number: number, body: '🗑️ Recommendations discarded. Provide new details or ask for re-analysis if needed.' });
                 } else if (commentBody.startsWith("hey gemini,")) {
                     console.log(`"Hey Gemini," comment detected on Issue #${number}. Initiating response.`);
@@ -670,7 +670,7 @@ async function run() {
                     console.log(`Comment on Issue #${number} did not contain a question command. No action taken.`);
                 }
             }
-            
+
         } else if (context.eventName === 'issues' && context.payload.action === 'opened') {
             // New Issue Handling 
             console.log(`New Issue event detected for #${number}. Generating summary.`);
