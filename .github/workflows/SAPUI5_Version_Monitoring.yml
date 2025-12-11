@@ -3,9 +3,6 @@ name: Daily SAPUI5 Version Update
 on:
   schedule:
     - cron: '0 0 * * *'
-  push:
-    branches:
-      - ui5version
   workflow_dispatch:
 
 jobs:
@@ -21,7 +18,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: cap-js/incidents-app
-          ref: ui5version
+          ref: sdmIncidents
           token: ${{ secrets.GIT_TOKEN }}
 
       - name: Install dependencies
@@ -102,10 +99,6 @@ jobs:
         with:
           github-token: ${{ secrets.SDM_CAP_GITHUB_TOKEN }}
           script: |
-            // Log context and github for debugging
-            console.log('Context:', context);
-            console.log('GitHub object:', github);
-
             const { data: issue } = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -118,5 +111,5 @@ jobs:
               Please review and update the repository 'cap-js/incidents-app' as needed.`,
               labels: ['enhancement', 'automated'],
             });
-
+            
             console.log(`Created issue #${issue.number}`);
