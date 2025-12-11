@@ -102,7 +102,11 @@ jobs:
         with:
           github-token: ${{ secrets.SDM_CAP_GITHUB_TOKEN }}
           script: |
-            const { data: issue } = await github.issues.create({
+            // Log context and github for debugging
+            console.log('Context:', context);
+            console.log('GitHub object:', github);
+
+            const { data: issue } = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Update SAPUI5 to version ${{ steps.run_script.outputs.latest_version }}`,
