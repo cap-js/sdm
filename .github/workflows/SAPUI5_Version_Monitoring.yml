@@ -1,0 +1,118 @@
+name: Daily SAPUI5 Version Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - ui5version
+  workflow_dispatch:
+
+jobs:
+  update-version:
+    name: Check and Update SAPUI5 Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout the sdmIncidents branch of the target repository
+        uses: actions/checkout@v3
+        with:
+          repository: cap-js/incidents-app
+          ref: sdmIncidents
+          token: ${{ secrets.GIT_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Run version update script
+        id: run_script
+        run: |
+          #!/bin/bash
+
+          # Define the target file
+          FILE_PATH="app/incidents/webapp/index.html"
+
+          # Function to get the latest version and its corresponding latest patch version
+          fetch_versions() {
+              local json_url="https://sapui5.hana.ondemand.com/versionoverview.json"
+              local json_content=$(curl -s "$json_url")
+
+              local latest_version_with_long_term_maintenance
+              latest_version_with_long_term_maintenance=$(echo "$json_content" | jq -r \
+                  '[.versions[] | select(.support == "Maintenance" and (.eom | test("Long-term Maintenance")))][0].version' | tr -d '*')
+
+              local latest_patch_version
+              latest_patch_version=$(echo "$json_content" | jq -r --arg version_prefix "${latest_version_with_long_term_maintenance%.*}" \
+                  '[.patches[] | select((.version | startswith($version_prefix)) and (.eocp != "To Be Determined"))] | sort_by(.version | split("-")[0] | split(".") | map(tonumber)) | last | .version')
+
+              echo "$latest_version_with_long_term_maintenance $latest_patch_version"
+          }
+
+          # Function to fetch the current version from the file
+          fetch_current_version() {
+              local file="$1"
+              local current_version
+              current_version=$(grep 'sap-ui-core.js' "$file" | sed -E 's|.*sapui5\.hana\.ondemand\.com/([0-9]+\.[0-9]+\.[0-9]+)/resources.*|\1|')
+              echo "$current_version"
+          }
+
+          # Get the latest versions
+          read -r latest_version latest_patch_version < <(fetch_versions)
+          echo "Latest SAPUI5 version found: $latest_patch_version"
+
+          # Get the current version
+          current_version=$(fetch_current_version "$FILE_PATH")
+
+          if [[ -z "$current_version" ]]; then
+            echo "Error: Current version could not be found in $FILE_PATH. Exiting."
+            exit 1
+          fi
+
+          echo "Current SAPUI5 version in file: $current_version"
+
+          # Split versions into components for numerical comparison
+          IFS='.' read -r LATEST_MAJOR LATEST_MINOR LATEST_PATCH <<< "$latest_patch_version"
+          IFS='.' read -r CURRENT_MAJOR CURRENT_MINOR CURRENT_PATCH <<< "$current_version"
+
+          echo "Comparing versions: $current_version vs $latest_patch_version"
+
+          # Perform numerical comparison
+          if (( LATEST_MAJOR > CURRENT_MAJOR || \
+                (LATEST_MAJOR == CURRENT_MAJOR && LATEST_MINOR > CURRENT_MINOR) || \
+                (LATEST_MAJOR == CURRENT_MAJOR && LATEST_MINOR == CURRENT_MINOR && LATEST_PATCH > CURRENT_PATCH) )); then
+
+              echo "A newer version of SAPUI5 is available."
+
+              # Set output variables to be used in subsequent steps
+              echo "changes_made=true" >> "$GITHUB_OUTPUT"
+              echo "latest_version=$latest_patch_version" >> "$GITHUB_OUTPUT"
+              echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          else
+              echo "Current version is up-to-date. No changes needed."
+          fi
+        shell: bash
+
+      - name: Create GitHub Issue
+        if: steps.run_script.outputs.changes_made == 'true'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.SDM_CAP_GITHUB_TOKEN }}
+          script: |
+            const { data: issue } = await github.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Update SAPUI5 to version ${{ steps.run_script.outputs.latest_version }}`,
+              body: `An update for SAPUI5 is available.
+              
+              Current Version: ${{ steps.run_script.outputs.current_version }}
+              Latest Version: ${{ steps.run_script.outputs.latest_version }}
+              
+              Please review and update the repository 'cap-js/incidents-app' as needed.`,
+              labels: ['enhancement', 'automated'],
+            });
+
+            console.log(`Created issue #${issue.number}`);
