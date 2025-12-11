@@ -649,7 +649,7 @@ async function run() {
                         await octokit.rest.issues.addLabels({ owner, repo, issue_number: number, labels: ['remediation-approved'] });
                         // Remove awaiting-confirmation label
 
-                        try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch (e) { /* ignore */ }
+                        try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch { /* ignore */ }
                         await octokit.rest.issues.createComment({ owner, repo, issue_number: number, body: '✅ Remediation confirmed. Automated follow-up actions may proceed (none implemented yet).' });
                     } else {
                         console.log('Confirmation comment received but issue not in awaiting-confirmation state.');
@@ -661,7 +661,7 @@ async function run() {
                     await handleNewIssue(octokit, owner, repo, number, issueTitle, issueBody, genAI); // Re-run with fresh model pass
                 } else if (commentBody === 'discard recommendations') {
                     console.log('Discard recommendations requested.');
-                    try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch (e) { /* ignore */ }
+                    try { await octokit.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'awaiting-confirmation' }); } catch { /* ignore */ }
                     await octokit.rest.issues.createComment({ owner, repo, issue_number: number, body: '🗑️ Recommendations discarded. Provide new details or ask for re-analysis if needed.' });
                 } else if (commentBody.startsWith("hey gemini,")) {
                     console.log(`"Hey Gemini," comment detected on Issue #${number}. Initiating response.`);
