@@ -1,4 +1,4 @@
-name: Integration Test
+name: Single Tenant Integration Test
 
 on:
   workflow_dispatch:
