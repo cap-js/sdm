@@ -1,9 +1,6 @@
 name: Multi Tenancy Integration Test 🚀
 
 on:
-  push:
-    branches:
-      - test_singletenant
   workflow_dispatch:
     inputs:
       cf_space:
