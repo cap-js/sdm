@@ -5,14 +5,14 @@
     "summarize": {
       "auto_generate_summary": true,
       "auto_insert_summary": true,
-      "auto_run_on_draft_pr": true,
+      "auto_run_on_draft_pr": false,
       "use_custom_summarize_prompt": false,
       "use_custom_summarize_output_template": false,
       "use_tabular_summarize_output_template": false
     },
     "review": {
       "auto_generate_review": true,
-      "use_custom_review_focus": false
+      "use_custom_review_focus": false,
     }
   }
 }
