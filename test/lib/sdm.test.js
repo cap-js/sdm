@@ -159,10 +159,49 @@ const mockUpKeyStructure = {
 };
 
 const cds = require("@sap/cds/lib");
-cds.model.definitions['ProcessorService.Incidents.attachments'] = {};
-cds.model.definitions['ProcessorService.Incidents.attachments.drafts'] = mockUpKeyStructure;
-cds.model.definitions['Test.Entity.attachments'] = {}; // Added to satisfy test structure
-cds.model.definitions['Test.Entity.attachments.drafts'] = mockUpKeyStructure; // Added to satisfy test structure
+cds.model.definitions['ProcessorService.Incidents.references'] = {};
+cds.model.definitions['ProcessorService.Incidents.references.drafts'] = mockUpKeyStructure;
+cds.model.definitions['Test.Entity.references'] = {}; // Added to satisfy test structure
+cds.model.definitions['Test.Entity.references.drafts'] = mockUpKeyStructure; // Added to satisfy test structure
+
+// Add entity with 'references' composition for testing alternative composition names
+cds.model.definitions['Test.Entity.references'] = {};
+cds.model.definitions['Test.Entity.references.drafts'] = mockUpKeyStructure;
+cds.model.definitions['Test.EntityWithReferences'] = {
+  elements: {
+    references: {
+      type: 'cds.Composition',
+      target: 'Test.Entity.references'
+    }
+  }
+};
+cds.model.definitions['Test.Entity.references'] = {
+  includes: ['sap.attachments.Attachments']
+};
+cds.model.definitions['ProcessorService.Orders'] = {
+  elements: {
+    references: {
+      type: 'cds.Composition',
+      target: 'ProcessorService.Orders.references'
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Orders.references'] = {
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Orders.references.drafts'] = {
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
 
 describe("SDMAttachmentsService", () => {
   // Ensure attachmentIDRegex is available globally
@@ -377,7 +416,17 @@ describe("SDMAttachmentsService", () => {
       };
       token = 'sampleAccessToken';
       
-      cds.model.definitions['sampleTarget.attachments'] = {};
+      cds.model.definitions['sampleTarget'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'sampleTarget.references'
+          }
+        }
+      };
+      cds.model.definitions['sampleTarget.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
     });
   
     it('should not rename if no attachments are modified', async () => {
@@ -392,7 +441,7 @@ describe("SDMAttachmentsService", () => {
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(fetchAccessToken).not.toHaveBeenCalled();
-      expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.attachments'], req, 'repo123');
+      expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.references'], req, 'repo123');
       expect(service.updateDraftAttachments).not.toHaveBeenCalled();
       expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
       expect(req.warn).not.toHaveBeenCalled();
@@ -514,6 +563,104 @@ describe("SDMAttachmentsService", () => {
       expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
     });
+
+    // Test with "references" composition instead of "attachments"
+    it('should work with references composition instead of attachments', async () => {
+      req.target.name = 'ProcessorService.Orders';
+      const referencesEntity = cds.model.definitions['ProcessorService.Orders.references'];
+      
+      const draftReferences = [
+        { HasActiveEntity: false, ID: 'draft1' }
+      ];
+      const nonDraftReferences = [
+        { HasActiveEntity: true, ID: 'nonDraft1' }
+      ];
+      const allReferences = [...draftReferences, ...nonDraftReferences];
+  
+      service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
+      service.updateDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.clearSecondaryPropertiesCache = jest.fn();
+      service.handleWarning = jest.fn().mockReturnValue("");
+  
+      fetchAccessToken.mockResolvedValue(token);
+      getDraftAttachments.mockResolvedValue(allReferences);
+      getPropertyTitles.mockReturnValue(["Title1", "Title2"]);
+      getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
+      getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
+  
+      await service.renameHandler(req);
+  
+      expect(getDraftAttachments).toHaveBeenCalledWith(referencesEntity, req, 'repo123');
+      expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allReferences, req);
+      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
+      expect(service.updateDraftAttachments).toHaveBeenCalledTimes(1);
+      expect(service.updateNonDraftAttachments).toHaveBeenCalledTimes(1);
+      expect(service.clearSecondaryPropertiesCache).toHaveBeenCalledWith('repo123');
+      expect(req.warn).not.toHaveBeenCalled();
+    });
+
+    it('should discover and process all attachment compositions', async () => {
+      // Create an entity with multiple attachment compositions
+      req.target.name = 'Test.EntityWithMultiple';
+      cds.model.definitions['Test.EntityWithMultiple'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.references'
+          },
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.documents'
+          },
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.files'
+          }
+        }
+      };
+      cds.model.definitions['Test.EntityWithMultiple.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.EntityWithMultiple.documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.EntityWithMultiple.files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+  
+      service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
+      service.updateDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.clearSecondaryPropertiesCache = jest.fn();
+      service.handleWarning = jest.fn().mockReturnValue("");
+  
+      fetchAccessToken.mockResolvedValue(token);
+      getDraftAttachments.mockResolvedValue([{ HasActiveEntity: false, ID: 'draft1' }]);
+      getPropertyTitles.mockReturnValue({});
+      getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
+      getSecondaryTypeProperties.mockReturnValue(new Map());
+  
+      await service.renameHandler(req);
+  
+      // Should be called 3 times, once for each composition
+      expect(getDraftAttachments).toHaveBeenCalledTimes(3);
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.references'], 
+        req, 
+        'repo123'
+      );
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.documents'], 
+        req, 
+        'repo123'
+      );
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.files'], 
+        req, 
+        'repo123'
+      );
+    });
   });
 
   describe('updateNonDraftAttachments', () => {
@@ -533,7 +680,7 @@ describe("SDMAttachmentsService", () => {
       req = {
         reject: jest.fn(),
         data: {
-          attachments: [{ ID: 'attachment1', filename: 'file1.txt' }]
+          references: [{ ID: 'attachment1', filename: 'file1.txt' }]
         }
       };
       token = 'mockToken';
@@ -560,7 +707,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
@@ -569,7 +717,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -582,7 +731,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
       expect(response).toEqual(
         [{typeOfError: 'empty name', name: null}]
@@ -598,7 +748,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -624,7 +775,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -652,7 +804,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'no sdm roles', name: 'file1.txt' }]);
@@ -661,7 +814,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -674,7 +828,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'duplicate', name: 'file1.txt' }]);
@@ -683,7 +838,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -696,7 +852,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'not found', name: 'file1.txt' }]);
@@ -705,7 +862,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
 
@@ -714,7 +872,7 @@ describe("SDMAttachmentsService", () => {
       getFileNameForAttachmentID.mockResolvedValue('file1.txt'); // Simulate fileNameInDB
       getPropertiesForID.mockResolvedValue({ property1: 'value1' }); // Simulate properties from DB
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' }); // Simulate updated properties
-      updateAttachment.mockResolvedValue(500); // Simulate an unexpected response code
+      updateAttachment.mockRejectedValue(new Error(sdmRolesErrorMessage)); // Simulate an unexpected response code
     
       // Call the method
       const result = await service.updateNonDraftAttachments(
@@ -723,7 +881,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Verify the result contains the error for the unexpected response code
@@ -741,7 +900,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Ensure updateAttachment was called with the correct arguments
@@ -763,7 +923,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -777,7 +938,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -790,7 +952,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -805,7 +968,36 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
+      );
+    });
+
+    // Test with 'references' composition name
+    it('should work with references composition name', async () => {
+      req.data = {
+        references: [{ ID: 'attachment1', filename: 'file1.txt' }]
+      };
+      isRestrictedCharactersInName.mockReturnValue(true);
+
+      const result = await service.updateNonDraftAttachments(
+        req,
+        token,
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'references'
+      );
+
+      expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
+      expect(service.replacePropertiesInAttachment).toHaveBeenCalledWith(
+        req,
+        'attachment1',
+        'file1.txt',
+        { property1: 'value1' },
+        secondaryTypeProperties,
+        'references'
       );
     });
   });
@@ -826,7 +1018,7 @@ describe("SDMAttachmentsService", () => {
       req = {
         reject: jest.fn(),
         data: {
-          attachments: [{ ID: 'attachment1', filename: 'file1.txt' }]
+          references: [{ ID: 'attachment1', filename: 'file1.txt' }]
         }
       };
       token = 'mockToken';
@@ -856,7 +1048,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
@@ -865,7 +1058,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -878,7 +1072,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(response).toEqual(
@@ -895,7 +1090,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -923,7 +1119,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'no sdm roles', name: 'file1.txt' }]);
@@ -932,7 +1129,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -945,7 +1143,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'duplicate', name: 'file1.txt' }]);
@@ -954,7 +1153,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -967,7 +1167,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'not found', name: 'file1.txt' }]);
@@ -976,7 +1177,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
 
@@ -985,7 +1187,7 @@ describe("SDMAttachmentsService", () => {
       service.getAttachementDataInSDM.mockResolvedValue({ filename: 'file1.txt', folderId: 'mockFolderId' });
       getPropertiesForID.mockResolvedValue({ property1: 'value1' });
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
-      updateAttachment.mockResolvedValue(500); // Simulate an unexpected response code
+      updateAttachment.mockRejectedValue(new Error(sdmRolesErrorMessage)); // Simulate an unexpected response code
     
       // Call the method
       const result = await service.updateDraftAttachments(
@@ -994,7 +1196,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       expect(result).toEqual([
@@ -1011,7 +1214,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Ensure updateAttachment was called with the correct arguments
@@ -1034,7 +1238,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -1048,7 +1253,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -1061,7 +1267,8 @@ describe("SDMAttachmentsService", () => {
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -1076,7 +1283,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   });
@@ -1091,7 +1299,7 @@ describe("SDMAttachmentsService", () => {
       service = new SDMAttachmentsService();
       req = {
         data: {
-          attachments: [
+          references: [
             { ID: 'attachment1', filename: 'oldFileName', property1: 'oldValue1', property2: 'oldValue2' },
             { ID: 'attachment2', filename: 'anotherOldFileName', property3: 'oldValue3' }
           ]
@@ -1107,9 +1315,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1', property2: 'newValue2' };
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.secondaryKey1).toBe('newValue1');
       expect(updatedAttachment.secondaryKey2).toBe('newValue2');
@@ -1118,9 +1326,9 @@ describe("SDMAttachmentsService", () => {
     it('should not modify properties if propertiesInDB is null', () => {
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, null, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, null, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1130,9 +1338,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1', property2: 'newValue2' };
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'nonExistentID', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'nonExistentID', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('oldFileName'); // Ensure filename is not modified
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1142,9 +1350,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property3: 'newValue3' }; // No matching keys in secondaryTypeProperties
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1154,9 +1362,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1' }; // Only one matching property
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.secondaryKey1).toBe('newValue1'); // Ensure matching property is updated
       expect(updatedAttachment.secondaryKey2).toBeUndefined(); // Ensure non-matching property is not updated
@@ -1349,7 +1557,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it('should handle _updateAttachments when Object.keys length is 0', async () => {
-      const req = { data: { attachments: [{ ID: '123', filename: 'test.txt' }] } };
+      const req = { data: { references: [{ ID: '123', filename: 'test.txt' }] } };
       const token = 'test-token';
       const attachment = { ID: '123', filename: 'test.txt' };
       const attachmentsEntity = {};
@@ -1467,7 +1675,7 @@ describe("SDMAttachmentsService", () => {
     it('should handle _updateAttachments when updatedSecondaryProperties is empty', async () => {
       const req = {
         data: {
-          attachments: [{
+          references: [{
             ID: 'attachment-123',
             filename: 'test.txt'
           }]
@@ -1999,9 +2207,20 @@ describe("SDMAttachmentsService", () => {
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
       isRepositoryVersioned.mockResolvedValueOnce(false);
       
-      cds.model.definitions["myName.attachments"] = {};
-      cds.model.definitions["Attachments.attachments"] = {};
-      cds.model.definitions["testName.attachments"] = {};
+      // Setup entity with composition
+      cds.model.definitions["myName"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'myName.references'
+          }
+        }
+      };
+      cds.model.definitions["myName.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions["Attachments.references"] = {};
+      cds.model.definitions["testName.references"] = {};
     });
     it("should add attachments to delete in req when deletions are present", async () => {
       const mockedReq = {
@@ -2014,7 +2233,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [
+          references: [
             { _op: "delete", ID: "1" },
             { _op: "delete", ID: "2" },
             { _op: "insert", ID: "3" },
@@ -2022,7 +2241,7 @@ describe("SDMAttachmentsService", () => {
         }),
         attachmentsToDelete: undefined,
       };
-      const mockedAttachments = cds.model.definitions["myName.attachments"];
+      const mockedAttachments = cds.model.definitions["myName.references"];
 
       getURLsToDeleteFromAttachments.mockResolvedValueOnce([
         "attachment3",
@@ -2051,7 +2270,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [],
+          references: [],
         }),
         attachmentsToDelete: undefined,
       };
@@ -2073,11 +2292,11 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [],
+          references: [],
         }),
         attachmentsToDelete: undefined,
       };
-      delete cds.model.definitions["myOtherName.attachments"];
+      delete cds.model.definitions["myOtherName.references"];
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.diff).not.toHaveBeenCalled(); // Diff is not called if attachments entity is undefined
       expect(getURLsToDeleteFromAttachments).not.toHaveBeenCalled();
@@ -2085,6 +2304,18 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("attachDeletionData() should set req.parentId if event is DELETE and getFolderIdForEntity() returns non-empty array", async () => {
+      cds.model.definitions["Attachments"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Attachments.references'
+          }
+        }
+      };
+      cds.model.definitions["Attachments.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
       const mockedReq = {
         target: {
           name: 'Attachments',
@@ -2095,7 +2326,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
 
@@ -2103,11 +2334,23 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByIDAsPath.mockResolvedValueOnce("folder");
       await service.attachDeletionData(mockedReq);
-      expect(mockedReq.parentId).toEqual("folder");
+      expect(mockedReq.parentId).toEqual(["folder"]);
       expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
+      cds.model.definitions["Attachments"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Attachments.references'
+          }
+        }
+      };
+      cds.model.definitions["Attachments.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
       const mockedReq = {
         target: {
           name: 'Attachments',
@@ -2118,18 +2361,16 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
-      
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByIDAsPath.mockResolvedValueOnce(null);
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.parentId).toBeUndefined();
       expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
-    });
-
-    it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
+    });    it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
       const mockReq = {
         target: { name: "testName" },
         user: {
@@ -2138,7 +2379,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "CREATE",
       };
 
@@ -2156,7 +2397,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
       };
       getURLsToDeleteFromAttachments.mockResolvedValueOnce([]); // returning empty array
       await service.attachDeletionData(mockReq);
@@ -2255,7 +2496,7 @@ describe("SDMAttachmentsService", () => {
 
       const expectedErrorResponse = "test_error_response";
 
-      cds.model.definitions["testTarget.attachments"] = {};
+      cds.model.definitions["testTarget.references"] = {};
       fetchAccessToken.mockResolvedValueOnce("test_token");
       deleteAttachmentsOfFolder.mockResolvedValue({});
       service.handleRequest = jest
@@ -2368,7 +2609,7 @@ describe("SDMAttachmentsService", () => {
         warn: jest.fn()
       };
 
-      cds.model.definitions[mockReq.target.name + ".attachments"] = {
+      cds.model.definitions[mockReq.target.name + ".references"] = {
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -2958,20 +3199,40 @@ describe("SDMAttachmentsService", () => {
     it('should handle entity patterns when no target name', async () => {
       req.target = {}; // Simulate no target name
       
+      // Mock the parent entity with references composition
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'ProcessorService.Incidents.references'
+          }
+        }
+      };
+      
       // Mock the entity definitions that the method looks for
-      cds.model.definitions['ProcessorService.Incidents.attachments'] = { entity: 'TestAttachments' };
-      cds.model.definitions['ProcessorService.Incidents.attachments.drafts'] = { entity: 'TestAttachmentsDrafts' };
+      cds.model.definitions['ProcessorService.Incidents.references'] = { 
+        entity: 'TestAttachments',
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['ProcessorService.Incidents.references.drafts'] = { 
+        entity: 'TestAttachmentsDrafts'
+      };
       
       await service.handleDraftSaveForLinks(req);
       
       // FIX: Assert calls to the spied function
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.attachments');
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.attachments.drafts');
+      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.references');
+      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.references.drafts');
       expect(service.updateBaselinesForEntity).toHaveBeenCalledTimes(2);
     });
     
     it('should not call updateBaselinesForEntity when target name is available', async () => {
       // Target name is available: 'Test.Entity.drafts'
+      
+      // Clean up entity definitions from previous test
+      delete cds.model.definitions['ProcessorService.Incidents'];
+      delete cds.model.definitions['ProcessorService.Incidents.references'];
+      delete cds.model.definitions['ProcessorService.Incidents.references.drafts'];
       
       await service.handleDraftSaveForLinks(req);
       
@@ -3074,7 +3335,18 @@ describe("SDMAttachmentsService", () => {
       global.SELECT.where.mockClear();
       
       // FIX: Add mock key structure for the target entity's attachments draft
-      cds.model.definitions['Parent.attachments.drafts'] = mockUpKeyStructure;
+      cds.model.definitions['Parent'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Parent.references'
+          }
+        }
+      };
+      cds.model.definitions['Parent.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Parent.references.drafts'] = mockUpKeyStructure;
       
       fetchAccessToken.mockResolvedValue('access-token');
     });
@@ -3140,7 +3412,7 @@ describe("SDMAttachmentsService", () => {
       req.target.name = 'NonExistent.drafts';
       
       // Provide a minimal entity definition to prevent the crash
-      cds.model.definitions['NonExistent.attachments.drafts'] = {
+      cds.model.definitions['NonExistent.references.drafts'] = {
         keys: {
           up_: {
             keys: [{
@@ -3252,7 +3524,7 @@ describe("SDMAttachmentsService", () => {
         info: jest.fn(),
       };
 
-      cds.model.definitions[mockReq.target.name + ".attachments"] = {
+      cds.model.definitions[mockReq.target.name + ".references"] = {
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -3262,7 +3534,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("getParentId should call getFolderIdByPath if getFolderIdForEntity returns empty array", async () => {
-      const attachments = cds.model.definitions[mockReq.target.name + ".attachments"]
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"]
       const token = "mocked_token"
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce("mocked_folder_id");
@@ -3274,13 +3546,13 @@ describe("SDMAttachmentsService", () => {
         mockReq,
         service.creds,
         "mocked_token",
-        cds.model.definitions[mockReq.target.name + ".attachments"],
+        cds.model.definitions[mockReq.target.name + ".references"],
         upId
       );
     });
   
     it("getParentId should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"]
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"]
       let token = "mocked_token"
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce(null);
@@ -3301,13 +3573,13 @@ describe("SDMAttachmentsService", () => {
         mockReq,
         service.creds,
         "mocked_token",
-        cds.model.definitions[mockReq.target.name + ".attachments"],
+        cds.model.definitions[mockReq.target.name + ".references"],
         upId
       );
     });
   
     it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveRequiredScope", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"];
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"];
       let token = "mocked_token";
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce(null);
@@ -3329,7 +3601,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("getParentId should return parentId if folderId is not null in folderIds", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"];
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"];
       let token = "mocked_token";
 
       const folderIds = [
@@ -3533,17 +3805,30 @@ describe("SDMAttachmentsService", () => {
         diff: jest.fn(),
       };
   
-      cds.model.definitions["testName.attachments.drafts"] = {};
+      cds.model.definitions["testName"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'testName.references'
+          }
+        }
+      };
+      cds.model.definitions["testName.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions["testName.references.drafts"] = {
+        includes: ['sap.attachments.Attachments']
+      };
     });
   
     it("should attach attachments to delete in req when they are present in drafts", async () => {
-      mockDraftAttachments = cds.model.definitions["testName.attachments.drafts"];
+      mockDraftAttachments = cds.model.definitions["testName.references.drafts"];
   
       const attachmentsToDelete = ["attachment1", "attachment2"];
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
       fetchAccessToken.mockResolvedValueOnce("mocked_token");
@@ -3553,7 +3838,7 @@ describe("SDMAttachmentsService", () => {
   
       expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith("mocked_id", mockDraftAttachments);
       expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
-      expect(mockReq.parentId).toEqual("mock_folder_id");
+      expect(mockReq.parentId).toEqual(["mock_folder_id"]);
     });
   
     it("should not set `parentId` if the number of attachments in diff is different from `attachmentsToDelete`", async () => {
@@ -3561,7 +3846,7 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2", "attachment3"],
+        references: ["attachment1", "attachment2", "attachment3"],
       });
   
       await service.attachDraftDeletionData(mockReq);
@@ -3570,7 +3855,7 @@ describe("SDMAttachmentsService", () => {
     });
   
     it("should not attach attachments to delete if no draft attachments are found", async () => {
-      delete cds.model.definitions["testName.attachments.drafts"];
+      delete cds.model.definitions["testName.references.drafts"];
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]);
   
       await service.attachDraftDeletionData(mockReq);
@@ -3583,7 +3868,7 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]); // Empty array to simulate no deletions
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
       await service.attachDraftDeletionData(mockReq);
@@ -3602,7 +3887,7 @@ describe("SDMAttachmentsService", () => {
       
       // Both arrays should be of the same length to trigger folderId fetch logic
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
       // Simulate fetching a token, but folder ID fetch returns falsy
