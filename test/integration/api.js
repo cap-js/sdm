@@ -188,7 +188,7 @@ class Api {
 
         try{
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references`,
                 postData,
                 this.config
             )
@@ -199,7 +199,7 @@ class Api {
                 // responseStatus.attachmentID.push(response.data.ID)
                  try{
                     await axios.put(
-                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${response.data.ID},IsActiveEntity=false)/content`,
+                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${response.data.ID},IsActiveEntity=false)/content`,
 
                     formDataPut,
                     this.config
@@ -243,7 +243,7 @@ class Api {
         try{
             let response;
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)/content`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)/content`,
                 this.config
             );
             if (response.status === 200 && response.data) {
@@ -269,7 +269,7 @@ class Api {
 
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
                 this.config
             );
 
@@ -296,7 +296,7 @@ class Api {
         let response;
          try{
             response = await axios.patch(
-               `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)`,
+               `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)`,
                 updateData,
                 this.config
             );
@@ -322,7 +322,7 @@ class Api {
         let response;
         try{
             response = await axios.delete(
-                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)`,
+                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)`,
                 this.config
             );
             if (response.status === 204) {
@@ -352,7 +352,7 @@ class Api {
             };
             
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments/${srvpath}.createLink`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references/${srvpath}.createLink`,
                 linkData,
                 this.config
             )
@@ -384,7 +384,7 @@ class Api {
         let response;
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references`,
                 this.config
             );
             if (response.status === 200 && response.data && response.data.value) {
@@ -410,7 +410,7 @@ class Api {
         let response;
         try {
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(ID=${attachment},IsActiveEntity=false)/${srvpath}.openAttachment`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)/${srvpath}.openAttachment`,
                 {},
                 this.config
             )
@@ -437,7 +437,7 @@ class Api {
         let response;
         try {
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/attachments(ID=${attachment},IsActiveEntity=true)/${srvpath}.openAttachment`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(ID=${attachment},IsActiveEntity=true)/${srvpath}.openAttachment`,
                 {},
                 this.config
             )
