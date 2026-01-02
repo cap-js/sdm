@@ -52,6 +52,7 @@ let {
   duplicateFileErr,
   otherFileErr,
   userNotAuthorisedError,
+  userNotAuthorisedReadError,
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
@@ -60,7 +61,9 @@ let {
   userNotAuthorisedOpenLink,
   editLinkNotFoundErr,
   linkNameConstraintMessage,
-  unsupportedProperties
+  unsupportedProperties,
+  attachmentNotFound,
+  errorMessage
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/lib/basic", () => class {});
@@ -133,6 +136,14 @@ jest.mock("@sap/cds/lib", () => {
   return mockCds;
 });
 jest.mock("node-cache");
+
+// Mock the cache instance used in sdm.js
+const mockCacheInstance = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn()
+};
+NodeCache.mockImplementation(() => mockCacheInstance);
 
 // Global Mocks for CAP Query Functions (Used in Link Persistence Logic)
 global.SELECT = {
@@ -1286,6 +1297,37 @@ describe("SDMAttachmentsService", () => {
         secondaryTypeProperties,
         'attachments'
       );
+    });
+
+    it('should handle unexpected status code (default case) by throwing error', async () => {
+      // Mock dependencies
+      getFileNameForAttachmentID.mockResolvedValue('file1.txt');
+      getPropertiesForID.mockResolvedValue({ property1: 'value1' });
+      getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
+      // Return an unexpected status code (e.g., 500) that triggers default case
+      updateAttachment.mockResolvedValue(500);
+    
+      // Call the method
+      const result = await service.updateNonDraftAttachments(
+        req,
+        token,
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+    
+      // The default case throws an error which is caught and added to failedReq
+      expect(result).toEqual([
+        {
+          typeOfError: 'bad request',
+          name: 'file1.txt',
+          message: sdmRolesErrorMessage
+        }
+      ]);
+      
+      expect(service.replacePropertiesInAttachment).toHaveBeenCalled();
     });
   });
 
@@ -4041,6 +4083,594 @@ describe("SDMAttachmentsService", () => {
       expect(service.handleEditLinkAction).toHaveBeenCalledWith(req);
       expect(result).toBe("editLinkResult");
       expect(req.error).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkRepositoryType', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should reject with error when repository is versioned', async () => {
+      const req = { reject: jest.fn() };
+      
+      // Mock getConfigurations to return a repositoryId
+      getConfigurations.mockReturnValue({ repositoryId: 'test-repo' });
+      
+      // Mock user token info
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: () => ({ ext_attr: { zdn: 'test-subdomain' } })
+          }
+        }
+      };
+      
+      // Mock cache to return undefined (not cached)
+      mockCacheInstance.get.mockReturnValue(undefined);
+      
+      // Mock repository info calls
+      getClientCredentialsToken.mockResolvedValue('test-token');
+      getRepositoryInfo.mockResolvedValue({ capabilities: {} });
+      isRepositoryVersioned.mockReturnValue(true);
+      
+      await service.checkRepositoryType(req);
+      
+      expect(req.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+
+    it('should reject with error when cached repository type is versioned', async () => {
+      const req = { reject: jest.fn() };
+      
+      getConfigurations.mockReturnValue({ repositoryId: 'test-repo' });
+      
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: () => ({ ext_attr: { zdn: 'test-subdomain' } })
+          }
+        }
+      };
+      
+      // Mock cache to return "versioned"
+      mockCacheInstance.get.mockReturnValue('versioned');
+      
+      // Create service AFTER setting up mocks
+      const cachedService = new SDMAttachmentsService();
+      cachedService.creds = { key: 'test-creds' };
+      
+      await cachedService.checkRepositoryType(req);
+      
+      expect(req.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+  });
+
+  describe('get method error paths', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should reject with 403 when content is "Forbidden"', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { tokenInfo: { getTokenValue: () => 'test-token' } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      fetchAccessToken.mockResolvedValue('test-token');
+      readAttachment.mockResolvedValue('Forbidden');
+
+      await service.get(attachments, keys, req);
+
+      expect(req.reject).toHaveBeenCalledWith(403, userNotAuthorisedReadError);
+    });
+
+    it('should reject with 404 when content is "Not Found"', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { tokenInfo: { getTokenValue: () => 'test-token' } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      fetchAccessToken.mockResolvedValue('test-token');
+      readAttachment.mockResolvedValue('Not Found');
+
+      await service.get(attachments, keys, req);
+
+      expect(req.reject).toHaveBeenCalledWith(404, attachmentNotFound);
+    });
+
+    it('should reject with 500 for other error types', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { tokenInfo: { getTokenValue: () => 'test-token' } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      fetchAccessToken.mockResolvedValue('test-token');
+      readAttachment.mockResolvedValue('Some other error');
+
+      await service.get(attachments, keys, req);
+
+      expect(req.reject).toHaveBeenCalledWith(500, errorMessage);
+    });
+  });
+
+  describe('processCompositionRename', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should return early when attachmentsEntity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity' },
+        data: {}
+      };
+      
+      // Mock entity definition to not exist
+      cds.model.definitions['Test.Entity.references'] = undefined;
+      
+      const result = await service.processCompositionRename(req, 'references', 'test-repo');
+      
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('getAttachmentCompositions', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+
+    it('should return empty array when entity definition does not exist', () => {
+      const targetEntity = { name: 'NonExistent.Entity' };
+      
+      delete cds.model.definitions['NonExistent.Entity'];
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when entity has no elements', () => {
+      const targetEntity = { name: 'Test.EmptyEntity' };
+      
+      cds.model.definitions['Test.EmptyEntity'] = {};
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should find composition named "references"', () => {
+      const targetEntity = { name: 'Test.EntityWithReferences' };
+      
+      cds.model.definitions['Test.EntityWithReferences'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should find composition named "attachments"', () => {
+      const targetEntity = { name: 'Test.EntityWithAttachments' };
+      
+      cds.model.definitions['Test.EntityWithAttachments'] = {
+        elements: {
+          attachments: {
+            type: 'cds.Composition',
+            target: 'Test.Attachments'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Attachments'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['attachments']);
+    });
+
+    it('should find composition with custom name "documents"', () => {
+      const targetEntity = { name: 'Test.EntityWithDocuments' };
+      
+      cds.model.definitions['Test.EntityWithDocuments'] = {
+        elements: {
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.Documents'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['documents']);
+    });
+
+    it('should find composition with custom name "files"', () => {
+      const targetEntity = { name: 'Test.EntityWithFiles' };
+      
+      cds.model.definitions['Test.EntityWithFiles'] = {
+        elements: {
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.Files'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['files']);
+    });
+
+    it('should find multiple attachment compositions with different names', () => {
+      const targetEntity = { name: 'Test.EntityWithMultipleCompositions' };
+      
+      cds.model.definitions['Test.EntityWithMultipleCompositions'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.Documents'
+          },
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.Files'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.Documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.Files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toContain('references');
+      expect(result).toContain('documents');
+      expect(result).toContain('files');
+      expect(result.length).toBe(3);
+    });
+
+    it('should ignore compositions that do not have sap.attachments.Attachments includes', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedCompositions' };
+      
+      cds.model.definitions['Test.EntityWithMixedCompositions'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          otherComposition: {
+            type: 'cds.Composition',
+            target: 'Test.OtherEntity'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.OtherEntity'] = {
+        includes: ['SomeOtherAspect']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should ignore non-composition elements', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedElements' };
+      
+      cds.model.definitions['Test.EntityWithMixedElements'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          title: {
+            type: 'cds.String'
+          },
+          status: {
+            type: 'cds.Integer'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should handle composition without target definition', () => {
+      const targetEntity = { name: 'Test.EntityWithBrokenComposition' };
+      
+      cds.model.definitions['Test.EntityWithBrokenComposition'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.NonExistentTarget'
+          }
+        }
+      };
+      
+      // Target definition doesn't exist
+      delete cds.model.definitions['Test.NonExistentTarget'];
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should handle composition target without includes property', () => {
+      const targetEntity = { name: 'Test.EntityWithIncompleteTarget' };
+      
+      cds.model.definitions['Test.EntityWithIncompleteTarget'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.IncompleteTarget'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.IncompleteTarget'] = {
+        // No includes property
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should work with any composition name following naming convention', () => {
+      const testCases = [
+        'attachments',
+        'references',
+        'documents',
+        'files',
+        'media',
+        'uploads',
+        'resources',
+        'assets',
+        'binaries'
+      ];
+
+      testCases.forEach(compositionName => {
+        const targetEntity = { name: `Test.EntityWith${compositionName}` };
+        
+        cds.model.definitions[`Test.EntityWith${compositionName}`] = {
+          elements: {
+            [compositionName]: {
+              type: 'cds.Composition',
+              target: `Test.${compositionName}`
+            }
+          }
+        };
+        
+        cds.model.definitions[`Test.${compositionName}`] = {
+          includes: ['sap.attachments.Attachments']
+        };
+        
+        const result = service.getAttachmentCompositions(targetEntity);
+        
+        expect(result).toEqual([compositionName]);
+      });
+    });
+  });
+
+  describe('replacePropertiesInAttachment', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+
+    it('should return early when req.data does not have compositionName', () => {
+      const req = { data: {} };
+      const id = 'test-id';
+      const fileName = 'test.pdf';
+      const propertiesInDB = {};
+      const secondaryTypeProperties = new Map();
+      const compositionName = 'references';
+      
+      service.replacePropertiesInAttachment(req, id, fileName, propertiesInDB, secondaryTypeProperties, compositionName);
+      
+      // Should return early without error
+      expect(req.data[compositionName]).toBeUndefined();
+    });
+
+    it('should return early when attachment with ID is not found', () => {
+      const req = { 
+        data: { 
+          references: [
+            { ID: 'other-id', filename: 'other.pdf' }
+          ] 
+        } 
+      };
+      const id = 'test-id';
+      const fileName = 'test.pdf';
+      const propertiesInDB = {};
+      const secondaryTypeProperties = new Map();
+      const compositionName = 'references';
+      
+      service.replacePropertiesInAttachment(req, id, fileName, propertiesInDB, secondaryTypeProperties, compositionName);
+      
+      // Attachment filename should not be changed
+      expect(req.data.references[0].filename).toBe('other.pdf');
+    });
+  });
+
+  describe('attachDraftDeletionData - edge cases', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should handle when draftAttachments entity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity.drafts' },
+        data: { ID: 'test-id' },
+        diff: jest.fn().mockResolvedValue({ references: [] }),
+        event: 'DELETE',
+        user: {
+          tokenInfo: { getTokenValue: () => 'test-token' }
+        }
+      };
+
+      cds.model.definitions['Test.Entity'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.Entity.references'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Entity.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      // Draft entity doesn't exist
+      delete cds.model.definitions['Test.Entity.references.drafts'];
+      
+      await service.attachDraftDeletionData(req);
+      
+      // Should not throw and should not set attachmentsToDelete
+      expect(req.attachmentsToDelete).toBeUndefined();
+    });
+  });
+
+  describe('handleDraftDiscardForLinks - edge cases', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should continue when attachmentsEntity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity.drafts' },
+        data: { ID: 'test-id' },
+        user: {
+          tokenInfo: { getTokenValue: () => 'test-token' }
+        }
+      };
+
+      cds.model.definitions['Test.Entity'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.Entity.references'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Entity.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      // Draft entity doesn't exist
+      delete cds.model.definitions['Test.Entity.references.drafts'];
+      
+      fetchAccessToken.mockResolvedValue('test-token');
+      
+      await service.handleDraftDiscardForLinks(req);
+      
+      // Should not throw
+      expect(fetchAccessToken).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleDraftDiscardForLinks - missing entity', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+    });
+
+    it('should handle missing entity definition gracefully', async () => {
+      const req = {
+        target: { name: 'NonExistent.Entity.drafts' },
+        data: { ID: 'test-id' },
+        user: {
+          tokenInfo: { getTokenValue: () => 'test-token' }
+        }
+      };
+
+      // Ensure entity doesn't exist
+      delete cds.model.definitions['NonExistent.Entity'];
+      
+      await service.handleDraftDiscardForLinks(req);
+      
+      // Should not throw and should not call any SDM operations
+      expect(fetchAccessToken).not.toHaveBeenCalled();
     });
   });
 
