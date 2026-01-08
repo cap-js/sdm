@@ -557,8 +557,8 @@ describe("SDMAttachmentsService", () => {
       fetchAccessToken.mockResolvedValue(token);
       getDraftAttachments.mockResolvedValue(allAttachments);
       
-      service._updateAttachments = jest.fn((req, token, attachment) => {
-        if (attachment.ID === 'draft1') {
+      service._updateAttachments = jest.fn((req, token, context) => {
+        if (context.attachment.ID === 'draft1') {
           return Promise.reject(new Error('Draft update failed'));
         }
         return [];
@@ -1601,20 +1601,22 @@ describe("SDMAttachmentsService", () => {
     it('should handle _updateAttachments when Object.keys length is 0', async () => {
       const req = { data: { references: [{ ID: '123', filename: 'test.txt' }] } };
       const token = 'test-token';
-      const attachment = { ID: '123', filename: 'test.txt' };
-      const attachmentsEntity = {};
-      const secondaryPropertiesWithInvalidDefinitions = {};
-      const secondaryTypeProperties = new Map();
-      const filenameInSDM = 'test.txt';
+      const context = {
+        attachment: { ID: '123', filename: 'test.txt' },
+        attachmentsEntity: {},
+        filenameInSDM: 'test.txt',
+        compositionName: 'references',
+        secondaryProperties: {
+          invalidDefinitions: {},
+          typeProperties: new Map()
+        }
+      };
 
       // Mock functions to return empty objects
       getPropertiesForID.mockResolvedValue({});
       getUpdatedSecondaryProperties.mockReturnValue({});
 
-      const result = await service._updateAttachments(
-        req, token, attachment, attachmentsEntity, 
-        secondaryPropertiesWithInvalidDefinitions, secondaryTypeProperties, filenameInSDM
-      );
+      const result = await service._updateAttachments(req, token, context);
 
       expect(result).toEqual([]);
       expect(updateAttachment).not.toHaveBeenCalled();
@@ -1724,26 +1726,24 @@ describe("SDMAttachmentsService", () => {
         }
       };
       const token = 'mock-token';
-      const attachment = {
-        ID: 'attachment-123',
-        filename: 'test.txt'
+      const context = {
+        attachment: {
+          ID: 'attachment-123',
+          filename: 'test.txt'
+        },
+        attachmentsEntity: { name: 'TestEntity' },
+        filenameInSDM: 'test.txt',
+        compositionName: 'references',
+        secondaryProperties: {
+          invalidDefinitions: {},
+          typeProperties: new Map()
+        }
       };
-      const attachmentsEntity = { name: 'TestEntity' };
-      const secondaryPropertiesWithInvalidDefinitions = {};
-      const secondaryTypeProperties = new Map();
-      const filenameInSDM = 'test.txt';
 
       getPropertiesForID.mockResolvedValue({});
+      getUpdatedSecondaryProperties.mockReturnValue({});
       
-      const result = await service._updateAttachments(
-        req,
-        token, 
-        attachment,
-        attachmentsEntity,
-        secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties,
-        filenameInSDM
-      );
+      const result = await service._updateAttachments(req, token, context);
 
       expect(result).toEqual([]);
     });
