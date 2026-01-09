@@ -79,7 +79,6 @@ jobs:
           # Modify JSON file
           jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ env.CLIENT_ID }}" --arg clientSecret "${{ env.CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
           '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password | .noSDMRoleUsername = $noSDMRoleUsername | .noSDMRoleUserPassword = $noSDMRoleUserPassword' $JSON_FILE > "temp.json" \
-
           && mv "temp.json" $JSON_FILE
           cat $JSON_FILE
           npm i
