@@ -1,4 +1,4 @@
-name: Integration Test
+name: Single Tenant Integration Test
 
 on:
   workflow_dispatch:
@@ -88,8 +88,8 @@ jobs:
           # JSON file path
           JSON_FILE="test/integration/credentials.json"
           # Modify JSON file
-          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ env.CLIENT_ID }}" --arg clientSecret "${{ env.CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" \
-          '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password' $JSON_FILE > "temp.json" \
+          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ env.CLIENT_ID }}" --arg clientSecret "${{ env.CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+          '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password | .noSDMRoleUsername = $noSDMRoleUsername | .noSDMRoleUserPassword = $noSDMRoleUserPassword' $JSON_FILE > "temp.json" \
           && mv "temp.json" $JSON_FILE
           # Redact sensitive fields before printing
           jq '{ appUrl, authUrl, username, password }' $JSON_FILE | sed 's/"clientID": "[^"]*"/"clientID": "***"/' | sed 's/"clientSecret": "[^"]*"/"clientSecret": "***"/'
