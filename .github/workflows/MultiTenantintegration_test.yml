@@ -1,68 +1,30 @@
-name: Multi Tenancy Deploy and Integration Test
+name: Multi Tenancy Integration Test 🚀
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - develop
   workflow_dispatch:
+    inputs:
+      cf_space:
+        description: 'Specify the Cloud Foundry space to run integration tests on'
+        required: true
+        default: developcap
+
+      branch_name:
+        description: 'Specify the branch to use for integration tests'
+        required: true
+        default: develop
 
 permissions:
   pull-requests: read
 
 jobs:
-  deploy:
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:        
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x  
-          
-      - name: Login to Cloud Foundry
-        run: |
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
-          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
-          echo "deb https://packages.cloudfoundry.org/debian stable main" \
-          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-          sudo apt update
-          sudo apt install cf-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
-       
-      - name: Clone and prepare projects & Build and deploy
-        env:
-          USERNAME: ${{ secrets.GH_USER_CAP_JS_INCIDENT_APP_MULTITENANCY }} # Add this secret with your GitHub username if needed
-          TOKEN: ${{ secrets.GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
-        run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdm-mtx-develop https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
-          cd sdm
-          npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../cap-js-incidents-app
-          cd ../cap-js-incidents-app
-          npm i *.tgz
-      
-      - name: Build and deploy
-        run: |
-          cd cap-js-incidents-app
-          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
-          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
-          sudo mv mbt /usr/local/bin/
-          npm i @sap/cds-dk -g
-          mbt build
-          cf install-plugin multiapps -f
-          cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
-
   integration-test:
     runs-on: ubuntu-latest
-    needs: deploy
+
     steps:
       - name: Checkout repository ✅
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
 
       - name: Setup Node.js environment ⚙️
         uses: actions/setup-node@v2.1.5
@@ -76,7 +38,18 @@ jobs:
           echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt-get update
           sudo apt-get install cf8-cli jq
-
+      - name: Determine Cloud Foundry Space 🌌
+        id: determine_space
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "🌍 Space determined for use"
+          echo "space=$space" >> $GITHUB_ENV
       - name: Login to Cloud Foundry 🔑
         run: |
           echo "🔄 Logging in to Cloud Foundry..."
@@ -84,8 +57,7 @@ jobs:
             -u ${{ secrets.CF_USER }} \
             -p ${{ secrets.CF_PASSWORD }} \
             -o ${{ secrets.CF_ORG }} \
-            -s ${{ secrets.CF_SPACE }}
-
+            -s ${{ env.space }}
       - name: Fetch Multi Tenant Credentials 🔍
         id: fetch_credentials_mt
         run: |
@@ -121,14 +93,13 @@ jobs:
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
           echo "✅ Multi-tenant client details fetched successfully!"
-
       - name: Run Integration Tests 🎯
         run: |
           echo "🚀 Starting multi-tenant integration tests..."
           
           JSON_FILE="test/integration/credentials.json"
           
-          appUrlMT="${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
           
           cat > "$JSON_FILE" <<EOL
           {
