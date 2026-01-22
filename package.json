@@ -21,6 +21,8 @@
   ],
   "dependencies": {
     "@cap-js/attachments": "2.0.2",
+    "@sap-cloud-sdk/connectivity": "^4.3.1",
+    "@sap-cloud-sdk/http-client": "^4.3.1",
     "@sap/xssec": "^4",
     "axios": "^1.7.4",
     "node-cache": "^5.1.2"
