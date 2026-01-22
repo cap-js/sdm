@@ -48,6 +48,11 @@ jest.mock("@sap/xssec", () => ({
     },
   },
 }));
+jest.mock("@sap-cloud-sdk/connectivity", () => ({
+  jwtBearerToken: jest.fn(),
+  serviceToken: jest.fn(),
+  decodeJwt: jest.fn()
+}));
 
 
 describe("util", () => {
@@ -803,4 +808,468 @@ describe("util", () => {
     });
   });
 
+  describe("OAuth2 Token Transformation Functions", () => {
+    let mockJwtBearerToken;
+    let mockServiceToken;
+    let mockDecodeJwt;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      // Mock @sap-cloud-sdk/connectivity functions
+      mockJwtBearerToken = require("@sap-cloud-sdk/connectivity").jwtBearerToken;
+      mockServiceToken = require("@sap-cloud-sdk/connectivity").serviceToken;
+      mockDecodeJwt = require("@sap-cloud-sdk/connectivity").decodeJwt;
+    });
+
+    describe("buildOAuth2JWTBearerDestination", () => {
+      it("should build OAuth2 JWT Bearer destination with expiration", () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        
+        const { buildOAuth2JWTBearerDestination } = require("../../../lib/util/index");
+        const token = "test-jwt-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildOAuth2JWTBearerDestination(token, url, name);
+
+        expect(result).toEqual({
+          url,
+          name,
+          authentication: 'OAuth2JWTBearer',
+          authTokens: [
+            {
+              value: token,
+              type: 'bearer',
+              expiresIn: expect.any(String),
+              http_header: {
+                key: 'Authorization',
+                value: `Bearer ${token}`
+              },
+              error: null
+            }
+          ]
+        });
+        expect(mockDecodeJwt).toHaveBeenCalledWith(token);
+      });
+
+      it("should build OAuth2 JWT Bearer destination without expiration", () => {
+        mockDecodeJwt.mockReturnValue({});
+        
+        const { buildOAuth2JWTBearerDestination } = require("../../../lib/util/index");
+        const token = "test-jwt-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildOAuth2JWTBearerDestination(token, url, name);
+
+        expect(result.authTokens[0].expiresIn).toBeUndefined();
+      });
+    });
+
+    describe("transformSDMServiceBindingToJWTBearerCredentialsDestination", () => {
+      it("should transform service binding with user JWT", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://uaa.example.com",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const userJwt = "user-jwt-token";
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, userJwt);
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith(
+          userJwt,
+          expect.objectContaining({
+            name: "sdm-service",
+            credentials: service.credentials.uaa
+          })
+        );
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+        expect(result.name).toBe("sdm-service");
+      });
+    });
+
+    describe("transformSDMServiceBindingToClientCredentialsDestination", () => {
+      it("should transform service binding with client credentials", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://uaa.example.com",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const options = { some: "option" };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, options);
+
+        expect(mockServiceToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "sdm-service",
+            credentials: service.credentials.uaa
+          }),
+          options
+        );
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
+        expect(result.name).toBe("sdm-service");
+      });
+    });
+
+    describe("buildClientCredentialsDestination", () => {
+      it("should build OAuth2 Client Credentials destination with expiration", () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        
+        const { buildClientCredentialsDestination } = require("../../../lib/util/index");
+        const token = "test-client-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildClientCredentialsDestination(token, url, name);
+
+        expect(result).toEqual({
+          url,
+          name,
+          authentication: 'OAuth2ClientCredentials',
+          authTokens: [
+            {
+              value: token,
+              type: 'bearer',
+              expiresIn: expect.any(String),
+              http_header: {
+                key: 'Authorization',
+                value: `Bearer ${token}`
+              },
+              error: null
+            }
+          ]
+        });
+        expect(mockDecodeJwt).toHaveBeenCalledWith(token);
+      });
+
+      it("should build OAuth2 Client Credentials destination without expiration", () => {
+        mockDecodeJwt.mockReturnValue({});
+        
+        const { buildClientCredentialsDestination } = require("../../../lib/util/index");
+        const token = "test-client-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildClientCredentialsDestination(token, url, name);
+
+        expect(result.authTokens[0].expiresIn).toBeUndefined();
+      });
+    });
+
+    describe("getSdmInstanceName", () => {
+      const originalEnv = process.env.VCAP_SERVICES;
+
+      afterEach(() => {
+        if (originalEnv !== undefined) {
+          process.env.VCAP_SERVICES = originalEnv;
+        } else {
+          delete process.env.VCAP_SERVICES;
+        }
+      });
+
+      it("should extract SDM instance name from VCAP_SERVICES", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [
+            {
+              name: "my-sdm-instance",
+              credentials: {}
+            }
+          ]
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBe("my-sdm-instance");
+      });
+
+      it("should return null when sdm service not in VCAP_SERVICES", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          someOtherService: []
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBeNull();
+      });
+
+      it("should return null when sdm array is empty", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: []
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBeNull();
+      });
+    });
+  });
+
+  describe("getPropertyTitles edge cases", () => {
+    it("should skip elements without propertyName", () => {
+      const attachmentEntity = {
+        elements: {
+          field1: {
+            '@title': 'Field 1 Title',
+            name: 'field1'
+            // No @SDM.Attachments.AdditionalProperty.name
+          },
+          field2: {
+            '@SDM.Attachments.AdditionalProperty.name': 'customField',
+            '@title': 'Field 2 Title',
+            name: 'field2'
+          }
+        }
+      };
+      const attachment = { field1: 'value1', field2: 'value2' };
+
+      const result = getPropertyTitles(attachmentEntity, attachment);
+
+      expect(result).toHaveProperty('customField', 'Field 2 Title');
+      expect(result).not.toHaveProperty('field1');
+    });
+
+    it("should use element name as fallback when no @title", () => {
+      const attachmentEntity = {
+        elements: {
+          field1: {
+            '@SDM.Attachments.AdditionalProperty.name': 'customField',
+            name: 'field1'
+            // No @title
+          }
+        }
+      };
+      const attachment = { field1: 'value1' };
+
+      const result = getPropertyTitles(attachmentEntity, attachment);
+
+      expect(result).toHaveProperty('customField', 'field1');
+    });
+  });
+
+  describe("getSecondaryPropertiesWithInvalidDefinition edge cases", () => {
+    it("should handle elements without SDM annotation", () => {
+      const attachmentEntity = {
+        elements: {
+          normalField: {
+            name: 'normalField'
+            // No sdm.additionalproperty annotation
+          }
+        }
+      };
+      const attachment = { normalField: 'value' };
+
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("getUpdatedSecondaryProperties null value handling", () => {
+    it("should handle null currentValue and non-null dbValue", () => {
+      const attachment = { 'field1': null };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'oldValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toHaveProperty('custom:field', null);
+    });
+
+    it("should handle non-null currentValue different from dbValue", () => {
+      const attachment = { 'field1': 'newValue' };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'oldValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toHaveProperty('custom:field', 'newValue');
+    });
+
+    it("should skip when both values are null", () => {
+      const attachment = { 'field1': null };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': null };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toEqual({});
+    });
+
+    it("should skip when values are equal", () => {
+      const attachment = { 'field1': 'sameValue' };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'sameValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("extractSecondaryTypeIds recursion", () => {
+    it("should handle nested children recursively", () => {
+      const jsonArray = [
+        {
+          type: { id: 'parent' },
+          children: [
+            {
+              type: { id: 'child1' },
+              children: [
+                { type: { id: 'grandchild' } }
+              ]
+            },
+            { type: { id: 'child2' } }
+          ]
+        }
+      ];
+      const result = [];
+
+      extractSecondaryTypeIds(jsonArray, result);
+
+      expect(result).toEqual(['parent', 'child1', 'grandchild', 'child2']);
+    });
+
+    it("should handle items without type.id", () => {
+      const jsonArray = [
+        { type: { id: 'valid' } },
+        { type: {} }, // No id
+        { children: [{ type: { id: 'nested' } }] } // No type.id but has children
+      ];
+      const result = [];
+
+      extractSecondaryTypeIds(jsonArray, result);
+
+      expect(result).toEqual(['valid', 'nested']);
+    });
+  });
+
+  describe("checkMCM edge cases", () => {
+    it("should return false for empty responseBody", () => {
+      const result = checkMCM("", []);
+      expect(result).toBe(false);
+    });
+
+    it("should return false for whitespace-only responseBody", () => {
+      const result = checkMCM("   ", []);
+      expect(result).toBe(false);
+    });
+
+    it("should return false when propertyDefinitions is null", () => {
+      const responseBody = JSON.stringify({ propertyDefinitions: null });
+      const result = checkMCM(responseBody, []);
+      expect(result).toBe(false);
+    });
+
+    it("should skip properties without miscellaneous", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          'field1': { type: 'string' }, // No miscellaneous
+          'field2': {
+            'mcm:miscellaneous': { isPartOfTable: 'true' }
+          }
+        }
+      });
+      const secondaryPropertyIds = [];
+      
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+
+      expect(result).toBe(true);
+      expect(secondaryPropertyIds).toEqual(['field2']);
+    });
+
+    it("should skip properties where isPartOfTable is not true", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          'field1': {
+            'mcm:miscellaneous': { isPartOfTable: 'false' }
+          }
+        }
+      });
+      const secondaryPropertyIds = [];
+      
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  });
+
+  describe("getConfigurations with environment variable", () => {
+    const originalEnv = process.env.REPOSITORY_ID;
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.REPOSITORY_ID = originalEnv;
+      } else {
+        delete process.env.REPOSITORY_ID;
+      }
+    });
+
+    it("should return repositoryId from environment variable when set", () => {
+      process.env.REPOSITORY_ID = "env-repo-id";
+
+      const result = getConfigurations();
+
+      expect(result).toEqual({ repositoryId: "env-repo-id" });
+    });
+
+    it("should return cds.env settings when environment variable not set", () => {
+      delete process.env.REPOSITORY_ID;
+      cds.env = {
+        requires: {
+          sdm: {
+            settings: { repositoryId: "cds-repo-id" }
+          }
+        }
+      };
+
+      const result = getConfigurations();
+
+      expect(result).toEqual({ repositoryId: "cds-repo-id" });
+    });
+  });
+
+  describe("isRepositoryVersioned else branch", () => {
+    it("should return false for non-pwconly repoType", () => {
+      const repoInfo = {
+        data: {
+          repo123: {
+            capabilities: {
+              capabilityContentStreamUpdatability: "anytime"
+            }
+          }
+        }
+      };
+
+      const result = isRepositoryVersioned(repoInfo, "repo123");
+
+      expect(result).toBe(false);
+    });
+  });
 });
