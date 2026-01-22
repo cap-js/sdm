@@ -120,6 +120,22 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
             });
 
+            it('should skip onboarding when 409 error data is an object containing already exists message', async () => {
+                axios.post.mockRejectedValue({
+                    response: {
+                        status: 409,
+                        data: { message: 'Repository already exists in the system', code: 'DUPLICATE' }
+                    }
+                });
+
+                const req = { data: { tenant: 't_skip2', metadata: { subscribedSubdomain: 'tenant-skip2-subdomain' } } };
+
+                await expect(subscribeCallback({}, req)).resolves.not.toThrow();
+
+                const expectedLogMessage = `Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
+                expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
+            });
+
             it('should throw if buildRepositoryObject fails', async () => {
                 utils.getConfigurations.mockReturnValue({});
                 const req = { data: { tenant: 't2', metadata: { subscribedSubdomain: 'tenant-b-subdomain' } } };
@@ -153,6 +169,15 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 await subscribeCallback({}, req);
                 await unsubscribeCallback({}, { data: { tenant: 't6' } });
                 expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Could not find a repository"));
+            });
+
+            it('should handle single repository object (not array)', async () => {
+                const singleRepo = { repository: { id: MOCK_DISCOVERED_ID, externalId: MOCK_EXTERNAL_ID } };
+                axios.get.mockResolvedValue({ data: { repoAndConnectionInfos: singleRepo } });
+                const req = { data: { tenant: 't7', metadata: { subscribedSubdomain: 'tenant-g-subdomain' } } };
+                await subscribeCallback({}, req);
+                await unsubscribeCallback({}, { data: { tenant: 't7' } });
+                expect(axios.delete).toHaveBeenCalled();
             });
 
             it('should throw if listing repositories fails', async () => {
