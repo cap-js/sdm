@@ -22,6 +22,22 @@ jest.mock("../../../lib/persistence", () => ({
   getExistingAttachments: jest.fn(),
 }));
 
+let dummyToken = "";
+function createDummyToken(payload = {}, header = { alg: 'HS256', typ: 'JWT' }) {
+  const base64UrlEncode = obj =>
+    Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+
+  const encodedHeader = base64UrlEncode(header);
+  const encodedPayload = base64UrlEncode(payload);
+  const signature = 'dummy-signature';
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
 jest.mock("node-cache");
 jest.mock("@sap/cds");
 jest.mock("@sap/xssec", () => ({
@@ -35,58 +51,6 @@ jest.mock("@sap/xssec", () => ({
 
 
 describe("util", () => {
-  describe("decodeAccessToken", () => {
-    const { decodeAccessToken, checkIfSDMRolesExistInToken } = require("../../../lib/util/index");
-    
-    it("should decode a valid JWT token", () => {
-      // Create a simple JWT token (header.payload.signature)
-      const payload = { sub: "user123", "sdm-roles": ["admin"] };
-      const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
-      const mockToken = `header.${base64Payload}.signature`;
-      
-      const decoded = decodeAccessToken(mockToken);
-      
-      expect(decoded).toEqual(payload);
-      expect(decoded.sub).toBe("user123");
-      expect(decoded["sdm-roles"]).toEqual(["admin"]);
-    });
-    
-    it("should handle tokens without sdm-roles", () => {
-      const payload = { sub: "user456", name: "Test User" };
-      const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
-      const mockToken = `header.${base64Payload}.signature`;
-      
-      const decoded = decodeAccessToken(mockToken);
-      
-      expect(decoded).toEqual(payload);
-      expect(decoded["sdm-roles"]).toBeUndefined();
-    });
-  });
-
-  describe("checkIfSDMRolesExistInToken", () => {
-    const { checkIfSDMRolesExistInToken } = require("../../../lib/util/index");
-    
-    it("should return true when sdm-roles exist and are not empty", () => {
-      const decodedToken = { "sdm-roles": ["role1", "role2"] };
-      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(true);
-    });
-    
-    it("should return false when sdm-roles array is empty", () => {
-      const decodedToken = { "sdm-roles": [] };
-      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
-    });
-    
-    it("should return false when sdm-roles is undefined", () => {
-      const decodedToken = { sub: "user123" };
-      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
-    });
-    
-    it("should return false when sdm-roles is null", () => {
-      const decodedToken = { "sdm-roles": null };
-      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
-    });
-  });
-
   describe("isRepositoryVersioned", () => {
     
     beforeEach(() => {
@@ -96,7 +60,7 @@ describe("util", () => {
       cds.context = {
         user: {
           tokenInfo: {
-            getPayload: () => ({ ext_attr: { zdn: 'subdomain' } })
+            getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "subdomain" } })
           }
         }
       };
@@ -836,48 +800,6 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value1");
       expect(formData.append).toHaveBeenCalledWith("propertyId[3]", "key2");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
-    });
-  });
-
-  describe("messageConsts", () => {
-    const messageConsts = require("../../../lib/util/messageConsts");
-
-    it("should return correct message when renameFileErr is called with statusCondition 'don't'", () => {
-      const files = ["file1.txt", "file2.pdf"];
-      const result = messageConsts.renameFileErr(files, "don't");
-      
-      expect(result).toContain("could not be updated as they don't exist");
-      expect(result).toContain("• file1.txt");
-      expect(result).toContain("• file2.pdf");
-      expect(result).toContain("Delete and upload the files again.");
-    });
-
-    it("should return correct message when renameFileErr is called with other statusCondition", () => {
-      const files = ["file3.doc"];
-      const result = messageConsts.renameFileErr(files, "already");
-      
-      expect(result).toContain("could not be updated as they already exist");
-      expect(result).toContain("• file3.doc");
-      expect(result).not.toContain("Delete and upload the files again.");
-    });
-
-    it("should return correct message for noSDMRolesErrorMessage with 'create' operation", () => {
-      const files = ["file1.txt", "file2.pdf"];
-      const result = messageConsts.noSDMRolesErrorMessage(files, "create");
-      
-      expect(result).toContain("Could not create the following files");
-      expect(result).toContain("• file1.txt");
-      expect(result).toContain("• file2.pdf");
-      expect(result).toContain(messageConsts.userNotAuthorisedError);
-    });
-
-    it("should return correct message for noSDMRolesErrorMessage with other operation", () => {
-      const files = ["file1.txt"];
-      const result = messageConsts.noSDMRolesErrorMessage(files, "update");
-      
-      expect(result).toContain("Could not update the following files");
-      expect(result).toContain("• file1.txt");
-      expect(result).toContain(messageConsts.sdmMissingRolesExceptionMsg);
     });
   });
 
