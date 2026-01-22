@@ -2,10 +2,8 @@ const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
 
 const {
-  fetchAccessToken,
   getConfigurations,
   isRepositoryVersioned,
-  getClientCredentialsToken,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -24,22 +22,6 @@ jest.mock("../../../lib/persistence", () => ({
   getExistingAttachments: jest.fn(),
 }));
 
-let dummyToken = "";
-function createDummyToken(payload = {}, header = { alg: 'HS256', typ: 'JWT' }) {
-  const base64UrlEncode = obj =>
-    Buffer.from(JSON.stringify(obj))
-      .toString('base64')
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-
-  const encodedHeader = base64UrlEncode(header);
-  const encodedPayload = base64UrlEncode(payload);
-  const signature = 'dummy-signature';
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
 jest.mock("node-cache");
 jest.mock("@sap/cds");
 jest.mock("@sap/xssec", () => ({
@@ -53,227 +35,55 @@ jest.mock("@sap/xssec", () => ({
 
 
 describe("util", () => {
-  describe("fetchAccessToken", () => {
-    beforeEach(() => {
-      xssec.v3.requests.requestUserToken.mockClear();
-      NodeCache.prototype.get.mockClear();
-      NodeCache.prototype.set.mockClear();
-      dummyToken = createDummyToken({
-        sub: "1234567890",
-        email: "example@example.com",
-        exp: 1516239022
-      });
-
-    });
-
-    it("requestUserToken should be called when no token in cache", async () => {
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestUserToken.mockImplementation(
-        (a, b, c, d, e, f, callback) => callback(null, dummyToken)
-      );
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const accessToken =  await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      const expectedCacheKey = "example@example.com_subdomain";
-      expect(xssec.v3.requests.requestUserToken).toBeCalled();
-      expect(NodeCache.prototype.set).toBeCalledWith(
-        expectedCacheKey,
-        dummyToken,
-        11 * 3600
-      );
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("requestUserToken should not be called when there is already token in cache which is expired", async () => {
-      NodeCache.prototype.get.mockImplementation(() => dummyToken);
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.v3.requests.requestUserToken).toBeCalled();
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("requestUserToken should  be called when there is already token in cache which is not expired", async () => {
-      cds.context = {
-        user: {
-          tokenInfo: {
-            getPayload: jest.fn(() => ({
-              ext_attr: {
-                zdn: 'subdomain' // simulate the subdomain extraction
-              }
-            })),
-          },
-        },
-      };
+  describe("decodeAccessToken", () => {
+    const { decodeAccessToken, checkIfSDMRolesExistInToken } = require("../../../lib/util/index");
     
-      const nowInSeconds = Math.floor(Date.now() / 1000);
-
-      dummyToken = createDummyToken({
-        sub: "1234567890",
-        email: "example@example.com",
-        exp: nowInSeconds + 3600, // 1 hour from now
-      });
-      NodeCache.prototype.get.mockImplementation(() => dummyToken);
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.v3.requests.requestUserToken).not.toBeCalled();
-      expect(accessToken).toBe(dummyToken);
+    it("should decode a valid JWT token", () => {
+      // Create a simple JWT token (header.payload.signature)
+      const payload = { sub: "user123", "sdm-roles": ["admin"] };
+      const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
+      const mockToken = `header.${base64Payload}.signature`;
+      
+      const decoded = decodeAccessToken(mockToken);
+      
+      expect(decoded).toEqual(payload);
+      expect(decoded.sub).toBe("user123");
+      expect(decoded["sdm-roles"]).toEqual(["admin"]);
     });
-
-    it("should throw error when request for access token fails", async () => {
-      const consoleErrorSpy = jest
-        .spyOn(console, "error")
-        .mockImplementation(() => { });
-      NodeCache.prototype.get.mockImplementationOnce(() => undefined);
-      xssec.v3.requests.requestUserToken.mockImplementation(
-        (a, b, c, d, e, f, callback) =>
-          callback(new Error("test error"), { statusCode: 500 })
-      );
-      cds.context = {
-        user: {
-          tokenInfo: {
-            getPayload: jest.fn(() => ({
-              ext_attr: {
-                zdn: 'subdomain' // simulate the subdomain extraction
-              }
-            })),
-          },
-        },
-      };
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      try {
-        await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      } catch (err) {
-        expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-        expect(xssec.v3.requests.requestUserToken).toBeCalled();
-        expect(consoleErrorSpy).toBeCalledWith(
-          "Response error while fetching access token Error: test error"
-        );
-        expect(err).toBeInstanceOf(Error);
-      } finally {
-        consoleErrorSpy.mockRestore();
-      }
+    
+    it("should handle tokens without sdm-roles", () => {
+      const payload = { sub: "user456", name: "Test User" };
+      const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
+      const mockToken = `header.${base64Payload}.signature`;
+      
+      const decoded = decodeAccessToken(mockToken);
+      
+      expect(decoded).toEqual(payload);
+      expect(decoded["sdm-roles"]).toBeUndefined();
     });
   });
 
-  describe('getClientCredentialsToken', () => {
-    beforeEach(() => {
-      xssec.v3.requests.requestClientCredentialsToken.mockClear();
-      NodeCache.prototype.get.mockClear();
-      NodeCache.prototype.set.mockClear();
+  describe("checkIfSDMRolesExistInToken", () => {
+    const { checkIfSDMRolesExistInToken } = require("../../../lib/util/index");
+    
+    it("should return true when sdm-roles exist and are not empty", () => {
+      const decodedToken = { "sdm-roles": ["role1", "role2"] };
+      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(true);
     });
-  
-    it('returns cached token if available', async () => {
-      const cachedToken = 'mockedAccessToken';
-      NodeCache.prototype.get.mockImplementation(() => cachedToken);
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-    };
-      const token = await getClientCredentialsToken({ uaa: 'mockedUaa' });
-  
-      expect(token).toBe(cachedToken);
-      expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain');
-      expect(xssec.v3.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
+    
+    it("should return false when sdm-roles array is empty", () => {
+      const decodedToken = { "sdm-roles": [] };
+      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
     });
-  
-    it('requests new token and caches it if not available', async () => {
-      const credentials = { uaa: 'mockedUaa' };
-      const mockResponse = { accessToken: 'newAccessToken' };
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
-        callback(null, mockResponse);
-      });
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-    };
-      const token = await getClientCredentialsToken(credentials);
-  
-      expect(token).toBe(mockResponse);
-      expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain', mockResponse, expect.any(Number));
-      expect(xssec.v3.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
-        "subdomain",
-        credentials.uaa,
-        null,
-        expect.any(Function)
-      );
+    
+    it("should return false when sdm-roles is undefined", () => {
+      const decodedToken = { sub: "user123" };
+      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
     });
-  
-    it('handles error from requestClientCredentialsToken', async () => {
-      const credentials = { uaa: 'mockedUaa' };
-      const mockError = new Error('Request failed');
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
-        callback(mockError, null);
-      });
-  
-      await expect(getClientCredentialsToken(credentials)).rejects.toThrow();
-      expect(NodeCache.prototype.set).not.toHaveBeenCalled();
+    
+    it("should return false when sdm-roles is null", () => {
+      const decodedToken = { "sdm-roles": null };
+      expect(checkIfSDMRolesExistInToken(decodedToken)).toBe(false);
     });
   });
 
@@ -282,6 +92,14 @@ describe("util", () => {
     beforeEach(() => {
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
+      // Mock cds.context for isRepositoryVersioned tests
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: () => ({ ext_attr: { zdn: 'subdomain' } })
+          }
+        }
+      };
     });
     
     it("should return true when repotype is pwconly", () => {
@@ -1018,6 +836,48 @@ describe("util", () => {
       expect(formData.append).toHaveBeenCalledWith("propertyValue[2]", "value1");
       expect(formData.append).toHaveBeenCalledWith("propertyId[3]", "key2");
       expect(formData.append).toHaveBeenCalledWith("propertyValue[3]", "value2");
+    });
+  });
+
+  describe("messageConsts", () => {
+    const messageConsts = require("../../../lib/util/messageConsts");
+
+    it("should return correct message when renameFileErr is called with statusCondition 'don't'", () => {
+      const files = ["file1.txt", "file2.pdf"];
+      const result = messageConsts.renameFileErr(files, "don't");
+      
+      expect(result).toContain("could not be updated as they don't exist");
+      expect(result).toContain("• file1.txt");
+      expect(result).toContain("• file2.pdf");
+      expect(result).toContain("Delete and upload the files again.");
+    });
+
+    it("should return correct message when renameFileErr is called with other statusCondition", () => {
+      const files = ["file3.doc"];
+      const result = messageConsts.renameFileErr(files, "already");
+      
+      expect(result).toContain("could not be updated as they already exist");
+      expect(result).toContain("• file3.doc");
+      expect(result).not.toContain("Delete and upload the files again.");
+    });
+
+    it("should return correct message for noSDMRolesErrorMessage with 'create' operation", () => {
+      const files = ["file1.txt", "file2.pdf"];
+      const result = messageConsts.noSDMRolesErrorMessage(files, "create");
+      
+      expect(result).toContain("Could not create the following files");
+      expect(result).toContain("• file1.txt");
+      expect(result).toContain("• file2.pdf");
+      expect(result).toContain(messageConsts.userNotAuthorisedError);
+    });
+
+    it("should return correct message for noSDMRolesErrorMessage with other operation", () => {
+      const files = ["file1.txt"];
+      const result = messageConsts.noSDMRolesErrorMessage(files, "update");
+      
+      expect(result).toContain("Could not update the following files");
+      expect(result).toContain("• file1.txt");
+      expect(result).toContain(messageConsts.sdmMissingRolesExceptionMsg);
     });
   });
 
