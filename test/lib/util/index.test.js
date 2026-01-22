@@ -1,4 +1,3 @@
-const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
 
 const {
@@ -21,22 +20,6 @@ const { sdmAnnotationAdditionalproperty, sdmAnnotationAdditionalpropertyName } =
 jest.mock("../../../lib/persistence", () => ({
   getExistingAttachments: jest.fn(),
 }));
-
-let dummyToken = "";
-function createDummyToken(payload = {}, header = { alg: 'HS256', typ: 'JWT' }) {
-  const base64UrlEncode = obj =>
-    Buffer.from(JSON.stringify(obj))
-      .toString('base64')
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-
-  const encodedHeader = base64UrlEncode(header);
-  const encodedPayload = base64UrlEncode(payload);
-  const signature = 'dummy-signature';
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
 
 jest.mock("node-cache");
 jest.mock("@sap/cds");

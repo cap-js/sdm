@@ -1,12 +1,10 @@
 const SDMAttachmentsService = require("../../lib/sdm");
 const NodeCache = require("node-cache");
 const { getDestinationFromServiceBinding, retrieveJwt } = require("@sap-cloud-sdk/connectivity");
-const { executeHttpRequest } = require("@sap-cloud-sdk/http-client");
 const {
   getConfigurations,
   isRepositoryVersioned,
   getSdmInstanceName,
-  transformSDMServiceBindingToJWTBearerCredentialsDestination,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -289,8 +287,6 @@ describe("SDMAttachmentsService", () => {
   describe("Test get method", () => {
     let service;
     let repoInfo
-    const token = "mocked_token";
-    const clientCredentialToken = "mocked_client_credential_token";
     beforeEach(() => {
 
       NodeCache.prototype.get.mockClear();
@@ -411,7 +407,6 @@ describe("SDMAttachmentsService", () => {
   describe('renameHandler', () => {
     let service;
     let req;
-    let token;
   
     beforeEach(() => {
       jest.resetAllMocks();
@@ -433,7 +428,6 @@ describe("SDMAttachmentsService", () => {
         },
         warn: jest.fn()
       };
-      token = 'sampleAccessToken';
       
       cds.model.definitions['sampleTarget'] = {
         elements: {
@@ -1796,7 +1790,6 @@ describe("SDMAttachmentsService", () => {
   describe('getAttachementDataInSDM', () => {
     let service;
     const uri = 'someUri';
-    const token = 'someToken';
     const objectId = 'someObjectId';
 
     beforeEach(() => {
@@ -1953,7 +1946,6 @@ describe("SDMAttachmentsService", () => {
                 }
               }
             };
-             const token = 'token123';
       const attachment_val = [{ HasActiveEntity: true, ID: '12345' }];
   
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
@@ -2019,7 +2011,6 @@ describe("SDMAttachmentsService", () => {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
           } }, reject: jest.fn() };
-          const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
@@ -2055,7 +2046,6 @@ describe("SDMAttachmentsService", () => {
               tokenInfo: {
                 getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
               } }, reject: jest.fn() };
-              const token = 'token123';
           const attachment_val = [
             { HasActiveEntity: false, ID: '4555', filename: null },
             { HasActiveEntity: true, ID: '67890' },
@@ -2093,7 +2083,6 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn()
       };
-      const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'validname' },
         { HasActiveEntity: true, ID: '67890' },
@@ -2650,8 +2639,8 @@ describe("SDMAttachmentsService", () => {
   });
 
   describe('onCreate', () => {
-    let data, credentials, token, req, parentId, service;
-  
+    let data, credentials, req, parentId, service;
+
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
@@ -2659,7 +2648,6 @@ describe("SDMAttachmentsService", () => {
       setupDestinationMocks();
       data = [{ filename: 'file1' }];
       credentials = { user: 'user', pass: 'pass' };
-      token = 'token';
       req = {
         reject: jest.fn(),
       };
@@ -2890,7 +2878,6 @@ describe("SDMAttachmentsService", () => {
     let req;
     let attachment;
     let linkToCreateInSDM;
-    let token;
 
     beforeEach(() => {
       jest.clearAllMocks();
@@ -2915,7 +2902,6 @@ describe("SDMAttachmentsService", () => {
         repositoryId: "repo123",
         linkUrl: "http://example.com"
       };
-      token = "mockToken";
     });
 
     it("should call getParentId and createLink with correct arguments", async () => {
@@ -2955,7 +2941,6 @@ describe("SDMAttachmentsService", () => {
     let req;
     let linkToCreateInSDM;
     let credentials;
-    let token;
     let parentId;
     let upIdKey;
 
@@ -2965,7 +2950,6 @@ describe("SDMAttachmentsService", () => {
       credentials = { user: "user", pass: "pass" };
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
       setupDestinationMocks();
-      token = "mockToken";
       parentId = "parentId";
       upIdKey = "upIdField";
       linkToCreateInSDM = {
@@ -3330,7 +3314,6 @@ describe("SDMAttachmentsService", () => {
         data: { ID: 'parent123' },
         target: { name: 'Parent.drafts' },
         user: {
-          authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('test-auth-token') } },
           authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('test-token') } }
         }
       };
