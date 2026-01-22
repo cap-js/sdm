@@ -789,7 +789,6 @@ describe("handlers", () => {
     });
 
     it("should throw an error if invalid secondary properties are found", async () => {
-      const mockResponse = { status: 200 };
     
       // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
       executeHttpRequest.mockImplementation((destination, options) => {
