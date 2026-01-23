@@ -851,11 +851,16 @@ describe("util", () => {
     });
 
     describe("transformSDMServiceBindingToJWTBearerCredentialsDestination", () => {
+      beforeEach(() => {
+        cds.context = undefined;
+      });
+
       it("should transform service binding with user JWT", async () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockJwtBearerToken.mockResolvedValue("generated-token");
-        
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+
         const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
         const service = {
           name: "sdm-service",
@@ -874,20 +879,102 @@ describe("util", () => {
         expect(mockJwtBearerToken).toHaveBeenCalledWith(
           userJwt,
           expect.objectContaining({
-            name: "sdm-service",
-            credentials: service.credentials.uaa
+            name: "sdm-service"
           })
         );
         expect(result.authentication).toBe('OAuth2JWTBearer');
         expect(result.name).toBe("sdm-service");
       });
+
+      it("should replace provider subdomain with tenant subdomain", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "tenant-subdomain" } }) } } };
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const userJwt = "user-jwt-token";
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, userJwt);
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith(userJwt, expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
+        }));
+        expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+      });
+
+      it("should not replace subdomain when tenant not available", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, "jwt");
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }));
+        expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
+      });
+
+      it("should handle missing cds context gracefully", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = undefined;
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, "jwt");
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }));
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+      });
     });
 
     describe("transformSDMServiceBindingToClientCredentialsDestination", () => {
+      beforeEach(() => {
+        cds.context = undefined;
+      });
+
       it("should transform service binding with client credentials", async () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
         
         const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -904,15 +991,86 @@ describe("util", () => {
 
         const result = await transformSDMServiceBindingToClientCredentialsDestination(service, options);
 
-        expect(mockServiceToken).toHaveBeenCalledWith(
-          expect.objectContaining({
-            name: "sdm-service",
-            credentials: service.credentials.uaa
-          }),
-          options
-        );
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({ name: "sdm-service" }), options);
         expect(result.authentication).toBe('OAuth2ClientCredentials');
         expect(result.name).toBe("sdm-service");
+      });
+
+      it("should replace provider subdomain with tenant subdomain", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "tenant-subdomain" } }) } } };
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
+      });
+
+      it("should not replace subdomain when tenant not available", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
+      });
+
+      it("should handle missing cds context gracefully", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = undefined;
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
       });
     });
 
@@ -1240,6 +1398,9 @@ describe("util", () => {
 
   describe("isRepositoryVersioned else branch", () => {
     it("should return false for non-pwconly repoType", () => {
+      // Set up proper cds.context
+      cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: 'test-subdomain' } }) } } };
+      
       const repoInfo = {
         data: {
           repo123: {
