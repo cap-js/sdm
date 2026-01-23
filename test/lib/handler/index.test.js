@@ -565,14 +565,19 @@ describe("handlers", () => {
       );
     });
 
-    it("should throw error when delete operation fails", async () => {
+    it("should return error object when delete operation fails", async () => {
       const error = new Error("Delete operation failed");
       executeHttpRequest.mockRejectedValueOnce(error);
       const credentials = { uri: "http://localhost/" };
       const destination = { url: "http://localhost" };
       const objectId = "demo-objectId";
       
-      await expect(deleteAttachmentsOfFolder(credentials, destination, objectId)).rejects.toThrow('Delete operation failed');
+      const result = await deleteAttachmentsOfFolder(credentials, destination, objectId);
+      expect(result).toEqual({
+        status: undefined,
+        response: undefined,
+        message: 'Delete operation failed'
+      });
     });
   });
 
