@@ -263,7 +263,6 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 const tenantId = 't10';
                 await subscribeCallback({}, { data: { tenant: tenantId, metadata: { subscribedSubdomain: 'tenant-j' } } });
                 utils.getConfigurations.mockReturnValue({});
-                const callsBefore = executeHttpRequest.mock.calls.length;
                 await unsubscribeCallback({}, { data: { tenant: tenantId } });
                 // No additional GET calls should be made
                 const callsAfter = executeHttpRequest.mock.calls.filter(call => call[1]?.method === 'GET').length;
