@@ -47,8 +47,14 @@ describe("util", () => {
       // Mock cds.context for isRepositoryVersioned tests
       cds.context = {
         user: {
-          tokenInfo: {
-            getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "subdomain" } })
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "subdomain"
+                }
+              }
+            }
           }
         }
       };
@@ -859,7 +865,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockJwtBearerToken.mockResolvedValue("generated-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
 
         const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -890,7 +896,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockJwtBearerToken.mockResolvedValue("generated-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "tenant-subdomain" } }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: "tenant-subdomain" } } } } } };
 
         const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -918,7 +924,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockJwtBearerToken.mockResolvedValue("generated-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
 
         const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -974,7 +980,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockServiceToken.mockResolvedValue("generated-client-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
         
         const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -1000,7 +1006,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockServiceToken.mockResolvedValue("generated-client-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "tenant-subdomain" } }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: "tenant-subdomain" } } } } } };
 
         const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -1027,7 +1033,7 @@ describe("util", () => {
         const futureExp = Math.floor(Date.now() / 1000) + 3600;
         mockDecodeJwt.mockReturnValue({ exp: futureExp });
         mockServiceToken.mockResolvedValue("generated-client-token");
-        cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: {} }) } } };
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
 
         const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
         const service = {
@@ -1399,7 +1405,7 @@ describe("util", () => {
   describe("isRepositoryVersioned else branch", () => {
     it("should return false for non-pwconly repoType", () => {
       // Set up proper cds.context
-      cds.context = { user: { tokenInfo: { getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: 'test-subdomain' } }) } } };
+      cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: 'test-subdomain' } } } } } };
       
       const repoInfo = {
         data: {
