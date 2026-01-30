@@ -255,7 +255,7 @@ describe("SDMAttachmentsService", () => {
       getConfigurations.mockReturnValue({ repositoryId: "repo123" });
       cache.get.mockReturnValue(undefined);
       const mockDestination = { url: "http://example.com" };
-      service.technicalUserDestn = mockDestination;
+      service.getTechnicalDestination = jest.fn().mockResolvedValue(mockDestination);
       getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
       isRepositoryVersioned.mockReturnValue(false);
   
@@ -272,7 +272,7 @@ describe("SDMAttachmentsService", () => {
       getConfigurations.mockReturnValue({ repositoryId: "repo123" });
       cache.get.mockReturnValue(undefined);
       const mockDestination = { url: "http://example.com" };
-      service.technicalUserDestn = mockDestination;
+      service.getTechnicalDestination = jest.fn().mockResolvedValue(mockDestination);
       getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
       isRepositoryVersioned.mockResolvedValue(true);
   

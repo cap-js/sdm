@@ -886,7 +886,8 @@ describe("util", () => {
           userJwt,
           expect.objectContaining({
             name: "sdm-service"
-          })
+          }),
+          {}
         );
         expect(result.authentication).toBe('OAuth2JWTBearer');
         expect(result.name).toBe("sdm-service");
@@ -915,7 +916,7 @@ describe("util", () => {
 
         expect(mockJwtBearerToken).toHaveBeenCalledWith(userJwt, expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
-        }));
+        }), {});
         expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
         expect(result.authentication).toBe('OAuth2JWTBearer');
       });
@@ -941,7 +942,7 @@ describe("util", () => {
 
         expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
-        }));
+        }), {});
         expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
       });
 
@@ -966,7 +967,7 @@ describe("util", () => {
 
         expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
-        }));
+        }), {});
         expect(result.authentication).toBe('OAuth2JWTBearer');
       });
     });
