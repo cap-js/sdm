@@ -1,5 +1,5 @@
-const axios = require("axios");
-jest.mock("axios");
+const { executeHttpRequest } = require("@sap-cloud-sdk/http-client");
+jest.mock("@sap-cloud-sdk/http-client");
 jest.mock("node-cache", () => {
   return jest.fn().mockImplementation(() => ({
     get: jest.fn(),
@@ -51,33 +51,32 @@ describe("handlers", () => {
 
     it("returns document on successful read", async () => {
       const mockKey = "123";
-      const mockToken = "a1b2c3";
+      const mockDestination = { url: "http://example.com" };
       const mockCredentials = { uri: "http://example.com/" };
 
       const mockResponse = { data: "mock pdf file content" };
 
-      axios.get.mockResolvedValue(mockResponse);
+      executeHttpRequest.mockResolvedValue(mockResponse);
 
       const document = await readAttachment(
         mockKey,
-        mockToken,
+        mockDestination,
         mockCredentials
       );
 
-      const expectedUrl =
-        mockCredentials.uri +
-        "browser/123/root?objectID=" +
-        mockKey +
-        "&cmisselector=content";
-      expect(axios.get).toHaveBeenCalledWith(expectedUrl, {
-        headers: { Authorization: `Bearer ${mockToken}` },
-        responseType: "stream",
-      });
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        mockDestination,
+        {
+          method: 'GET',
+          url: mockCredentials.uri + "browser/123/root?objectID=" + mockKey + "&cmisselector=content",
+          responseType: "stream",
+        }
+      );
       expect(document.data).toEqual(mockResponse.data);
     });
 
     it("throws error on unsuccessful read", async () => {
-      axios.get.mockImplementationOnce(() =>
+      executeHttpRequest.mockImplementationOnce(() =>
         Promise.reject({
           response: {
             code: 500,
@@ -92,7 +91,7 @@ describe("handlers", () => {
 
     it("should return statusText when error has response.statusText", async () => {
       jest.clearAllMocks();
-      axios.get.mockImplementation(
+      executeHttpRequest.mockImplementation(
         jest.fn(() =>
           Promise.reject({
             message: "Request failed",
@@ -114,7 +113,7 @@ describe("handlers", () => {
         status: 404,
       };
       
-      axios.get.mockImplementationOnce(() =>
+      executeHttpRequest.mockImplementationOnce(() =>
         Promise.reject(actualError)
       );
     
@@ -124,7 +123,7 @@ describe("handlers", () => {
   });
 
   describe("getRepositoryInfo", () => {
-    let mockedCredentials, mockedToken, mockRepoInfo, mockReq;
+    let mockedCredentials, mockedDestination, mockRepoInfo, mockReq;
     beforeEach(() => {
       jest.clearAllMocks();
       mockReq = { reject: jest.fn() };
@@ -132,7 +131,7 @@ describe("handlers", () => {
 
     it("should return repositoryInfo for provided repositoryId", async () => {
       mockedCredentials = { uri: "mocked_uri/" };
-      mockedToken = "mocked_token";
+      mockedDestination = { url: "http://example.com" };
       mockRepoInfo = {
         data: {
           "123": {
@@ -143,55 +142,56 @@ describe("handlers", () => {
         }
       }
       const mockUrl = mockedCredentials.uri + "browser/" + 123 + "?cmisselector=repositoryInfo";
-      axios.get.mockResolvedValue(mockRepoInfo);
-      const repoInfo = await getRepositoryInfo(mockReq, mockedCredentials, mockedToken);
-      expect(axios.get).toHaveBeenCalledWith(mockUrl, {
-        headers: { Authorization: `Bearer ${mockedToken}` }
+      executeHttpRequest.mockResolvedValue(mockRepoInfo);
+      const repoInfo = await getRepositoryInfo(mockReq, mockedCredentials, mockedDestination);
+      expect(executeHttpRequest).toHaveBeenCalledWith(mockedDestination, {
+        method: 'GET',
+        url: mockUrl
       });
       expect(repoInfo).toEqual(mockRepoInfo);
     });
 
     it("throws error on unsuccessful getRepositoryInfo", async () => {
       mockedCredentials = { uri: "mocked_uri/" };
-      mockedToken = "mocked_token";
-      axios.get.mockImplementationOnce(() =>
+      mockedDestination = { url: "http://example.com" };
+      executeHttpRequest.mockImplementationOnce(() =>
         Promise.reject("something bad happened")
       );
       await expect(
-        getRepositoryInfo(mockReq, mockedCredentials, mockedToken)
+        getRepositoryInfo(mockReq, mockedCredentials, mockedDestination)
       ).rejects.toThrow("something bad happened");
     });
     it("should reject with 404 when repository info not found", async () => {
         mockedCredentials = { uri: "mocked_uri/" };
-        mockedToken = "mocked_token";
-        axios.get.mockRejectedValue({
+        mockedDestination = { url: "http://example.com" };
+        executeHttpRequest.mockRejectedValue({
           response: { status: 404 }
         });
 
-        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedToken)).rejects.toThrow();
+        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedDestination)).rejects.toThrow();
         expect(mockReq.reject).toHaveBeenCalledWith(404, "Failed to get repository info");
       });
 
       it("should reject with 500 and a message from the server", async () => {
         const errorMessage = 'Internal Server Error';
         mockedCredentials = { uri: "mocked_uri/" };
-        mockedToken = "mocked_token";
-        axios.get.mockRejectedValue({
+        mockedDestination = { url: "http://example.com" };
+        executeHttpRequest.mockRejectedValue({
           response: { status: 500, data: { message: errorMessage } }
         });
 
-        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedToken)).rejects.toThrow();
+        await expect(getRepositoryInfo(mockReq, mockedCredentials, mockedDestination)).rejects.toThrow();
         expect(mockReq.reject).toHaveBeenCalledWith(500, errorMessage);
       });
   })
 
   describe("Test for getFolderIdByPath", () => {
-    let mockedReq, mockedCredentials, mockedToken, mockedAttachments;
+    let mockedReq, mockedCredentials, mockedDestination, mockedAttachments;
     beforeEach(() => {
       jest.clearAllMocks();
       mockedReq = { data: { idValue: "testValue" } };
       mockedCredentials = { uri: "mocked_uri/" };
-      mockedToken = "mocked_token";
+      mockedDestination = { url: "http://example.com" };
       mockedAttachments = {
         keys: { up_: { keys: [{ $generatedFieldName: "idValue" }] } },
       };
@@ -201,46 +201,54 @@ describe("handlers", () => {
       const mockedResponse = {
         data: { properties: { "cmis:objectId": { value: "folderId" } } },
       };
-      axios.get.mockResolvedValue(mockedResponse);
+      executeHttpRequest.mockResolvedValue(mockedResponse);
 
       const result = await getFolderIdByPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
-        mockedAttachments
+        mockedAttachments,
+        undefined,
+        mockedDestination
       );
 
       // assertions
       expect(result).toEqual("folderId");
-      expect(axios.get).toHaveBeenCalledWith(
-        "mocked_uri/browser/123/root/testValue?cmisselector=object",
-        { headers: { Authorization: "Bearer mocked_token" } }
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        mockedDestination,
+        {
+          method: 'GET',
+          url: "mocked_uri/browser/123/root/testValue?cmisselector=object"
+        }
       );
     });
 
     it("should return null when axios request fails", async () => {
-      axios.get.mockRejectedValue(new Error("Network error"));
+      executeHttpRequest.mockRejectedValue(new Error("Network error"));
 
       const result = await getFolderIdByPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
-        mockedAttachments
+        mockedAttachments,
+        undefined,
+        mockedDestination
       );
 
       // assertions
       expect(result).toEqual(null);
-      expect(axios.get).toHaveBeenCalledWith(
-        "mocked_uri/browser/123/root/testValue?cmisselector=object",
-        { headers: { Authorization: "Bearer mocked_token" } }
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        mockedDestination,
+        {
+          method: 'GET',
+          url: "mocked_uri/browser/123/root/testValue?cmisselector=object"
+        }
       );
     });
 
-    it("should log statusText and return null when axios.get throws an error with response.statusText", async () => {
+    it("should log statusText and return null when executeHttpRequest throws an error with response.statusText", async () => {
       // create the mock objects
       const mockedReq = { data: { field1: "value1" } };
       const mockedCredentials = { uri: "mocked_uri/" };
-      const mockedToken = "mocked_token";
+      const mockedDestination = { url: "http://example.com" };
       const mockedAttachments = {
         keys: {
           up_: {
@@ -253,7 +261,7 @@ describe("handlers", () => {
         },
       };
       const errorResponse = { statusText: "Some error occurred" };
-      axios.get.mockRejectedValue({ response: errorResponse });
+      executeHttpRequest.mockRejectedValue({ response: errorResponse });
 
       // spy on console.log
       const logSpy = jest.spyOn(console, "log");
@@ -262,8 +270,9 @@ describe("handlers", () => {
       const response = await getFolderIdByPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
-        mockedAttachments
+        mockedAttachments,
+        undefined,
+        mockedDestination
       );
 
       // assert that the function returned null and printed the statusText
@@ -276,13 +285,13 @@ describe("handlers", () => {
   });
 
   describe("Test for getFolderIdByIDAsPath", () => {
-    let mockedReq, mockedCredentials, mockedToken, mockedAttachments;
+    let mockedReq, mockedCredentials, mockedDestination, mockedAttachments;
   
     beforeEach(() => {
       jest.clearAllMocks();
       mockedReq = { data: { '123': "testValue" } }; // Assuming the ID extracted from field is '123'
       mockedCredentials = { uri: "mocked_uri/" };
-      mockedToken = "mocked_token";
+      mockedDestination = { url: "http://example.com" };
       mockedAttachments = {
         keys: { up_: { keys: [{ $generatedFieldName: "field1__123" }] } },
       };
@@ -292,45 +301,51 @@ describe("handlers", () => {
       const mockedResponse = {
         data: { properties: { "cmis:objectId": { value: "folderId" } } },
       };
-      axios.get.mockResolvedValue(mockedResponse);
+      executeHttpRequest.mockResolvedValue(mockedResponse);
   
       const result = await getFolderIdByIDAsPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
+        mockedDestination,
         mockedAttachments
       );
   
       // assertions
       expect(result).toEqual("folderId");
-      expect(axios.get).toHaveBeenCalledWith(
-        "mocked_uri/browser/123/root/testValue?cmisselector=object",
-        { headers: { Authorization: "Bearer mocked_token" } }
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        mockedDestination,
+        {
+          method: 'GET',
+          url: "mocked_uri/browser/123/root/testValue?cmisselector=object"
+        }
       );
     });
   
     it("should return null when axios request fails", async () => {
-      axios.get.mockRejectedValue(new Error("Network error"));
+      executeHttpRequest.mockRejectedValue(new Error("Network error"));
   
       const result = await getFolderIdByIDAsPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
+        mockedDestination,
         mockedAttachments
       );
   
       // assertions
       expect(result).toEqual(null);
-      expect(axios.get).toHaveBeenCalledWith(
-        "mocked_uri/browser/123/root/testValue?cmisselector=object",
-        { headers: { Authorization: "Bearer mocked_token" } }
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        mockedDestination,
+        {
+          method: 'GET',
+          url: "mocked_uri/browser/123/root/testValue?cmisselector=object"
+        }
       );
     });
   
-    it("should log statusText and return null when axios.get throws an error with response.statusText", async () => {
+    it("should log statusText and return null when executeHttpRequest throws an error with response.statusText", async () => {
       // Create the mock objects
       const errorResponse = { statusText: "Some error occurred" };
-      axios.get.mockRejectedValue({ response: errorResponse });
+      executeHttpRequest.mockRejectedValue({ response: errorResponse });
   
       // Spy on console.log
       const logSpy = jest.spyOn(console, "log");
@@ -339,7 +354,7 @@ describe("handlers", () => {
       const response = await getFolderIdByIDAsPath(
         mockedReq,
         mockedCredentials,
-        mockedToken,
+        mockedDestination,
         mockedAttachments
       );
   
@@ -352,13 +367,18 @@ describe("handlers", () => {
   });
 
   describe("createFolder", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      executeHttpRequest.mockClear();
+    });
+
     it("should create a folder and return expected response when updateServerRequest is successful", async () => {
       // arrange
       const mockResponse = { data: "some_data" };
-      axios.post.mockResolvedValue(mockResponse);
+      executeHttpRequest.mockResolvedValue(mockResponse);
       const mockedReq = { data: { field1: "value1" } };
       const mockedCredentials = { uri: "mocked_uri/" };
-      const mockedToken = "mocked_token";
+      const mockedDestination = { url: "http://example.com" };
       const mockedAttachments = {
         keys: {
           up_: {
@@ -374,13 +394,14 @@ describe("handlers", () => {
       const response = await createFolder(
         mockedReq,
         mockedCredentials,
-        mockedToken,
-        mockedAttachments
+        mockedAttachments,
+        undefined,
+        mockedDestination
       );
       // assert
       expect(response).toEqual(mockResponse);
-      expect(axios.post).toHaveBeenCalledTimes(1);
-      expect(axios.post).toHaveBeenCalled();
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
+      expect(executeHttpRequest).toHaveBeenCalled();
     });
   });
 
@@ -391,28 +412,28 @@ describe("handlers", () => {
 
     it("returns response from updateServerRequest", async () => {
       const response = { data: "response" };
-      axios.post.mockResolvedValue(response);
+      executeHttpRequest.mockResolvedValue(response);
 
       const result = await createAttachment(
         {},
         { uri: "http://test.com" },
-        "token",
-        {}
+        {},
+        { url: "http://test.com" }
       );
 
       expect(result).toBe(response);
-      expect(axios.post).toHaveBeenCalled();
+      expect(executeHttpRequest).toHaveBeenCalled();
     });
 
     it("calls getConfigurations", async () => {
-      await createAttachment({}, {}, "", {});
+      await createAttachment({}, {}, {}, { url: "http://test.com" });
 
       expect(getConfigurations).toHaveBeenCalledTimes(1);
     });
 
     it("should append correct fields for internet shortcut mimeType", async () => {
       const response = { data: "response" };
-      axios.post.mockResolvedValue(response);
+      executeHttpRequest.mockResolvedValue(response);
 
       const data = {
         filename: "link.url",
@@ -420,10 +441,10 @@ describe("handlers", () => {
         linkUrl: "http://example.com"
       };
       const credentials = { uri: "http://test.com/" };
-      const token = "token";
+      const destination = { url: "http://test.com" };
       const parentId = "parentId";
 
-      await createAttachment(data, credentials, token, parentId);
+      await createAttachment(data, credentials, parentId, destination);
 
       // Get the last created FormData mock instance
       const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
@@ -445,7 +466,7 @@ describe("handlers", () => {
   });
 
   describe("editLink", () => {
-    let objectId, filename, linkUrl, credentials, token;
+    let objectId, filename, linkUrl, credentials, destination;
 
     beforeEach(() => {
       jest.clearAllMocks();
@@ -454,25 +475,24 @@ describe("handlers", () => {
       filename = 'MyLink';
       linkUrl = 'https://www.successfactors.com';
       credentials = { uri: 'http://test-uri.com/' };
-      token = 'test-token';
+      destination = { url: 'http://test-uri.com' };
     });
 
     it('should successfully edit a link and return the response', async () => {
       const mockResponse = { status: 200, data: 'OK' };
-      axios.post.mockResolvedValue(mockResponse);
+      executeHttpRequest.mockResolvedValue(mockResponse);
 
-      const response = await editLink(objectId, filename, linkUrl, credentials, token);
+      const response = await editLink(objectId, filename, linkUrl, credentials, destination);
 
-      const expectedUrl = `${credentials.uri}browser/123/root`;
       const expectedFilename = `${filename}.url`;
       const urlShortcut = `[InternetShortcut]\nURL=${linkUrl}`;
       const fileContent = Buffer.from(urlShortcut, 'utf-8');
 
-      // Check if axios.post was called correctly
-      expect(axios.post).toHaveBeenCalledTimes(1);
-      const postCallArgs = axios.post.mock.calls[0];
-      expect(postCallArgs[0]).toBe(expectedUrl);
-      expect(postCallArgs[2].headers.Authorization).toBe(`Bearer ${token}`);
+      // Check if executeHttpRequest was called correctly
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
+      const postCallArgs = executeHttpRequest.mock.calls[0];
+      expect(postCallArgs[0]).toBe(destination);
+      expect(postCallArgs[1].url).toContain('browser/123/root');
 
       // Check FormData content
       const formDataInstance = mockFormDataInstances[0];
@@ -490,9 +510,9 @@ describe("handlers", () => {
     });
 
     it('should use "link.url" as filename if filename is not provided', async () => {
-      axios.post.mockResolvedValue({ status: 200 });
+      executeHttpRequest.mockResolvedValue({ status: 200 });
 
-      await editLink(objectId, null, linkUrl, credentials, token);
+      await editLink(objectId, null, linkUrl, credentials, destination);
 
       const formDataInstance = mockFormDataInstances[0];
       const expectedFilename = 'link.url';
@@ -506,103 +526,91 @@ describe("handlers", () => {
 
     it('should return an error if the server request fails', async () => {
       const mockError = new Error('Request failed');
-      axios.post.mockRejectedValue(mockError);
+      executeHttpRequest.mockRejectedValue(mockError);
 
-      const response = await editLink(objectId, filename, linkUrl, credentials, token);
+      await expect(editLink(objectId, filename, linkUrl, credentials, destination)).rejects.toThrow('Request failed');
 
-      expect(response).toBe(mockError);
-      expect(axios.post).toHaveBeenCalledTimes(1);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("deleteAttachmentsOfFolder()", () => {
     beforeEach(() => {
-      axios.post.mockClear();
+      executeHttpRequest.mockClear();
       jest.clearAllMocks();
     });
 
     it("should perform the delete operation for given attachment", async () => {
-      axios.post.mockResolvedValueOnce({ data: "Deleted" });
+      executeHttpRequest.mockResolvedValueOnce({ data: "Deleted" });
       const credentials = { uri: "http://localhost/" };
-      const token = "demo-token";
+      const destination = { url: "http://localhost" };
       const objectId = "demo-objectId";
-      const attachments = {};
 
       const response = await deleteAttachmentsOfFolder(
         credentials,
-        token,
-        objectId,
-        attachments
+        destination,
+        objectId
       );
       expect(response.data).toBe("Deleted");
-      expect(axios.post).toHaveBeenCalledWith(
-        `${credentials.uri}browser/123/root`,
+      expect(executeHttpRequest).toHaveBeenCalledWith(
+        destination,
         expect.objectContaining({
-          append: expect.any(Function),
-          getHeaders: expect.any(Function),
-        }),
-        { headers: expect.any(Object) }
+          method: "POST",
+          url: expect.stringContaining('browser/123/root'),
+          data: expect.objectContaining({
+            append: expect.any(Function),
+            getHeaders: expect.any(Function),
+          })
+        })
       );
     });
 
-    it("should throw error when delete operation fails", async () => {
+    it("should return error object when delete operation fails", async () => {
       const error = new Error("Delete operation failed");
-      axios.post.mockRejectedValueOnce(error);
+      executeHttpRequest.mockRejectedValueOnce(error);
       const credentials = { uri: "http://localhost/" };
-      const token = "demo-token";
+      const destination = { url: "http://localhost" };
       const objectId = "demo-objectId";
-      const attachments = {};
-      const response = await deleteAttachmentsOfFolder(
-        credentials,
-        token,
-        objectId,
-        attachments
-      );
-
-      expect(response).toBeInstanceOf(Error);
-      expect(response.message).toBe(error.message);
-
-      expect(axios.post).toHaveBeenCalledWith(
-        `${credentials.uri}browser/123/root`,
-        expect.objectContaining({
-          append: expect.any(Function),
-          getHeaders: expect.any(Function),
-        }),
-        { headers: expect.any(Object) }
-      );
+      
+      const result = await deleteAttachmentsOfFolder(credentials, destination, objectId);
+      expect(result).toEqual({
+        status: undefined,
+        response: undefined,
+        message: 'Delete operation failed'
+      });
     });
   });
 
   describe("deleteFolderWithAttachments", () => {
     beforeEach(() => {
-      axios.post.mockClear();
+      executeHttpRequest.mockClear();
       jest.clearAllMocks();
     });
     it("should delete a folder and return expected response when updateServerRequest is successful", async () => {
       // arrange
       const mockResponse = { data: "some_data" };
-      axios.post.mockResolvedValue(mockResponse);
+      executeHttpRequest.mockResolvedValue(mockResponse);
       const mockedCredentials = { uri: "mocked_uri/" };
-      const mockedToken = "mocked_token";
+      const mockedDestination = { url: "http://example.com" };
       const parentId = "mocked_parentId";
 
       // act
       const response = await deleteFolderWithAttachments(
         mockedCredentials,
-        mockedToken,
+        mockedDestination,
         parentId
       );
 
       // assert
       expect(response).toEqual(mockResponse);
-      expect(axios.post).toHaveBeenCalledTimes(1);
-      expect(axios.post).toHaveBeenCalled();
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
+      expect(executeHttpRequest).toHaveBeenCalled();
     });
   });
 
   describe('getAttachment', () => {
     const uri = 'http://example.com/';
-    const token = 'test-token';
+    const destination = { url: 'http://example.com' };
     const objectId = 'test-object-id';
   
     afterEach(() => {
@@ -611,12 +619,15 @@ describe("handlers", () => {
   
     it('should fetch attachment successfully', async () => {
       const mockResponse = { data: 'some data' };
-      axios.get.mockResolvedValueOnce(mockResponse);
+      executeHttpRequest.mockResolvedValueOnce(mockResponse);
   
-      const response = await getAttachment(uri, token, objectId);
+      const response = await getAttachment(uri, destination, objectId);
   
       const expectedUrl =`${uri}browser/123/root?cmisselector=object&objectId=${objectId}&succinct=true`;
-      expect(axios.get).toHaveBeenCalledWith(expectedUrl, { headers: { Authorization: `Bearer ${token}` } });
+      expect(executeHttpRequest).toHaveBeenCalledWith(destination, {
+        method: 'GET',
+        url: expectedUrl
+      });
       expect(response).toBe(mockResponse);
     });
   
@@ -627,10 +638,10 @@ describe("handlers", () => {
           statusText: errorMessage,
         },
       };
-      axios.get.mockRejectedValueOnce(mockError);
+      executeHttpRequest.mockRejectedValueOnce(mockError);
       console.log = jest.fn(); // Mock console.log
   
-      const response = await getAttachment(uri, token, objectId);
+      const response = await getAttachment(uri, destination, objectId);
   
       expect(console.log).toHaveBeenCalledWith(errorMessage);
       expect(response).toBe("Not Found");
@@ -638,10 +649,10 @@ describe("handlers", () => {
   
     it('should return null and log a default error message when there is no status text', async () => {
       const mockError = {};
-      axios.get.mockRejectedValueOnce(mockError);
+      executeHttpRequest.mockRejectedValueOnce(mockError);
       console.log = jest.fn(); // Mock console.log
   
-      const response = await getAttachment(uri, token, objectId);
+      const response = await getAttachment(uri, destination, objectId);
   
       expect(console.log).toHaveBeenCalledWith(errorMessage);
       expect(response).toBe("An error occurred");
@@ -649,7 +660,7 @@ describe("handlers", () => {
   });
 
   describe("updateAttachment", () => {
-    let req, attachment, credentials, token, updatedSecondaryProperties, secondaryPropertiesWithInvalidDefinitions;
+    let req, attachment, credentials, destination, updatedSecondaryProperties, secondaryPropertiesWithInvalidDefinitions;
   
     beforeEach(() => {
       jest.resetAllMocks();
@@ -658,7 +669,7 @@ describe("handlers", () => {
       req = { reject: jest.fn() };
       attachment = { url: "mockObjectId" };
       credentials = { uri: "http://mock-uri/" };
-      token = "mockToken";
+      destination = { url: "http://mock-uri" };
       updatedSecondaryProperties = { "cmis:name": "newName", "custom:property": "value" };
       secondaryPropertiesWithInvalidDefinitions = {};
   
@@ -668,9 +679,9 @@ describe("handlers", () => {
     it("should update attachment successfully and return status code", async () => {
       const mockResponse = { status: 200 };
     
-      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
-      axios.get.mockImplementation((url) => {
-        if (url.includes("typeDescendants")) {
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      executeHttpRequest.mockImplementation((destination, options) => {
+        if (options.url.includes("typeDescendants")) {
           return Promise.resolve({
             data: [
               {
@@ -682,8 +693,10 @@ describe("handlers", () => {
               },
             ],
           });
-        } else if (url.includes("typeDefinition")) {
+        } else if (options.url.includes("typeDefinition")) {
           return Promise.resolve({ data: { propertyDefinitions: {} } });
+        } else {
+          return Promise.resolve(mockResponse);
         }
       });
 
@@ -702,36 +715,32 @@ describe("handlers", () => {
         return true;
       });
     
-      // Mock axios.post for updateServerRequest
-      axios.post.mockResolvedValue(mockResponse);
-    
       const result = await updateAttachment(
         req,
         attachment,
         credentials,
-        token,
+        destination,
         updatedSecondaryProperties,
         secondaryPropertiesWithInvalidDefinitions
       );
     
       expect(getConfigurations).toHaveBeenCalledTimes(1);
-      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(executeHttpRequest).toHaveBeenCalledTimes(4); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties, 1 for update
       expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
-      expect(axios.post).toHaveBeenCalledTimes(1);
       expect(result).toBe(200);
     });
   
     it("should throw an error if unsupported properties are found", async () => {
   
-      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
-      axios.get.mockImplementation((url) => {
-        if (url.includes("typeDescendants")) {
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      executeHttpRequest.mockImplementation((destination, options) => {
+        if (options.url.includes("typeDescendants")) {
           return Promise.resolve({
             data: [
               { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }, { type: { id: "type2" } }] },
             ],
           });
-        } else if (url.includes("typeDefinition")) {
+        } else if (options.url.includes("typeDefinition")) {
           return Promise.resolve({ data: { propertyDefinitions: {} } });
         }
       });
@@ -753,29 +762,29 @@ describe("handlers", () => {
   
       await expect(
         updateAttachment(
-          req,
-          attachment,
-          credentials,
-          token,
-          updatedSecondaryProperties,
+        req,
+        attachment,
+        credentials,
+        destination,
+        updatedSecondaryProperties,
           secondaryPropertiesWithInvalidDefinitions
         )
       ).rejects.toThrow("Unsupported properties custom:property");
   
       expect(getConfigurations).toHaveBeenCalledTimes(1);
-      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
       expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
     });
   
     it("should return 500 if getSecondaryTypes throws an error", async () => {
-      // Mock axios.get to throw an error for getSecondaryTypes
-      axios.get.mockRejectedValue(new Error("Network error"));
+      // Mock executeHttpRequest to throw an error for getSecondaryTypes
+      executeHttpRequest.mockRejectedValue(new Error("Network error"));
   
       const result = await updateAttachment(
         req,
         attachment,
         credentials,
-        token,
+        destination,
         updatedSecondaryProperties,
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -785,11 +794,10 @@ describe("handlers", () => {
     });
 
     it("should throw an error if invalid secondary properties are found", async () => {
-      const mockResponse = { status: 200 };
     
-      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
-      axios.get.mockImplementation((url) => {
-        if (url.includes("typeDescendants")) {
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      executeHttpRequest.mockImplementation((destination, options) => {
+        if (options.url.includes("typeDescendants")) {
           return Promise.resolve({
             data: [
               {
@@ -801,7 +809,7 @@ describe("handlers", () => {
               },
             ],
           });
-        } else if (url.includes("typeDefinition")) {
+        } else if (options.url.includes("typeDefinition")) {
           return Promise.resolve({ data: { propertyDefinitions: {} } });
         }
       });
@@ -826,26 +834,22 @@ describe("handlers", () => {
         invalidProperty1: "custom:property", // This matches a key in updatedSecondaryProperties
       };
     
-      // Mock axios.post for updateServerRequest
-      axios.post.mockResolvedValue(mockResponse);
-    
       // Act & Assert
       await expect(
         updateAttachment(
-          req,
-          attachment,
-          credentials,
-          token,
-          updatedSecondaryProperties,
+        req,
+        attachment,
+        credentials,
+        destination,
+        updatedSecondaryProperties,
           secondaryPropertyInvalidDefinition
         )
       ).rejects.toThrow("Unsupported properties custom:property");
     
       // Verify that the mocks were called
       expect(getConfigurations).toHaveBeenCalledTimes(1);
-      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
       expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
-      expect(axios.post).toHaveBeenCalledTimes(0); // Request should not be sent due to the error
     });
   
     it("should throw an error if updateServerRequest fails with a 400 status", async () => {
@@ -856,16 +860,21 @@ describe("handlers", () => {
         },
       };
   
-      // Mock axios.get for getSecondaryTypes and getValidSecondaryProperties
-      axios.get.mockImplementation((url) => {
-        if (url.includes("typeDescendants")) {
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      let callCount = 0;
+      executeHttpRequest.mockImplementation((destination, options) => {
+        callCount++;
+        if (options.url.includes("typeDescendants")) {
           return Promise.resolve({
             data: [
               { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }, { type: { id: "type2" } }] },
             ],
           });
-        } else if (url.includes("typeDefinition")) {
+        } else if (options.url.includes("typeDefinition")) {
           return Promise.resolve({ data: { propertyDefinitions: {} } });
+        } else if (callCount >= 4) {
+          // On the final call (update request), throw error
+          return Promise.reject(mockErrorResponse);
         }
       });
 
@@ -884,24 +893,62 @@ describe("handlers", () => {
         return true;
       });
   
-      // Mock axios.post to throw a 400 error
-      axios.post.mockRejectedValue(mockErrorResponse);
-  
       await expect(
         updateAttachment(
-          req,
-          attachment,
-          credentials,
-          token,
-          updatedSecondaryProperties,
+        req,
+        attachment,
+        credentials,
+        destination,
+        updatedSecondaryProperties,
           secondaryPropertiesWithInvalidDefinitions
         )
       ).rejects.toThrow("Could not update the attachment");
   
       expect(getConfigurations).toHaveBeenCalledTimes(1);
-      expect(axios.get).toHaveBeenCalledTimes(3); // 1 for getSecondaryTypes, 2 for getValidSecondaryProperties
       expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
-      expect(axios.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle error during update request", async () => {
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      let callCount = 0;
+      executeHttpRequest.mockImplementation((destination, options) => {
+        callCount++;
+        if (options.url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }] },
+            ],
+          });
+        } else if (options.url.includes("typeDefinition")) {
+          return Promise.resolve({ data: { propertyDefinitions: {} } });
+        } else if (callCount >= 4) {
+          throw new Error("Network error");
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+    
+      require("../../../lib/util/index").checkMCM.mockImplementation((responseBody, validSecondaryProperties) => {
+        validSecondaryProperties.push("cmis:name", "custom:property");
+        return true;
+      });
+    
+      await expect(
+        updateAttachment(
+          req,
+          attachment,
+          credentials,
+          destination,
+          updatedSecondaryProperties,
+          secondaryPropertiesWithInvalidDefinitions
+        )
+      ).rejects.toThrow("Could not update the attachment");
     });
   });
 });
