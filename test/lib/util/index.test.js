@@ -1,11 +1,8 @@
-const xssec = require("@sap/xssec");
 const NodeCache = require("node-cache");
 
 const {
-  fetchAccessToken,
   getConfigurations,
   isRepositoryVersioned,
-  getClientCredentialsToken,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -24,22 +21,6 @@ jest.mock("../../../lib/persistence", () => ({
   getExistingAttachments: jest.fn(),
 }));
 
-let dummyToken = "";
-function createDummyToken(payload = {}, header = { alg: 'HS256', typ: 'JWT' }) {
-  const base64UrlEncode = obj =>
-    Buffer.from(JSON.stringify(obj))
-      .toString('base64')
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-
-  const encodedHeader = base64UrlEncode(header);
-  const encodedPayload = base64UrlEncode(payload);
-  const signature = 'dummy-signature';
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
 jest.mock("node-cache");
 jest.mock("@sap/cds");
 jest.mock("@sap/xssec", () => ({
@@ -50,238 +31,33 @@ jest.mock("@sap/xssec", () => ({
     },
   },
 }));
+jest.mock("@sap-cloud-sdk/connectivity", () => ({
+  jwtBearerToken: jest.fn(),
+  serviceToken: jest.fn(),
+  decodeJwt: jest.fn()
+}));
 
 
 describe("util", () => {
-  describe("fetchAccessToken", () => {
-    beforeEach(() => {
-      xssec.v3.requests.requestUserToken.mockClear();
-      NodeCache.prototype.get.mockClear();
-      NodeCache.prototype.set.mockClear();
-      dummyToken = createDummyToken({
-        sub: "1234567890",
-        email: "example@example.com",
-        exp: 1516239022
-      });
-
-    });
-
-    it("requestUserToken should be called when no token in cache", async () => {
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestUserToken.mockImplementation(
-        (a, b, c, d, e, f, callback) => callback(null, dummyToken)
-      );
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const accessToken =  await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      const expectedCacheKey = "example@example.com_subdomain";
-      expect(xssec.v3.requests.requestUserToken).toBeCalled();
-      expect(NodeCache.prototype.set).toBeCalledWith(
-        expectedCacheKey,
-        dummyToken,
-        11 * 3600
-      );
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("requestUserToken should not be called when there is already token in cache which is expired", async () => {
-      NodeCache.prototype.get.mockImplementation(() => dummyToken);
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.v3.requests.requestUserToken).toBeCalled();
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("requestUserToken should  be called when there is already token in cache which is not expired", async () => {
-      cds.context = {
-        user: {
-          tokenInfo: {
-            getPayload: jest.fn(() => ({
-              ext_attr: {
-                zdn: 'subdomain' // simulate the subdomain extraction
-              }
-            })),
-          },
-        },
-      };
-    
-      const nowInSeconds = Math.floor(Date.now() / 1000);
-
-      dummyToken = createDummyToken({
-        sub: "1234567890",
-        email: "example@example.com",
-        exp: nowInSeconds + 3600, // 1 hour from now
-      });
-      NodeCache.prototype.get.mockImplementation(() => dummyToken);
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      const accessToken = await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-      expect(xssec.v3.requests.requestUserToken).not.toBeCalled();
-      expect(accessToken).toBe(dummyToken);
-    });
-
-    it("should throw error when request for access token fails", async () => {
-      const consoleErrorSpy = jest
-        .spyOn(console, "error")
-        .mockImplementation(() => { });
-      NodeCache.prototype.get.mockImplementationOnce(() => undefined);
-      xssec.v3.requests.requestUserToken.mockImplementation(
-        (a, b, c, d, e, f, callback) =>
-          callback(new Error("test error"), { statusCode: 500 })
-      );
-      cds.context = {
-        user: {
-          tokenInfo: {
-            getPayload: jest.fn(() => ({
-              ext_attr: {
-                zdn: 'subdomain' // simulate the subdomain extraction
-              }
-            })),
-          },
-        },
-      };
-      const req = {
-        user: {
-          tokenInfo: {
-            getTokenValue: dummyToken,
-          },
-        },
-      };
-      const credentials = { uaa: "uaa" };
-      try {
-        await fetchAccessToken(credentials, req.user.tokenInfo.getTokenValue);
-      } catch (err) {
-        expect(NodeCache.prototype.get).toBeCalledWith("example@example.com_subdomain");
-        expect(xssec.v3.requests.requestUserToken).toBeCalled();
-        expect(consoleErrorSpy).toBeCalledWith(
-          "Response error while fetching access token Error: test error"
-        );
-        expect(err).toBeInstanceOf(Error);
-      } finally {
-        consoleErrorSpy.mockRestore();
-      }
-    });
-  });
-
-  describe('getClientCredentialsToken', () => {
-    beforeEach(() => {
-      xssec.v3.requests.requestClientCredentialsToken.mockClear();
-      NodeCache.prototype.get.mockClear();
-      NodeCache.prototype.set.mockClear();
-    });
-  
-    it('returns cached token if available', async () => {
-      const cachedToken = 'mockedAccessToken';
-      NodeCache.prototype.get.mockImplementation(() => cachedToken);
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-    };
-      const token = await getClientCredentialsToken({ uaa: 'mockedUaa' });
-  
-      expect(token).toBe(cachedToken);
-      expect(NodeCache.prototype.get).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain');
-      expect(xssec.v3.requests.requestClientCredentialsToken).not.toHaveBeenCalled();
-    });
-  
-    it('requests new token and caches it if not available', async () => {
-      const credentials = { uaa: 'mockedUaa' };
-      const mockResponse = { accessToken: 'newAccessToken' };
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
-        callback(null, mockResponse);
-      });
-      cds.context = {
-        user: {
-            tokenInfo: {
-                getPayload: jest.fn(() => ({
-                    ext_attr: {
-                        zdn: 'subdomain' // simulate the subdomain extraction
-                    }
-                })),
-            },
-        },
-    };
-      const token = await getClientCredentialsToken(credentials);
-  
-      expect(token).toBe(mockResponse);
-      expect(NodeCache.prototype.set).toHaveBeenCalledWith('SDM_ACCESS_TOKEN_subdomain', mockResponse, expect.any(Number));
-      expect(xssec.v3.requests.requestClientCredentialsToken).toHaveBeenCalledWith(
-        "subdomain",
-        credentials.uaa,
-        null,
-        expect.any(Function)
-      );
-    });
-  
-    it('handles error from requestClientCredentialsToken', async () => {
-      const credentials = { uaa: 'mockedUaa' };
-      const mockError = new Error('Request failed');
-      NodeCache.prototype.get.mockImplementation(() => undefined);
-      xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, callback) => {
-        callback(mockError, null);
-      });
-  
-      await expect(getClientCredentialsToken(credentials)).rejects.toThrow();
-      expect(NodeCache.prototype.set).not.toHaveBeenCalled();
-    });
-  });
-
   describe("isRepositoryVersioned", () => {
     
     beforeEach(() => {
       NodeCache.prototype.get.mockClear();
       NodeCache.prototype.set.mockClear();
+      // Mock cds.context for isRepositoryVersioned tests
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
     });
     
     it("should return true when repotype is pwconly", () => {
@@ -1021,4 +797,630 @@ describe("util", () => {
     });
   });
 
+  describe("OAuth2 Token Transformation Functions", () => {
+    let mockJwtBearerToken;
+    let mockServiceToken;
+    let mockDecodeJwt;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      // Mock @sap-cloud-sdk/connectivity functions
+      mockJwtBearerToken = require("@sap-cloud-sdk/connectivity").jwtBearerToken;
+      mockServiceToken = require("@sap-cloud-sdk/connectivity").serviceToken;
+      mockDecodeJwt = require("@sap-cloud-sdk/connectivity").decodeJwt;
+    });
+
+    describe("buildOAuth2JWTBearerDestination", () => {
+      it("should build OAuth2 JWT Bearer destination with expiration", () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        
+        const { buildOAuth2JWTBearerDestination } = require("../../../lib/util/index");
+        const token = "test-jwt-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildOAuth2JWTBearerDestination(token, url, name);
+
+        expect(result).toEqual({
+          url,
+          name,
+          authentication: 'OAuth2JWTBearer',
+          authTokens: [
+            {
+              value: token,
+              type: 'bearer',
+              expiresIn: expect.any(String),
+              http_header: {
+                key: 'Authorization',
+                value: `Bearer ${token}`
+              },
+              error: null
+            }
+          ]
+        });
+        expect(mockDecodeJwt).toHaveBeenCalledWith(token);
+      });
+
+      it("should build OAuth2 JWT Bearer destination without expiration", () => {
+        mockDecodeJwt.mockReturnValue({});
+        
+        const { buildOAuth2JWTBearerDestination } = require("../../../lib/util/index");
+        const token = "test-jwt-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildOAuth2JWTBearerDestination(token, url, name);
+
+        expect(result.authTokens[0].expiresIn).toBeUndefined();
+      });
+    });
+
+    describe("transformSDMServiceBindingToJWTBearerCredentialsDestination", () => {
+      beforeEach(() => {
+        cds.context = undefined;
+      });
+
+      it("should transform service binding with user JWT", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://uaa.example.com",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const userJwt = "user-jwt-token";
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, userJwt);
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith(
+          userJwt,
+          expect.objectContaining({
+            name: "sdm-service"
+          }),
+          {}
+        );
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+        expect(result.name).toBe("sdm-service");
+      });
+
+      it("should replace provider subdomain with tenant subdomain", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: "tenant-subdomain" } } } } } };
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const userJwt = "user-jwt-token";
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, userJwt);
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith(userJwt, expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+      });
+
+      it("should not replace subdomain when tenant not available", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, "jwt");
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
+      });
+
+      it("should handle missing cds context gracefully", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockJwtBearerToken.mockResolvedValue("generated-token");
+        cds.context = undefined;
+
+        const { transformSDMServiceBindingToJWTBearerCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToJWTBearerCredentialsDestination(service, {}, "jwt");
+
+        expect(mockJwtBearerToken).toHaveBeenCalledWith("jwt", expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.authentication).toBe('OAuth2JWTBearer');
+      });
+    });
+
+    describe("transformSDMServiceBindingToClientCredentialsDestination", () => {
+      beforeEach(() => {
+        cds.context = undefined;
+      });
+
+      it("should transform service binding with client credentials", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
+        
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://uaa.example.com",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+        const options = { some: "option" };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, options);
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({ name: "sdm-service" }), options);
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
+        expect(result.name).toBe("sdm-service");
+      });
+
+      it("should replace provider subdomain with tenant subdomain", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: "tenant-subdomain" } } } } } };
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123",
+              clientsecret: "secret123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
+      });
+
+      it("should not replace subdomain when tenant not available", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: {} } } } } };
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
+      });
+
+      it("should handle missing cds context gracefully", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = undefined;
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {});
+
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.authentication).toBe('OAuth2ClientCredentials');
+      });
+    });
+
+    describe("buildClientCredentialsDestination", () => {
+      it("should build OAuth2 Client Credentials destination with expiration", () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        
+        const { buildClientCredentialsDestination } = require("../../../lib/util/index");
+        const token = "test-client-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildClientCredentialsDestination(token, url, name);
+
+        expect(result).toEqual({
+          url,
+          name,
+          authentication: 'OAuth2ClientCredentials',
+          authTokens: [
+            {
+              value: token,
+              type: 'bearer',
+              expiresIn: expect.any(String),
+              http_header: {
+                key: 'Authorization',
+                value: `Bearer ${token}`
+              },
+              error: null
+            }
+          ]
+        });
+        expect(mockDecodeJwt).toHaveBeenCalledWith(token);
+      });
+
+      it("should build OAuth2 Client Credentials destination without expiration", () => {
+        mockDecodeJwt.mockReturnValue({});
+        
+        const { buildClientCredentialsDestination } = require("../../../lib/util/index");
+        const token = "test-client-token";
+        const url = "https://example.com";
+        const name = "test-destination";
+
+        const result = buildClientCredentialsDestination(token, url, name);
+
+        expect(result.authTokens[0].expiresIn).toBeUndefined();
+      });
+    });
+
+    describe("getSdmInstanceName", () => {
+      const originalEnv = process.env.VCAP_SERVICES;
+
+      afterEach(() => {
+        if (originalEnv !== undefined) {
+          process.env.VCAP_SERVICES = originalEnv;
+        } else {
+          delete process.env.VCAP_SERVICES;
+        }
+      });
+
+      it("should extract SDM instance name from VCAP_SERVICES", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [
+            {
+              name: "my-sdm-instance",
+              credentials: {}
+            }
+          ]
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBe("my-sdm-instance");
+      });
+
+      it("should return null when sdm service not in VCAP_SERVICES", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          someOtherService: []
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBeNull();
+      });
+
+      it("should return null when sdm array is empty", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: []
+        });
+
+        const { getSdmInstanceName } = require("../../../lib/util/index");
+        const result = getSdmInstanceName();
+
+        expect(result).toBeNull();
+      });
+    });
+  });
+
+  describe("getPropertyTitles edge cases", () => {
+    it("should skip elements without propertyName", () => {
+      const attachmentEntity = {
+        elements: {
+          field1: {
+            '@title': 'Field 1 Title',
+            name: 'field1'
+            // No @SDM.Attachments.AdditionalProperty.name
+          },
+          field2: {
+            '@SDM.Attachments.AdditionalProperty.name': 'customField',
+            '@title': 'Field 2 Title',
+            name: 'field2'
+          }
+        }
+      };
+      const attachment = { field1: 'value1', field2: 'value2' };
+
+      const result = getPropertyTitles(attachmentEntity, attachment);
+
+      expect(result).toHaveProperty('customField', 'Field 2 Title');
+      expect(result).not.toHaveProperty('field1');
+    });
+
+    it("should use element name as fallback when no @title", () => {
+      const attachmentEntity = {
+        elements: {
+          field1: {
+            '@SDM.Attachments.AdditionalProperty.name': 'customField',
+            name: 'field1'
+            // No @title
+          }
+        }
+      };
+      const attachment = { field1: 'value1' };
+
+      const result = getPropertyTitles(attachmentEntity, attachment);
+
+      expect(result).toHaveProperty('customField', 'field1');
+    });
+  });
+
+  describe("getSecondaryPropertiesWithInvalidDefinition edge cases", () => {
+    it("should handle elements without SDM annotation", () => {
+      const attachmentEntity = {
+        elements: {
+          normalField: {
+            name: 'normalField'
+            // No sdm.additionalproperty annotation
+          }
+        }
+      };
+      const attachment = { normalField: 'value' };
+
+      const result = getSecondaryPropertiesWithInvalidDefinition(attachmentEntity, attachment);
+
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("getUpdatedSecondaryProperties null value handling", () => {
+    it("should handle null currentValue and non-null dbValue", () => {
+      const attachment = { 'field1': null };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'oldValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toHaveProperty('custom:field', null);
+    });
+
+    it("should handle non-null currentValue different from dbValue", () => {
+      const attachment = { 'field1': 'newValue' };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'oldValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toHaveProperty('custom:field', 'newValue');
+    });
+
+    it("should skip when both values are null", () => {
+      const attachment = { 'field1': null };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': null };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toEqual({});
+    });
+
+    it("should skip when values are equal", () => {
+      const attachment = { 'field1': 'sameValue' };
+      const secondaryTypeProperties = new Map([['field1', 'custom:field']]);
+      const propertiesInDB = { 'custom:field': 'sameValue' };
+
+      const result = getUpdatedSecondaryProperties(attachment, secondaryTypeProperties, propertiesInDB);
+
+      expect(result).toEqual({});
+    });
+  });
+
+  describe("extractSecondaryTypeIds recursion", () => {
+    it("should handle nested children recursively", () => {
+      const jsonArray = [
+        {
+          type: { id: 'parent' },
+          children: [
+            {
+              type: { id: 'child1' },
+              children: [
+                { type: { id: 'grandchild' } }
+              ]
+            },
+            { type: { id: 'child2' } }
+          ]
+        }
+      ];
+      const result = [];
+
+      extractSecondaryTypeIds(jsonArray, result);
+
+      expect(result).toEqual(['parent', 'child1', 'grandchild', 'child2']);
+    });
+
+    it("should handle items without type.id", () => {
+      const jsonArray = [
+        { type: { id: 'valid' } },
+        { type: {} }, // No id
+        { children: [{ type: { id: 'nested' } }] } // No type.id but has children
+      ];
+      const result = [];
+
+      extractSecondaryTypeIds(jsonArray, result);
+
+      expect(result).toEqual(['valid', 'nested']);
+    });
+  });
+
+  describe("checkMCM edge cases", () => {
+    it("should return false for empty responseBody", () => {
+      const result = checkMCM("", []);
+      expect(result).toBe(false);
+    });
+
+    it("should return false for whitespace-only responseBody", () => {
+      const result = checkMCM("   ", []);
+      expect(result).toBe(false);
+    });
+
+    it("should return false when propertyDefinitions is null", () => {
+      const responseBody = JSON.stringify({ propertyDefinitions: null });
+      const result = checkMCM(responseBody, []);
+      expect(result).toBe(false);
+    });
+
+    it("should skip properties without miscellaneous", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          'field1': { type: 'string' }, // No miscellaneous
+          'field2': {
+            'mcm:miscellaneous': { isPartOfTable: 'true' }
+          }
+        }
+      });
+      const secondaryPropertyIds = [];
+      
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+
+      expect(result).toBe(true);
+      expect(secondaryPropertyIds).toEqual(['field2']);
+    });
+
+    it("should skip properties where isPartOfTable is not true", () => {
+      const responseBody = JSON.stringify({
+        propertyDefinitions: {
+          'field1': {
+            'mcm:miscellaneous': { isPartOfTable: 'false' }
+          }
+        }
+      });
+      const secondaryPropertyIds = [];
+      
+      const result = checkMCM(responseBody, secondaryPropertyIds);
+
+      expect(result).toBe(false);
+      expect(secondaryPropertyIds).toEqual([]);
+    });
+  });
+
+  describe("getConfigurations with environment variable", () => {
+    const originalEnv = process.env.REPOSITORY_ID;
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.REPOSITORY_ID = originalEnv;
+      } else {
+        delete process.env.REPOSITORY_ID;
+      }
+    });
+
+    it("should return repositoryId from environment variable when set", () => {
+      process.env.REPOSITORY_ID = "env-repo-id";
+
+      const result = getConfigurations();
+
+      expect(result).toEqual({ repositoryId: "env-repo-id" });
+    });
+
+    it("should return cds.env settings when environment variable not set", () => {
+      delete process.env.REPOSITORY_ID;
+      cds.env = {
+        requires: {
+          sdm: {
+            settings: { repositoryId: "cds-repo-id" }
+          }
+        }
+      };
+
+      const result = getConfigurations();
+
+      expect(result).toEqual({ repositoryId: "cds-repo-id" });
+    });
+  });
+
+  describe("isRepositoryVersioned else branch", () => {
+    it("should return false for non-pwconly repoType", () => {
+      // Set up proper cds.context
+      cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: 'test-subdomain' } } } } } };
+      
+      const repoInfo = {
+        data: {
+          repo123: {
+            capabilities: {
+              capabilityContentStreamUpdatability: "anytime"
+            }
+          }
+        }
+      };
+
+      const result = isRepositoryVersioned(repoInfo, "repo123");
+
+      expect(result).toBe(false);
+    });
+  });
 });
