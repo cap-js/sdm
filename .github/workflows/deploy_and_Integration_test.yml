@@ -82,47 +82,64 @@ jobs:
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
 
-      - name: Fetch and Escape Client Secret
+      - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
         run: |
           service_instance_guid=$(cf service sdm-incidents-auth --guid)
           if [ -z "$service_instance_guid" ]; then
             echo "Error: Unable to retrieve service instance GUID"; exit 1;
           fi
-          
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
-          binding_guid=$(echo $bindings_response | jq -r '.resources[0].guid')
-          if [ -z "$binding_guid" ]; then
+          binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
+          if [ -z "$binding_guid" ] || [ "$binding_guid" = "null" ]; then
             echo "Error: Unable to retrieve binding GUID"; exit 1;
           fi
-          
           binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
-          
           clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
-          if [ -z "$clientSecret" ] || [ "$clientSecret" == "null" ]; then
+          if [ -z "$clientSecret" ] || [ "$clientSecret" = "null" ]; then
             echo "Error: clientSecret is not set or is null"; exit 1;
           fi
           escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
-          
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
-          if [ -z "$clientID" ] || [ "$clientID" == "null" ]; then
+          if [ -z "$clientID" ] || [ "$clientID" = "null" ]; then
             echo "Error: clientID is not set or is null"; exit 1;
           fi
-          
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_ENV || echo "CLIENT_SECRET=REDACTED" >> $GITHUB_ENV
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_ENV || echo "CLIENT_ID=REDACTED" >> $GITHUB_ENV
-
+          # Export to env
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
+          # Mask secrets in logs to prevent any appearance from being printed
+          echo "::add-mask::${escapedClientSecret}"
+          echo "::add-mask::${clientID}"
       - name: Run integration tests
         run: |
           appUrl="${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
           echo "app url: ${appUrl}"
-          # JSON file path
           JSON_FILE="test/integration/credentials.json"
-          # Modify JSON file
-          jq --arg appUrl "$appUrl" --arg authUrl "${{ secrets.CAPAUTH_URL }}" --arg clientID "${{ env.CLIENT_ID }}" --arg clientSecret "${{ env.CLIENT_SECRET }}" --arg username "${{ secrets.CF_USER }}" --arg password "${{ secrets.CF_PASSWORD }}" --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
-          '.appUrl = $appUrl | .authUrl = $authUrl | .clientID = $clientID | .clientSecret = $clientSecret | .username = $username | .password = $password | .noSDMRoleUsername = $noSDMRoleUsername | .noSDMRoleUserPassword = $noSDMRoleUserPassword' $JSON_FILE > "temp.json" \
-          && mv "temp.json" $JSON_FILE
-          # Redact sensitive fields before printing
-          jq '{ appUrl, authUrl, username, password }' $JSON_FILE | sed 's/"clientID": "[^"]*"/"clientID": "***"/' | sed 's/"clientSecret": "[^"]*"/"clientSecret": "***"/'
+          # Avoid echoing command with secrets: run sensitive jq in a subshell with xtrace disabled
+          (
+            set +x
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              '
+              .appUrl = $appUrl
+              | .authUrl = $authUrl
+              | .clientID = $clientID
+              | .clientSecret = $clientSecret
+              | .username = $username
+              | .password = $password
+              | .noSDMRoleUsername = $noSDMRoleUsername
+              | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+              ' "$JSON_FILE" > "temp.json"
+          )
+          mv "temp.json" "$JSON_FILE"
+          # Print only non-sensitive fields
+          jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
           npm install
           npm run integration-test
