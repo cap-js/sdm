@@ -16,37 +16,37 @@ permissions:
   pull-requests: read
 
 jobs:
-  # deploy:
-  #   if: github.event.pull_request.merged == true
-  #   runs-on: ubuntu-latest
-  #   steps:        
-  #     - name: Use Node.js 20.x
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20.x  
+  deploy:
+    # if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:        
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x  
           
-  #     - name: Login to Cloud Foundry
-  #       run: |
-  #         wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
-  #         | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
-  #         echo "deb https://packages.cloudfoundry.org/debian stable main" \
-  #         | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-  #         sudo apt update
-  #         sudo apt install cf-cli
-  #         cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+      - name: Login to Cloud Foundry
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
+          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
+          echo "deb https://packages.cloudfoundry.org/debian stable main" \
+          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt update
+          sudo apt install cf-cli
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
        
-  #     - name: Clone and prepare projects & Build and deploy
-  #       run: |
-  #         git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-  #         git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
-  #         cd sdm
-  #         npm pack
-  #         echo "Current directory"
-  #         pwd
-  #         ls
-  #         mv *.tgz ../incidents-app
-  #         cd ../incidents-app
-  #         npm i *.tgz
+      - name: Clone and prepare projects & Build and deploy
+        run: |
+          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
+          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+          cd sdm
+          npm pack
+          echo "Current directory"
+          pwd
+          ls
+          mv *.tgz ../incidents-app
+          cd ../incidents-app
+          npm i *.tgz
       
   #     - name: Build and deploy
   #       run: |
@@ -60,7 +60,7 @@ jobs:
   #         cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
 
   integration-test:
-    # needs: deploy
+    needs: deploy
     runs-on: ubuntu-latest
 
     steps:
