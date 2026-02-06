@@ -35,18 +35,18 @@ jobs:
           sudo apt install cf-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
        
-      - name: Clone and prepare projects & Build and deploy
-        run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
-          cd sdm
-          npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../incidents-app
-          cd ../incidents-app
-          npm i *.tgz
+      # - name: Clone and prepare projects & Build and deploy
+      #   run: |
+      #     git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
+      #     git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
+      #     cd sdm
+      #     npm pack
+      #     echo "Current directory"
+      #     pwd
+      #     ls
+      #     mv *.tgz ../incidents-app
+      #     cd ../incidents-app
+      #     npm i *.tgz
       
   #     - name: Build and deploy
   #       run: |
@@ -71,6 +71,16 @@ jobs:
         uses: actions/setup-node@v2.1.5
         with:
           node-version: '20'
+
+      - name: Login to Cloud Foundry
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
+          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
+          echo "deb https://packages.cloudfoundry.org/debian stable main" \
+          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt update
+          sudo apt install cf-cli
+          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
 
       - name: Fetch and Escape Client Secret
         id: fetch_secret
