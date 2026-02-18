@@ -1,15 +1,16 @@
-jest.mock('axios');
-jest.mock('@sap/xssec');
+jest.mock('@sap-cloud-sdk/connectivity');
+jest.mock('@sap-cloud-sdk/http-client');
 jest.mock('../../../lib/util/index');
 const path = require('path');
 const messageConsts = require('../../../lib/util/messageConsts');
 
 describe('SDM Plugin Onboarding and Offboarding Logic', () => {
-    let axios, xssec, utils, mockCds, mockDeploymentService;
+    let mockCds, mockDeploymentService;
     let subscribeCallback, unsubscribeCallback;
     const MOCK_EXTERNAL_ID = 'ext-12345';
     const MOCK_DISCOVERED_ID = 'discovered-repo-id-abc';
     let consoleErrorSpy, consoleLogSpy;
+    let mockDestination, getDestinationFromServiceBinding, executeHttpRequest, utils;
 
     beforeEach(() => {
         jest.resetModules();
@@ -24,16 +25,41 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
             root: MOCK_CDS_ROOT,
             requires: { sdm: { credentials: { uri: 'https://mock-sdm-api.com', uaa: {} } } },
         };
-        axios = require('axios');
-        xssec = require('@sap/xssec');
-        utils = require('../../../lib/util/index');
-        axios.post.mockResolvedValue({ status: 201, data: { id: 'onboard-123' } });
-        axios.delete.mockResolvedValue({ status: 204 });
-        axios.get.mockResolvedValue({
-            data: { repoAndConnectionInfos: [{ repository: { id: MOCK_DISCOVERED_ID, externalId: MOCK_EXTERNAL_ID } }] }
+
+        // Mock destination and http client
+        const { getDestinationFromServiceBinding: mockGetDestination } = require('@sap-cloud-sdk/connectivity');
+        const { executeHttpRequest: mockExecuteHttp } = require('@sap-cloud-sdk/http-client');
+        getDestinationFromServiceBinding = mockGetDestination;
+        executeHttpRequest = mockExecuteHttp;
+
+        mockDestination = {
+            url: 'https://mock-sdm-api.com',
+            authentication: 'OAuth2ClientCredentials',
+            authTokens: [{
+                value: 'mock-jwt-token',
+                type: 'bearer',
+                http_header: { key: 'Authorization', value: 'Bearer mock-jwt-token' }
+            }]
+        };
+
+        getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+        executeHttpRequest.mockImplementation((dest, config) => {
+            if (config.method === 'POST') {
+                return Promise.resolve({ status: 201, data: { id: 'onboard-123' } });
+            } else if (config.method === 'GET') {
+                return Promise.resolve({
+                    data: { repoAndConnectionInfos: [{ repository: { id: MOCK_DISCOVERED_ID, externalId: MOCK_EXTERNAL_ID } }] }
+                });
+            } else if (config.method === 'DELETE') {
+                return Promise.resolve({ status: 204 });
+            }
         });
-        xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(null, 'mock-jwt-token'));
+
+        utils = require('../../../lib/util/index');
         utils.getConfigurations.mockReturnValue({ repositoryId: MOCK_EXTERNAL_ID });
+        utils.getSdmInstanceName.mockReturnValue('sdm-instance');
+        utils.transformSDMServiceBindingToClientCredentialsDestination.mockReturnValue(mockDestination);
+
         mockDeploymentService = { after: jest.fn() };
         mockCds = {
             connect: { to: jest.fn().mockResolvedValue(mockDeploymentService) },
@@ -96,12 +122,15 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
             it('should successfully onboard a tenant repository on subscribe', async () => {
                 const req = { data: { tenant: 't1', metadata: { subscribedSubdomain: 'tenant-a-subdomain' } } };
                 await subscribeCallback({}, req);
-                expect(axios.post).toHaveBeenCalled();
+                expect(executeHttpRequest).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({ method: 'POST' })
+                );
             });
 
             it('should skip onboarding successfully if 409 Conflict indicates repository already exists', async () => {
-                // Arrange: Mock axios to return 409 with an "already exists" message
-                axios.post.mockRejectedValue({
+                // Arrange: Mock executeHttpRequest to return 409 with an "already exists" message
+                executeHttpRequest.mockRejectedValueOnce({
                     response: {
                         status: 409,
                         // This data string triggers the uncovered 'already exists' path
@@ -120,20 +149,36 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
             });
 
+            it('should skip onboarding when 409 error data is an object containing already exists message', async () => {
+                executeHttpRequest.mockRejectedValueOnce({
+                    response: {
+                        status: 409,
+                        data: { message: 'Repository already exists in the system', code: 'DUPLICATE' }
+                    }
+                });
+
+                const req = { data: { tenant: 't_skip2', metadata: { subscribedSubdomain: 'tenant-skip2-subdomain' } } };
+
+                await expect(subscribeCallback({}, req)).resolves.not.toThrow();
+
+                const expectedLogMessage = `Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
+                expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
+            });
+
             it('should throw if buildRepositoryObject fails', async () => {
                 utils.getConfigurations.mockReturnValue({});
                 const req = { data: { tenant: 't2', metadata: { subscribedSubdomain: 'tenant-b-subdomain' } } };
                 await expect(subscribeCallback({}, req)).rejects.toThrow(messageConsts.repositoryMissing);
             });
 
-            it('should throw if fetching token fails', async () => {
-                xssec.v3.requests.requestClientCredentialsToken.mockImplementation((_, __, ___, cb) => cb(new Error("token fail")));
+            it('should throw if fetching destination fails', async () => {
+                getDestinationFromServiceBinding.mockRejectedValueOnce(new Error("destination fail"));
                 const req = { data: { tenant: 't3', metadata: { subscribedSubdomain: 'tenant-c-subdomain' } } };
-                await expect(subscribeCallback({}, req)).rejects.toThrow("token fail");
+                await expect(subscribeCallback({}, req)).rejects.toThrow("destination fail");
             });
 
-            it('should throw if onboarding (axios.post) fails', async () => {
-                axios.post.mockRejectedValue(new Error("post fail"));
+            it('should throw if onboarding (executeHttpRequest) fails', async () => {
+                executeHttpRequest.mockRejectedValueOnce(new Error("post fail"));
                 const req = { data: { tenant: 't4', metadata: { subscribedSubdomain: 'tenant-d-subdomain' } } };
                 await expect(subscribeCallback({}, req)).rejects.toThrow("post fail");
             });
@@ -144,28 +189,73 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 const req = { data: { tenant: 't5', metadata: { subscribedSubdomain: 'tenant-e-subdomain' } } };
                 await subscribeCallback({}, req);
                 await unsubscribeCallback({}, { data: { tenant: 't5' } });
-                expect(axios.delete).toHaveBeenCalled();
+                expect(executeHttpRequest).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({ method: 'DELETE' })
+                );
             });
 
             it('should log error if repo not found during offboard', async () => {
-                axios.get.mockResolvedValue({ data: { repoAndConnectionInfos: [] } });
                 const req = { data: { tenant: 't6', metadata: { subscribedSubdomain: 'tenant-f-subdomain' } } };
                 await subscribeCallback({}, req);
+                // Mock GET to return empty repos
+                executeHttpRequest.mockImplementation((dest, config) => {
+                    if (config.method === 'GET') {
+                        return Promise.resolve({ data: { repoAndConnectionInfos: [] } });
+                    }
+                    return Promise.resolve({ status: 201, data: {} });
+                });
                 await unsubscribeCallback({}, { data: { tenant: 't6' } });
                 expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Could not find a repository"));
             });
 
+            it('should handle single repository object (not array)', async () => {
+                const singleRepo = { repository: { id: MOCK_DISCOVERED_ID, externalId: MOCK_EXTERNAL_ID } };
+                const req = { data: { tenant: 't7', metadata: { subscribedSubdomain: 'tenant-g-subdomain' } } };
+                await subscribeCallback({}, req);
+                // Mock GET to return single repo object
+                executeHttpRequest.mockImplementation((dest, config) => {
+                    if (config.method === 'GET') {
+                        return Promise.resolve({ data: { repoAndConnectionInfos: singleRepo } });
+                    } else if (config.method === 'DELETE') {
+                        return Promise.resolve({ status: 204 });
+                    }
+                    return Promise.resolve({ status: 201, data: {} });
+                });
+                await unsubscribeCallback({}, { data: { tenant: 't7' } });
+                expect(executeHttpRequest).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({ method: 'DELETE' })
+                );
+            });
+
             it('should throw if listing repositories fails', async () => {
-                axios.get.mockRejectedValue(new Error("list fail"));
                 const req = { data: { tenant: 't8', metadata: { subscribedSubdomain: 'tenant-h-subdomain' } } };
                 await subscribeCallback({}, req);
+                // Mock GET to fail
+                executeHttpRequest.mockImplementation((dest, config) => {
+                    if (config.method === 'GET') {
+                        return Promise.reject(new Error("list fail"));
+                    }
+                    return Promise.resolve({ status: 201, data: {} });
+                });
                 await expect(unsubscribeCallback({}, { data: { tenant: 't8' } })).rejects.toThrow("list fail");
             });
 
             it('should throw if delete fails', async () => {
-                axios.delete.mockRejectedValue(new Error("delete fail"));
                 const req = { data: { tenant: 't9', metadata: { subscribedSubdomain: 'tenant-i-subdomain' } } };
                 await subscribeCallback({}, req);
+                // Mock DELETE to fail
+                executeHttpRequest.mockImplementation((dest, config) => {
+                    if (config.method === 'DELETE') {
+                        return Promise.reject(new Error("delete fail"));
+                    } else if (config.method === 'GET') {
+                        return Promise.resolve({
+                            data: { repoAndConnectionInfos: [{ repository: { id: MOCK_DISCOVERED_ID, externalId: MOCK_EXTERNAL_ID } }] }
+                        });
+                    }
+                    return Promise.resolve({ status: 201, data: {} });
+                });
                 await expect(unsubscribeCallback({}, { data: { tenant: 't9' } })).rejects.toThrow("delete fail");
             });
 
@@ -174,7 +264,9 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 await subscribeCallback({}, { data: { tenant: tenantId, metadata: { subscribedSubdomain: 'tenant-j' } } });
                 utils.getConfigurations.mockReturnValue({});
                 await unsubscribeCallback({}, { data: { tenant: tenantId } });
-                expect(axios.get).not.toHaveBeenCalled();
+                // No additional GET calls should be made
+                const callsAfter = executeHttpRequest.mock.calls.filter(call => call[1]?.method === 'GET').length;
+                expect(callsAfter).toBe(0);
             });
         });
     });

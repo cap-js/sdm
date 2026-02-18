@@ -20,7 +20,9 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "3.5.0",
+    "@cap-js/attachments": "file:../../attachments/cap-js-attachments-4.7.0.tgz",
+    "@sap-cloud-sdk/connectivity": "^4.3.1",
+    "@sap-cloud-sdk/http-client": "^4.3.1",
     "@sap/xssec": "^4",
     "axios": "^1.7.4",
     "node-cache": "^5.1.2"
