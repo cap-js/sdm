@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.8.2
+
+### Fixed
+- Token handling and SDM API calls to use SAP Cloud SDK.
+- Support custom name for Attachments composition.
+- Issue where undefined error object in token generation caused application crash.
+
 ## Version 1.8.1
 
 ### Fixed
