@@ -60,17 +60,20 @@
       },
       "[development]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       },
       "[production]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       },
       "[hybrid]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       }
     }
