@@ -11,19 +11,18 @@ const tenant = process.env.TENANT;
 
 let token;
 let noSDMRoleToken;
-let api;
-let apiNoSDMRole;
 let projectID;
 let appUrl;
 let serviceName = 'processor';
 let entityName = 'Projects';
 let attachmentNavigation = 'references'; // Composition name in the deployed app
-let srvpath = 'ProcessorService';
 let attachments = [];
 let projectToDelete;
 let projectIDCustomProperty1;
-let projectIDCustomProperty2;
 let allCreatedProjects = []; // Track all projects for cleanup
+
+// Helper function for tests that expect an error
+const fail = (message) => { throw new Error(message || 'Test should have thrown an error'); };
 
 beforeAll(async () => {
   let clientId;
@@ -85,7 +84,7 @@ beforeAll(async () => {
   const config = {
     headers: { 'Authorization': "Bearer " + token }
   };
-  api = new Api(config);
+  new Api(config);
 
   // Small delay to ensure connection is stable before first test
   await new Promise(resolve => setTimeout(resolve, 1000));
