@@ -224,6 +224,72 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
     expect(response.data.value[0].filename).toBe('sample.pdf');
   });
 
+  it('should upload a single attachment and check if it has been uploaded with content --docx file', async () => {
+    // A separate test case for docx files to test mimeType handling for Word documents
+    const config = {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    // Create attachment metadata for docx file
+    const metadataResponse = await axios.post(
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}`,
+      {
+        filename: 'test-document.docx'
+      },
+      config
+    );
+
+    expect(metadataResponse.status).toBe(201);
+    expect(metadataResponse.data.ID).toBeDefined();
+    const docxAttachmentID = metadataResponse.data.ID;
+
+    // Upload docx file content
+    const filePath = path.join(__dirname, 'sample-document.docx');
+    const fileBuffer = fs.readFileSync(filePath);
+
+    const uploadConfig = {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      }
+    };
+
+    const uploadResponse = await axios.put(
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      fileBuffer,
+      uploadConfig
+    );
+
+    expect(uploadResponse.status).toBe(204);
+
+    // Verify the docx file was uploaded by reading it back
+    const readConfig = {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      responseType: 'arraybuffer'
+    };
+
+    const readResponse = await axios.get(
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      readConfig
+    );
+
+    expect(readResponse.status).toBe(200);
+    expect(readResponse.data).toBeDefined();
+    expect(readResponse.data.byteLength).toBeGreaterThan(0);
+    expect(readResponse.data.byteLength).toBe(fileBuffer.length);
+
+    // Track this attachment for cleanup
+    attachments.push({
+      ID: docxAttachmentID,
+      filename: 'test-document.docx'
+    });
+  });
+
   it('should not allow upload of duplicate files in same entity', async () => {
     const config = {
       headers: {

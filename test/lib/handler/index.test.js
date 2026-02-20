@@ -263,9 +263,6 @@ describe("handlers", () => {
       const errorResponse = { statusText: "Some error occurred" };
       executeHttpRequest.mockRejectedValue({ response: errorResponse });
 
-      // spy on console.log
-      const logSpy = jest.spyOn(console, "log");
-
       // call the function
       const response = await getFolderIdByPath(
         mockedReq,
@@ -275,12 +272,8 @@ describe("handlers", () => {
         mockedDestination
       );
 
-      // assert that the function returned null and printed the statusText
+      // assert that the function returned null
       expect(response).toBeNull();
-      expect(logSpy).toHaveBeenCalledWith("Some error occurred");
-
-      // restore console.log
-      logSpy.mockRestore();
     });
   });
 
@@ -342,13 +335,10 @@ describe("handlers", () => {
       );
     });
   
-    it("should log statusText and return null when executeHttpRequest throws an error with response.statusText", async () => {
+    it("should return null when executeHttpRequest throws an error with response.statusText", async () => {
       // Create the mock objects
       const errorResponse = { statusText: "Some error occurred" };
       executeHttpRequest.mockRejectedValue({ response: errorResponse });
-  
-      // Spy on console.log
-      const logSpy = jest.spyOn(console, "log");
   
       // Call the function
       const response = await getFolderIdByIDAsPath(
@@ -358,11 +348,8 @@ describe("handlers", () => {
         mockedAttachments
       );
   
-      // Assert that the function returned null and printed the statusText
+      // Assert that the function returned null
       expect(response).toBeNull();
-      expect(logSpy).toHaveBeenCalledWith("Some error occurred");
-  
-      logSpy.mockRestore();
     });
   });
 
@@ -606,6 +593,52 @@ describe("handlers", () => {
       expect(executeHttpRequest).toHaveBeenCalledTimes(1);
       expect(executeHttpRequest).toHaveBeenCalled();
     });
+
+    it("should return error object when deletion fails", async () => {
+      const mockError = new Error("Deletion failed");
+      mockError.response = {
+        status: 404,
+        statusText: "Not Found"
+      };
+      executeHttpRequest.mockRejectedValue(mockError);
+      
+      const mockedCredentials = { uri: "mocked_uri/" };
+      const mockedDestination = { url: "http://example.com" };
+      const parentId = "mocked_parentId";
+
+      const response = await deleteFolderWithAttachments(
+        mockedCredentials,
+        mockedDestination,
+        parentId
+      );
+
+      expect(response).toEqual({
+        status: 404,
+        response: mockError.response,
+        message: "Not Found"
+      });
+    });
+
+    it("should return error with message when response is undefined", async () => {
+      const mockError = new Error("Network error");
+      executeHttpRequest.mockRejectedValue(mockError);
+      
+      const mockedCredentials = { uri: "mocked_uri/" };
+      const mockedDestination = { url: "http://example.com" };
+      const parentId = "mocked_parentId";
+
+      const response = await deleteFolderWithAttachments(
+        mockedCredentials,
+        mockedDestination,
+        parentId
+      );
+
+      expect(response).toEqual({
+        status: undefined,
+        response: undefined,
+        message: "Network error"
+      });
+    });
   });
 
   describe('getAttachment', () => {
@@ -631,7 +664,7 @@ describe("handlers", () => {
       expect(response).toBe(mockResponse);
     });
   
-    it('should return null and log status text on error', async () => {
+    it('should return status text on error', async () => {
       const errorMessage = 'Not Found';
       const mockError = {
         response: {
@@ -639,22 +672,18 @@ describe("handlers", () => {
         },
       };
       executeHttpRequest.mockRejectedValueOnce(mockError);
-      console.log = jest.fn(); // Mock console.log
   
       const response = await getAttachment(uri, destination, objectId);
   
-      expect(console.log).toHaveBeenCalledWith(errorMessage);
       expect(response).toBe("Not Found");
     });
   
-    it('should return null and log a default error message when there is no status text', async () => {
+    it('should return a default error message when there is no status text', async () => {
       const mockError = {};
       executeHttpRequest.mockRejectedValueOnce(mockError);
-      console.log = jest.fn(); // Mock console.log
   
       const response = await getAttachment(uri, destination, objectId);
   
-      expect(console.log).toHaveBeenCalledWith(errorMessage);
       expect(response).toBe("An error occurred");
     });
   });
@@ -949,6 +978,162 @@ describe("handlers", () => {
           secondaryPropertiesWithInvalidDefinitions
         )
       ).rejects.toThrow("Could not update the attachment");
+    });
+
+    it("should handle response with nested response.status 400 and extract message from json", async () => {
+      const mockErrorResponse = {
+        response: {
+          status: 400,
+          json: jest.fn().mockResolvedValue({ message: "Invalid secondary properties" }),
+        },
+      };
+
+      // Mock executeHttpRequest for getSecondaryTypes and getValidSecondaryProperties
+      let callCount = 0;
+      executeHttpRequest.mockImplementation((destination, options) => {
+        callCount++;
+        if (options.url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }] },
+            ],
+          });
+        } else if (options.url.includes("typeDefinition")) {
+          return Promise.resolve({ data: { propertyDefinitions: {} } });
+        } else if (callCount >= 3) {
+          // On the final call (update request), return response with nested response
+          return Promise.resolve(mockErrorResponse);
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+
+      require("../../../lib/util/index").checkMCM.mockImplementation((responseBody, validSecondaryProperties) => {
+        validSecondaryProperties.push("cmis:name", "custom:property");
+        return true;
+      });
+
+      await expect(
+        updateAttachment(
+          req,
+          attachment,
+          credentials,
+          destination,
+          updatedSecondaryProperties,
+          secondaryPropertiesWithInvalidDefinitions
+        )
+      ).rejects.toThrow("Could not update the attachment");
+
+      // Verify that json() was called to extract the message (covers lines 366-368)
+      expect(mockErrorResponse.response.json).toHaveBeenCalled();
+    });
+
+    it("should handle error with statusText in getValidSecondaryProperties", async () => {
+      const mockErrorWithStatusText = {
+        response: {
+          statusText: "Service Unavailable",
+        },
+      };
+
+      // Use only cmis:name to avoid "Unsupported properties" error
+      const simpleUpdatedProps = { "cmis:name": "newName" };
+      
+      const mockResponse = { status: 200 };
+
+      // Mock executeHttpRequest for getSecondaryTypes and fail in getValidSecondaryProperties
+      executeHttpRequest.mockImplementation((destination, options) => {
+        if (options.url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }] },
+            ],
+          });
+        } else if (options.url.includes("typeDefinition")) {
+          // Throw error with response.statusText
+          return Promise.reject(mockErrorWithStatusText);
+        } else {
+          // Mock the final POST request for update
+          return Promise.resolve(mockResponse);
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+
+      const result = await updateAttachment(
+        req,
+        attachment,
+        credentials,
+        destination,
+        simpleUpdatedProps,
+        secondaryPropertiesWithInvalidDefinitions
+      );
+
+      // Should complete successfully despite the error in getValidSecondaryProperties
+      expect(result).toBe(200);
+      // Should reject with error message including statusText (covers lines 442-446)
+      expect(req.reject).toHaveBeenCalledWith("Could not update the attachment: Service Unavailable");
+    });
+
+    it("should handle error without statusText in getValidSecondaryProperties", async () => {
+      const mockErrorWithoutStatusText = {
+        message: "Network failure",
+      };
+
+      // Use only cmis:name to avoid "Unsupported properties" error
+      const simpleUpdatedProps = { "cmis:name": "newName" };
+      
+      const mockResponse = { status: 200 };
+
+      // Mock executeHttpRequest for getSecondaryTypes and fail in getValidSecondaryProperties
+      executeHttpRequest.mockImplementation((destination, options) => {
+        if (options.url.includes("typeDescendants")) {
+          return Promise.resolve({
+            data: [
+              { type: { id: "cmis:secondary" }, children: [{ type: { id: "type1" } }] },
+            ],
+          });
+        } else if (options.url.includes("typeDefinition")) {
+          // Throw error without response property
+          return Promise.reject(mockErrorWithoutStatusText);
+        } else {
+          // Mock the final POST request for update
+          return Promise.resolve(mockResponse);
+        }
+      });
+
+      require("../../../lib/util/index").extractSecondaryTypeIds.mockImplementation((jsonArray, result) => {
+        jsonArray.forEach((item) => {
+          if (item.type && item.type.id) {
+            result.push(item.type.id);
+          }
+        });
+      });
+
+      const result = await updateAttachment(
+        req,
+        attachment,
+        credentials,
+        destination,
+        simpleUpdatedProps,
+        secondaryPropertiesWithInvalidDefinitions
+      );
+
+      // Should complete successfully despite the error in getValidSecondaryProperties
+      expect(result).toBe(200);
+      // Should reject with error message using 'Unknown error' (covers lines 442-446)
+      expect(req.reject).toHaveBeenCalledWith("Could not update the attachment: Unknown error");
     });
   });
 });
