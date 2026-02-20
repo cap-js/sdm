@@ -70,12 +70,15 @@ jest.mock("@cap-js/attachments/srv/basic", () => class {
   async init() {
     return Promise.resolve();
   }
-  draftSaveHandler(attachments) {
-    return async (res, req) => {
+  // eslint-disable-next-line no-unused-vars
+  draftSaveHandler(_attachments) {
+    // eslint-disable-next-line no-unused-vars
+    return async (_res, _req) => {
       // Mock parent handler
     };
   }
-  registerHandlers(srv) {
+  // eslint-disable-next-line no-unused-vars
+  registerHandlers(_srv) {
     // Mock parent registerHandlers
   }
 });
@@ -150,6 +153,14 @@ jest.mock("@sap/cds/lib", () => {
           getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "test-subdomain" } })
         }
       }
+    },
+    // Add ql property to reference global mocks
+    get ql() {
+      return {
+        SELECT: global.SELECT,
+        UPDATE: global.UPDATE,
+        DELETE: global.DELETE
+      };
     }
   };
   return mockCds;
@@ -177,6 +188,13 @@ global.UPDATE = jest.fn().mockReturnValue({
   set: jest.fn().mockReturnThis(),
   where: jest.fn().mockResolvedValue()
 });
+global.DELETE = {
+  from: jest.fn().mockReturnThis(),
+  where: jest.fn().mockResolvedValue()
+};
+
+// Destructure SELECT and UPDATE from global for easier usage in tests
+const { SELECT, UPDATE } = global;
 
 
 // Global entity definition setup for link tests to avoid "Cannot read properties of undefined (reading 'keys')"

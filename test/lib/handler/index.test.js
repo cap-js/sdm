@@ -41,7 +41,6 @@ const {
   updateAttachment,
   editLink
 } = require("../../../lib/handler/index");
-const { errorMessage } = require("../../../lib/util/messageConsts");
 
 describe("handlers", () => {
   describe("ReadAttachment function", () => {
