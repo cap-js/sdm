@@ -1079,6 +1079,33 @@ describe("util", () => {
         }), {});
         expect(result.authentication).toBe('OAuth2ClientCredentials');
       });
+
+      it("should use provided subdomain parameter instead of context", async () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        mockDecodeJwt.mockReturnValue({ exp: futureExp });
+        mockServiceToken.mockResolvedValue("generated-client-token");
+        cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: "context-subdomain" } } } } } };
+
+        const { transformSDMServiceBindingToClientCredentialsDestination } = require("../../../lib/util/index");
+        const service = {
+          name: "sdm-service",
+          credentials: {
+            uaa: {
+              url: "https://provider-subdomain.example.com/oauth/token",
+              clientid: "client123"
+            }
+          }
+        };
+
+        // Pass subdomain as third parameter
+        const result = await transformSDMServiceBindingToClientCredentialsDestination(service, {}, "param-subdomain");
+
+        // Should use param-subdomain, not context-subdomain
+        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
+          credentials: expect.objectContaining({ url: "https://param-subdomain.example.com/oauth/token" })
+        }), {});
+        expect(result.url).toBe("https://param-subdomain.example.com/oauth/token");
+      });
     });
 
     describe("buildClientCredentialsDestination", () => {

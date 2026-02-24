@@ -139,5 +139,13 @@ jobs:
           mv "temp.json" "$JSON_FILE"
           # Print only non-sensitive fields
           jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
+          
           npm install
-          npm run integration-test
+          
+          echo ""
+          echo "📋 Running Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
+          TENANCY_MODEL=single npm run integration-test
+
+          echo ""
+          echo "📋 Running Single-Tenant Non-draft Entity(Projects) Integration Tests..."
+          TENANCY_MODEL=single npm run integration-test-non-draft
