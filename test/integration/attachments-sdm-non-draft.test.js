@@ -257,7 +257,7 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
     };
 
     const uploadResponse = await axios.put(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${xlsxAttachmentID})/content`,
       fileBuffer,
       uploadConfig
     );
@@ -273,7 +273,7 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
     };
 
     const readResponse = await axios.get(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${xlsxAttachmentID})/content`,
       readConfig
     );
 
