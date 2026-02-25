@@ -30,7 +30,7 @@ jobs:
           echo "deb https://packages.cloudfoundry.org/debian stable main" \
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
-          sudo apt install cf-cli
+          sudo apt install cf8-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
        
       - name: Clone and prepare projects & Build and deploy
@@ -77,15 +77,28 @@ jobs:
           echo "deb https://packages.cloudfoundry.org/debian stable main" \
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
-          sudo apt install cf-cli
+          sudo apt install cf8-cli jq
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
 
       - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
         run: |
-          service_instance_guid=$(cf service sdm-incidents-auth --guid)
+          # Retry logic to handle transient CF API rate limits
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            service_instance_guid=$(cf service sdm-incidents-auth --guid 2>/dev/null || echo "")
+            if [ -n "$service_instance_guid" ]; then
+              break
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "⏳ Attempt $attempt failed, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+              RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+          done
           if [ -z "$service_instance_guid" ]; then
-            echo "Error: Unable to retrieve service instance GUID"; exit 1;
+            echo "❌ Error: Unable to retrieve service instance GUID after $MAX_RETRIES attempts"; exit 1;
           fi
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
           binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
