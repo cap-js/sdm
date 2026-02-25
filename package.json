@@ -20,7 +20,9 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "2.0.2",
+    "@cap-js/attachments": "3.8.0",
+    "@sap-cloud-sdk/connectivity": "^4.3.1",
+    "@sap-cloud-sdk/http-client": "^4.3.1",
     "@sap/xssec": "^4",
     "axios": "^1.7.4",
     "node-cache": "^5.1.2"
@@ -41,6 +43,7 @@
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js",
     "integration-test": "jest --config jest-integration.config.js",
+    "integration-test-non-draft": "jest --config jest-integration-non-draft.config.js",
     "lint": "npx eslint --fix . --no-cache"
   },
   "cds": {
@@ -57,17 +60,20 @@
       },
       "[development]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       },
       "[production]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       },
       "[hybrid]": {
         "attachments": {
-          "kind": "sdm"
+          "kind": "sdm",
+          "scan": false
         }
       }
     }

@@ -12,7 +12,9 @@ const config = {
       statements: 90,
       functions: 90
     },
-  }
+  },
+  // Setup file to suppress console output during tests
+  setupFilesAfterEnv: ["<rootDir>/test/setup.js"]
 };
 
 module.exports = config;
