@@ -223,8 +223,8 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
     expect(response.data.value[0].filename).toBe('sample.pdf');
   });
 
-  it('should upload a single attachment and check if it has been uploaded with content --docx file', async () => {
-    // A separate test case for docx files to test mimeType handling for Word documents
+  it('should upload a single attachment and check if it has been uploaded with content --xlsx file', async () => {
+    // A separate test case for xlsx files to test mimeType handling for Excel documents
     const config = {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -232,39 +232,39 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
       }
     };
 
-    // Create attachment metadata for docx file
+    // Create attachment metadata for xlsx file
     const metadataResponse = await axios.post(
       `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}`,
       {
-        filename: 'test-document.docx'
+        filename: 'test-document.xlsx'
       },
       config
     );
 
     expect(metadataResponse.status).toBe(201);
     expect(metadataResponse.data.ID).toBeDefined();
-    const docxAttachmentID = metadataResponse.data.ID;
+    const xlsxAttachmentID = metadataResponse.data.ID;
 
-    // Upload docx file content
-    const filePath = path.join(__dirname, 'sample-document.docx');
+    // Upload xlsx file content
+    const filePath = path.join(__dirname, 'sample-document.xlsx');
     const fileBuffer = fs.readFileSync(filePath);
 
     const uploadConfig = {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       }
     };
 
     const uploadResponse = await axios.put(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${xlsxAttachmentID})/content`,
       fileBuffer,
       uploadConfig
     );
 
     expect(uploadResponse.status).toBe(204);
 
-    // Verify the docx file was uploaded by reading it back
+    // Verify the xlsx file was uploaded by reading it back
     const readConfig = {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -273,7 +273,7 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
     };
 
     const readResponse = await axios.get(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${docxAttachmentID})/content`,
+      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${projectID})/${attachmentNavigation}(ID=${xlsxAttachmentID})/content`,
       readConfig
     );
 
@@ -284,8 +284,8 @@ describe('Non-Draft Attachments Integration Tests --CREATE', () => {
 
     // Track this attachment for cleanup
     attachments.push({
-      ID: docxAttachmentID,
-      filename: 'test-document.docx'
+      ID: xlsxAttachmentID,
+      filename: 'test-document.xlsx'
     });
   });
 
