@@ -17,6 +17,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Custom properties in attachments : Provides the capability to define custom properties for attachments in SDM.
 - Link as attachments: Provides the capability to support link or URL as attachments.
 - Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
+- Non-Draft Attachments: Provides the capability to work with attachments in non-draft (active) entities.
 
 ### Table of Contents
 
@@ -26,6 +27,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Custom Properties](#support-for-custom-properties)
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
+- [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -446,6 +448,187 @@ tasks:
       command: cds-mtx upgrade '*'
 ```
 This will automatically update tenant databases during deployment.
+
+## Support for Non-Draft Attachments
+
+This plugin provides full support for handling attachments in non-draft (active) entities, enabling direct CRUD operations without requiring draft mode. This is particularly useful for scenarios where entities don't use the draft pattern or where immediate attachment operations are needed.
+
+### Key Features
+
+- **Direct Upload**: Upload attachments directly to active entities using PUT or CREATE operations
+- **Immediate Updates**: Update attachment metadata (filename, custom properties) without draft activation
+- **Direct Deletion**: Delete attachments immediately from active entities
+- **Filename Validation**: Automatic validation for restricted characters and empty filenames
+- **Custom Properties**: Full support for CMIS secondary type properties in non-draft mode
+- **Automatic Rename**: Rename attachments on entity UPDATE operations
+
+### How It Works
+
+For entities **without** draft support (no `@odata.draft.enabled`), the plugin automatically:
+
+1. **Handles PUT operations** on attachment entities for file uploads
+2. **Handles CREATE operations** for creating new attachment records with content
+3. **Handles UPDATE operations** for modifying attachment metadata and renaming files in SDM
+4. **Handles DELETE operations** for immediate removal from both database and SDM
+
+### Entity Definition
+
+To use non-draft attachments, simply define an entity without draft enablement. See this [example](https://github.com/cap-js/incidents-app/blob/6e78c3ce9b521c64583c560a03d1604bc2b607d8/db/schema.cds#L68) from a sample incidents-management app:
+
+```cds
+
+entity Projects : cuid, managed {
+  name           : String @title: 'Project Name';
+  description    : String @title: 'Description';
+  status         : String @title: 'Status';
+  customer       : Association to Customers;
+}
+```
+
+Note: **Do not** annotate the entity with `@odata.draft.enabled` for non-draft attachment support.
+
+### Typical Workflow
+
+For non-draft entities, the standard workflow is:
+
+1. **Create** attachment metadata using POST (Example 1) - creates the database record
+2. **Upload** file content using PUT /content (Example 2) - uploads to SDM
+3. **Update** metadata if needed using PATCH (Example 3) - modifies filename or properties
+4. **Delete** when no longer needed using DELETE (Example 4) - removes from both DB and SDM
+
+### Usage Examples
+
+#### 1. Create Attachment Metadata (POST)
+
+First, create the attachment record with metadata. See this [example](https://github.com/cap-js/sdm/blob/eb7b0d44b9abfb5bdb3c97c769ff323411ace522/test/integration/attachments-sdm-non-draft.test.js#L151):
+
+```http
+POST /Projects(ID=<project-id>)/attachments
+Content-Type: application/json
+
+{
+  "filename": "report.pdf"
+}
+```
+
+**Optional fields**: You can also include `mimeType`, `note`, or custom properties:
+
+```http
+POST /Documents(ID=<project-id>)/attachments
+Content-Type: application/json
+
+{
+  "filename": "report.pdf",
+  "mimeType": "application/pdf",
+  "note": "Annual report"
+}
+```
+
+This creates the database record without content. The response includes the generated attachment ID.
+
+#### 2. Upload File Content (PUT)
+
+Then, upload the actual file content to the attachment created in step 1. See this [example](https://github.com/cap-js/sdm/blob/eb7b0d44b9abfb5bdb3c97c769ff323411ace522/test/integration/attachments-sdm-non-draft.test.js#L179):
+
+```http
+PUT /Projects(ID=<project-id>)/attachments(ID=<attachment-id>)/content
+Content-Type: application/pdf
+
+<binary file content>
+```
+
+The plugin validates the filename and uploads the file directly to SDM. This is where the actual file is stored.
+
+**Important Notes**: 
+- The attachment record must already exist (created via POST in Example 1) before uploading content
+- The Content-Type header should match the file type (e.g., `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` for Word docs)
+
+#### 3. Update Attachment Metadata (PATCH) - Optional
+
+Update attachment properties like filename, notes, or custom properties. See this [example](https://github.com/cap-js/sdm/blob/eb7b0d44b9abfb5bdb3c97c769ff323411ace522/test/integration/attachments-sdm-non-draft.test.js#L608):
+
+```http
+PATCH /Projects(ID=<project-id>)/attachments(ID=<attachment-id>)
+Content-Type: application/json
+
+{
+  "filename": "updated-report.pdf",
+  "note": "Updated documentation"
+}
+```
+
+The plugin automatically renames the file in SDM if the filename changes.
+
+**With Custom Properties**: You can also update CMIS secondary type properties. See this [example](https://github.com/cap-js/sdm/blob/eb7b0d44b9abfb5bdb3c97c769ff323411ace522/test/integration/attachments-sdm-non-draft.test.js#L732):
+
+```http
+PATCH /Projects(ID=<project-id>)/attachments(ID=<attachment-id>)
+Content-Type: application/json
+
+{
+  "filename": "quarterly-report.pdf",
+  "customProperty1_code": "FIN-Q1",
+  "customProperty2": 2025,
+  "customProperty5": "2025-03-24T05:20:07Z",
+  "customProperty6": true
+}
+```
+
+**Note**: If any invalid or unsupported custom property is included, the entire update operation will fail with a warning, and no properties will be updated (matching draft behavior).
+
+#### 4. Delete Attachment (DELETE)
+
+Delete a single attachment immediately from both database and SDM. See this [example](https://github.com/cap-js/sdm/blob/eb7b0d44b9abfb5bdb3c97c769ff323411ace522/test/integration/attachments-sdm-non-draft.test.js#L988):
+
+```http
+DELETE /Projects(ID=<project-id>)/attachments(ID=<attachment-id>)
+```
+
+**Note**: When you delete the parent entity (e.g., the Document), all associated attachments are automatically deleted from both the database and SDM.
+
+### Multiple Attachments
+
+You can create multiple attachments for a single entity by repeating the POST + PUT workflow:
+
+```javascript
+// Create and upload multiple attachments
+for (const file of ['doc1.pdf', 'doc2.pdf', 'doc3.pdf']) {
+  // 1. Create metadata
+  const metadataResponse = await POST('/Projects(ID=<id>)/attachments', {
+    filename: file
+  });
+  
+  // 2. Upload content
+  await PUT(
+    `/Projects(ID=<id>)/attachments(ID=${metadataResponse.ID})/content`,
+    fileContent
+  );
+}
+```
+
+### Validation and Error Handling
+
+The plugin performs automatic validation for non-draft attachments:
+
+- **Restricted Characters**: Rejects filenames containing forbidden characters (e.g., `/`, `\`)
+- **Empty Filenames**: Rejects null or empty filenames
+- **Attachment Existence**: Validates that attachments exist before operations
+- **Duplicate Detection**: Prevents duplicate filenames within the same entity (same filenames are allowed across different entities)
+
+### Example: Complete Service Definition
+
+```cds
+using { sap.capire.incidents as my } from '../db/schema';
+using { sap.attachments.Attachments } from '@cap-js/sdm';
+
+extend my.Projects with { attachments: Composition of many Attachments }
+
+// Service definition
+service ProcessorService {
+  entity Projects as projection on my.Projects; // Non-draft entity
+  entity Projects.attachments as projection on my.Projects.attachments;
+}
+```
 
 ## Support for Multitenancy
 
