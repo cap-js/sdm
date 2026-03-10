@@ -3898,6 +3898,12 @@ describe("SDMAttachmentsService", () => {
       // FIX: Spy on the actual method to assert calls
       service.updateBaselinesForEntity = jest.fn();
       
+      // Mock global.UPDATE for mimeType fix using mockImplementation to avoid breaking other tests
+      global.UPDATE.mockClear().mockImplementation(() => ({
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue()
+      }));
+      
       req = {
         target: {
           name: 'Test.Entity.drafts'
@@ -3905,8 +3911,10 @@ describe("SDMAttachmentsService", () => {
       };
     });
     
-    it('should handle entity patterns when no target name', async () => {
-      req.target = {}; // Simulate no target name
+    it('should call updateBaselinesForEntity for attachment compositions', async () => {
+      // Set up proper target name
+      req.target = { name: 'ProcessorService.Incidents' };
+      req.data = { ID: 'test-id' };
       
       // Mock the parent entity with references composition
       cds.model.definitions['ProcessorService.Incidents'] = {
@@ -3921,31 +3929,30 @@ describe("SDMAttachmentsService", () => {
       // Mock the entity definitions that the method looks for
       cds.model.definitions['ProcessorService.Incidents.references'] = { 
         entity: 'TestAttachments',
-        includes: ['sap.attachments.Attachments']
-      };
-      cds.model.definitions['ProcessorService.Incidents.references.drafts'] = { 
-        entity: 'TestAttachmentsDrafts'
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
       };
       
-      await service.handleDraftSaveForLinks(req);
+      await service.handleDraftSaveForLinks({}, req);
       
-      // FIX: Assert calls to the spied function
+      // Assert updateBaselinesForEntity is called for the attachments entity
       expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.references');
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.references.drafts');
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledTimes(2);
+      expect(service.updateBaselinesForEntity).toHaveBeenCalledTimes(1);
     });
     
-    it('should not call updateBaselinesForEntity when target name is available', async () => {
-      // Target name is available: 'Test.Entity.drafts'
+    it('should not call updateBaselinesForEntity when no composition entities exist', async () => {
+      // Target name exists but no matching composition entities are defined
+      req.target = { name: 'Test.Entity.drafts' };
+      req.data = {};
       
       // Clean up entity definitions from previous test
       delete cds.model.definitions['ProcessorService.Incidents'];
       delete cds.model.definitions['ProcessorService.Incidents.references'];
       delete cds.model.definitions['ProcessorService.Incidents.references.drafts'];
       
-      await service.handleDraftSaveForLinks(req);
+      await service.handleDraftSaveForLinks({}, req);
       
-      // FIX: Assert NOT called when target name is present (as per sdm.js logic)
+      // updateBaselinesForEntity should not be called when composition entities don't exist
       expect(service.updateBaselinesForEntity).not.toHaveBeenCalled();
     });
   });
