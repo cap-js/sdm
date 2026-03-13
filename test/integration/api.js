@@ -415,7 +415,7 @@ class Api {
             };
 
             // Construct OData editLink URL
-            const requestUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/attachments(up__ID=${incidentID},ID=${linkID},IsActiveEntity=false)/${srvpath}.editLink`;
+            const requestUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(up__ID=${incidentID},ID=${linkID},IsActiveEntity=false)/${srvpath}.editLink`;
 
             response = await axios.post(requestUrl, linkData, this.config);
 
