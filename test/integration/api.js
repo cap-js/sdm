@@ -182,6 +182,33 @@ class Api {
         }
     }
 
+    async discardDraft(appUrl, serviceName, entityName, incidentID){
+        let response;
+        try{
+            // Discard draft by deleting the entity with IsActiveEntity=false
+            response = await axios.delete(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)`,
+                this.config
+            )
+            if(response.status == 204){
+                return {
+                    status: "OK",
+                };
+            }
+            else{
+                return {
+                    status: "FAILED",
+                    message: "Discard draft did not return 204 status code. Actual code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Discard draft API call failed : " + error.message
+            };
+        }
+    }
+
     async createAttachment(appUrl, serviceName, entityName, incidentID, postData, file){
         let response;
         postData['filename'] = file.filename;
@@ -370,6 +397,41 @@ class Api {
         } catch (error) {
             // Extract server error message if available
             let errorMessage = "Create Link API call failed : " + error.message;
+            if (error.response && error.response.data && error.response.data.error && error.response.data.error.message) {
+                errorMessage = error.response.data.error.message;
+            }
+            return {
+                status: "FAILED",
+                message: errorMessage
+            };
+        }
+    }
+
+    async editLink(appUrl, serviceName, entityName, incidentID, linkID, srvpath, url) {
+        let response;
+        try {
+            const linkData = {
+                url: url
+            };
+
+            // Construct OData editLink URL
+            const requestUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(up__ID=${incidentID},ID=${linkID},IsActiveEntity=false)/${srvpath}.editLink`;
+
+            response = await axios.post(requestUrl, linkData, this.config);
+
+            if (response.status === 204) {
+                return {
+                    status: "OK"
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Edit link did not return 204 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            // Extract server error message if available
+            let errorMessage = "Edit Link API call failed : " + error.message;
             if (error.response && error.response.data && error.response.data.error && error.response.data.error.message) {
                 errorMessage = error.response.data.error.message;
             }

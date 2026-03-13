@@ -560,6 +560,9 @@ describe('Attachments Integration Tests --UPDATE', () => {
 });
 
 describe('Attachments Integration Tests --LINK', () => {
+  let editLinkIncidentID;
+  let editLinkAttachmentID;
+
   it('should successfully create a link and verify it is openable after multiple edits', async () => {
     let linkIncidentID;
     let linkAttachmentID;
@@ -1219,6 +1222,296 @@ const config = {
     response = await api.deleteEntity(appUrl, serviceName, entityName, renameDuplicateIncidentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should successfully edit an existing link with valid URL using editLink API', async () => {
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    editLinkIncidentID = response.incidentID;
+
+    const originalName = 'OriginalLink';
+    const originalUrl = 'https://original.com';
+    response = await api.createLink(appUrl, serviceName, entityName, editLinkIncidentID, srvpath, originalName, originalUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, editLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === originalUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    editLinkAttachmentID = linkAttachment.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, editLinkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const updatedUrl = 'https://updated-valid.com';
+    response = await api.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    expect(response.data.filename).toBe(originalName);
+    expect(response.data.linkUrl).toBe(updatedUrl);
+
+    response = await api.openAttachmentSaved(appUrl, serviceName, entityName, editLinkIncidentID, srvpath, editLinkAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+  });
+
+  it('should validate URL format when using editLink API', async () => {
+    let invalidEditIncidentID;
+    let invalidEditLinkID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    invalidEditIncidentID = response.incidentID;
+
+    const originalName = 'TestEditLink';
+    const originalUrl = 'https://original-test.com';
+    response = await api.createLink(appUrl, serviceName, entityName, invalidEditIncidentID, srvpath, originalName, originalUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, invalidEditIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === originalUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    invalidEditLinkID = linkAttachment.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, invalidEditIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, invalidEditIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const invalidUrl = 'invalid-url-format';
+    response = await api.editLink(appUrl, serviceName, entityName, invalidEditIncidentID, invalidEditLinkID, srvpath, invalidUrl);
+    
+    if (response.status !== "OK" && expect(response.message).toContain("Enter a value matching the pattern")) {
+      // Try to rename invalid link
+      response = await api.editLink(appUrl, serviceName, entityName, invalidEditIncidentID, invalidEditLinkID, srvpath, originalUrl);
+      if (response.status !== "OK") {
+        throw new Error(`Error in renaming of Invalid to Valid link: ${response.message}`);
+      }
+      // Save entity draft
+      response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, invalidEditIncidentID);
+
+      if (response.status === "OK") {
+        // Delete entity
+        response = await api.deleteEntity(appUrl, serviceName, entityName, invalidEditIncidentID);
+        if (response.status !== "OK") {
+          throw new Error(`Error: ${response.message}`);
+        }
+      }
+    }
+  });
+
+  it('should validate URL requirement when using editLink API', async () => {
+    let emptyUrlEditIncidentID;
+    let emptyUrlEditLinkID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    emptyUrlEditIncidentID = response.incidentID;
+
+    const originalName = 'TestEmptyUrlEdit';
+    const originalUrl = 'https://original-empty-test.com';
+    response = await api.createLink(appUrl, serviceName, entityName, emptyUrlEditIncidentID, srvpath, originalName, originalUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, emptyUrlEditIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === originalUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    emptyUrlEditLinkID = linkAttachment.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, emptyUrlEditIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, emptyUrlEditIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const emptyUrl = '';
+    response = await api.editLink(appUrl, serviceName, entityName, emptyUrlEditIncidentID, emptyUrlEditLinkID, srvpath, emptyUrl);
+    
+    if (response.status !== "OK" && expect(response.message).toContain("Multiple errors occurred, see details below.")) {
+      // Try to rename invalid link
+      response = await api.editLink(appUrl, serviceName, entityName, emptyUrlEditIncidentID, emptyUrlEditLinkID, srvpath, originalUrl);
+      if (response.status !== "OK") {
+        throw new Error(`Error in renaming of Invalid to Valid link: ${response.message}`);
+      }
+      // Save entity draft
+      response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, emptyUrlEditIncidentID);
+      if (response.status === "OK") {
+        // Delete entity
+        response = await api.deleteEntity(appUrl, serviceName, entityName, emptyUrlEditIncidentID);
+        if (response.status !== "OK") {
+          throw new Error(`Error: ${response.message}`);
+        }
+      }
+    }
+  });
+
+  it('should discard draft edited link and revert to original URL', async () => {
+    let discardTestIncidentID;
+    let discardTestLinkID;
+
+    // Create entity
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+    discardTestIncidentID = response.incidentID;
+
+    // Create link type attachment (original URL)
+    const originalName = 'DiscardTestLink';
+    const originalUrl = 'https://abc.com';
+    response = await api.createLink(appUrl, serviceName, entityName, discardTestIncidentID, srvpath, originalName, originalUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Get the link ID
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    const linkAttachment = response.attachments.find(att => 
+      att.filename === originalName && att.linkUrl === originalUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list")
+    }
+    discardTestLinkID = linkAttachment.ID;
+
+    // Save entity
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit same entity
+    response = await api.editEntity(appUrl, serviceName, entityName, discardTestIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Edit same link type attachment (new URL)
+    const updatedUrl = 'https://xyz.com';
+    response = await api.editLink(appUrl, serviceName, entityName, discardTestIncidentID, discardTestLinkID, srvpath, updatedUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Discard draft
+    response = await api.discardDraft(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Read attachment - should revert back to original URL (https://abc.com)
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, discardTestIncidentID, discardTestLinkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Verify the link reverted back to the original URL
+    expect(response.data.filename).toBe(originalName);
+    expect(response.data.linkUrl).toBe(originalUrl); // Should be https://abc.com, not https://xyz.com
+
+    // Cleanup - delete the test entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, discardTestIncidentID);
+    if (response.status !== "OK") {
+      // Log cleanup failure but don't fail the test since the main functionality passed
+      console.warn("Cleanup failed for discardTestIncidentID:", response.message);
+    }
+  });
+
+  it('should not allow editing a link without SDM role', async () => {
+    // Enter draft mode with no-SDM-role user (reusing editLinkIncidentID from previous test)
+    const config = {
+      headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+    };
+    apiNoSDMRole = new Api(config);
+    let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, editLinkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Try to edit the link with valid URL using no-SDM-role user
+    const updatedUrl = 'https://updated-norole.com';
+    response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toBe("Request failed with status code 403");
+
+    // Save entity draft with no-SDM-role user to exit draft mode
+    response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Cleanup - delete entity with authorized user
+    response = await api.deleteEntity(appUrl, serviceName, entityName, editLinkIncidentID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for editLinkIncidentID:", response.message);
     }
   });
 });
