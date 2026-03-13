@@ -514,8 +514,9 @@ describe("handlers", () => {
       const mockError = new Error('Request failed');
       executeHttpRequest.mockRejectedValue(mockError);
 
-      await expect(editLink(objectId, filename, linkUrl, credentials, destination)).rejects.toThrow('Request failed');
+      const response = await editLink(objectId, filename, linkUrl, credentials, destination);
 
+      expect(response).toBe(mockError);
       expect(executeHttpRequest).toHaveBeenCalledTimes(1);
     });
   });
