@@ -1,64 +1,17 @@
-# This job will run only once PR will get merge under specified branch.
-# Once PR is merged, then this workflow will trigger the deploy-job & if it completes only then the followup job (Integration test) runs.
-
-name: Single Tenant Deploy and Integration Test
+name: Single Tenant Integration Test
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - develop
   workflow_dispatch:
+    inputs:
+      cf_space:
+        description: 'Specify the Cloud Foundry space to run integration tests on'
+        required: true
 
 permissions:
   pull-requests: read
 
 jobs:
-  deploy:
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:        
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x  
-          
-      - name: Login to Cloud Foundry
-        run: |
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
-          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
-          echo "deb https://packages.cloudfoundry.org/debian stable main" \
-          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-          sudo apt update
-          sudo apt install cf8-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
-       
-      - name: Clone and prepare projects & Build and deploy
-        run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
-          cd sdm
-          npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../incidents-app
-          cd ../incidents-app
-          npm i *.tgz
-      
-      - name: Build and deploy
-        run: |
-          cd incidents-app
-          wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
-          tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
-          sudo mv mbt /usr/local/bin/
-          npm i @sap/cds-dk -g
-          mbt build
-          cf install-plugin multiapps -f
-          cf deploy mta_archives/sdmincidents_1.0.0.mtar -f
-
   integration-test:
-    needs: deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -70,62 +23,75 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
+        id: determine_space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "Space determined for use"
+          echo "space=$space" >> "$GITHUB_ENV"
+
       - name: Login to Cloud Foundry
         run: |
-          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
-          | sudo tee /etc/apt/trusted.gpg.d/cloudfoundry.asc
-          echo "deb https://packages.cloudfoundry.org/debian stable main" \
-          | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
-          sudo apt update
-          sudo apt install cf8-cli jq
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          echo "Org Name: ${{ secrets.CF_ORG }}"
+          # Do not log space name to avoid unintended exposure
+          cf login -a "${{ secrets.CF_API }}" \
+            -u "${{ secrets.CF_USER }}" \
+            -p "${{ secrets.CF_PASSWORD }}" \
+            -o "${{ secrets.CF_ORG }}" \
+            -s "${{ env.space }}"
 
       - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
         run: |
-          # Retry logic to handle transient CF API rate limits
-          MAX_RETRIES=3
-          RETRY_DELAY=10
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            service_instance_guid=$(cf service sdm-incidents-auth --guid 2>/dev/null || echo "")
-            if [ -n "$service_instance_guid" ]; then
-              break
-            fi
-            if [ $attempt -lt $MAX_RETRIES ]; then
-              echo "⏳ Attempt $attempt failed, retrying in ${RETRY_DELAY}s..."
-              sleep $RETRY_DELAY
-              RETRY_DELAY=$((RETRY_DELAY * 2))
-            fi
-          done
+          service_instance_guid=$(cf service sdm-incidents-auth --guid)
           if [ -z "$service_instance_guid" ]; then
-            echo "❌ Error: Unable to retrieve service instance GUID after $MAX_RETRIES attempts"; exit 1;
+            echo "Error: Unable to retrieve service instance GUID"; exit 1;
           fi
+
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
           binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
           if [ -z "$binding_guid" ] || [ "$binding_guid" = "null" ]; then
             echo "Error: Unable to retrieve binding GUID"; exit 1;
           fi
+
           binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
+
           clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
           if [ -z "$clientSecret" ] || [ "$clientSecret" = "null" ]; then
             echo "Error: clientSecret is not set or is null"; exit 1;
           fi
           escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
+
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           if [ -z "$clientID" ] || [ "$clientID" = "null" ]; then
             echo "Error: clientID is not set or is null"; exit 1;
           fi
+
           # Export to env
           echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
           echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
+
           # Mask secrets in logs to prevent any appearance from being printed
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
+
       - name: Run integration tests
         run: |
-          appUrl="${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
+          appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
           echo "app url: ${appUrl}"
           JSON_FILE="test/integration/credentials.json"
+
           # Avoid echoing command with secrets: run sensitive jq in a subshell with xtrace disabled
           (
             set +x
@@ -150,11 +116,12 @@ jobs:
               ' "$JSON_FILE" > "temp.json"
           )
           mv "temp.json" "$JSON_FILE"
+
           # Print only non-sensitive fields
           jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
-          
+
           npm install
-          
+
           echo ""
           echo "📋 Running Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
           TENANCY_MODEL=single npm run integration-test
