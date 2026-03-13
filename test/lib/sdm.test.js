@@ -1,10 +1,10 @@
 const SDMAttachmentsService = require("../../lib/sdm");
 const NodeCache = require("node-cache");
+const { getDestinationFromServiceBinding, retrieveJwt } = require("@sap-cloud-sdk/connectivity");
 const {
-  fetchAccessToken,
   getConfigurations,
   isRepositoryVersioned,
-  getClientCredentialsToken,
+  getSdmInstanceName,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -52,6 +52,7 @@ let {
   duplicateFileErr,
   otherFileErr,
   userNotAuthorisedError,
+  userNotAuthorisedReadError,
   userDoesNotHaveRequiredScope,
   versionedRepositoryErr,
   nameConstrainErr,
@@ -60,10 +61,34 @@ let {
   userNotAuthorisedOpenLink,
   editLinkNotFoundErr,
   linkNameConstraintMessage,
-  unsupportedProperties
+  unsupportedProperties,
+  attachmentNotFound,
+  errorMessage
 } = require("../../lib/util/messageConsts");
 
-jest.mock("@cap-js/attachments/lib/basic", () => class {});
+jest.mock("@cap-js/attachments/srv/basic", () => class {
+  async init() {
+    return Promise.resolve();
+  }
+  // eslint-disable-next-line no-unused-vars
+  draftSaveHandler(_attachments) {
+    // eslint-disable-next-line no-unused-vars
+    return async (_res, _req) => {
+      // Mock parent handler
+    };
+  }
+  // eslint-disable-next-line no-unused-vars
+  registerHandlers(_srv) {
+    // Mock parent registerHandlers
+  }
+});
+jest.mock("@sap-cloud-sdk/connectivity", () => ({
+  getDestinationFromServiceBinding: jest.fn(),
+  retrieveJwt: jest.fn()
+}));
+jest.mock("@sap-cloud-sdk/http-client", () => ({
+  executeHttpRequest: jest.fn()
+}));
 jest.mock("../../lib/persistence", () => ({
   getDraftAttachments: jest.fn(),
   getDraftAttachmentsForUpID: jest.fn(),
@@ -86,11 +111,11 @@ jest.mock("../../lib/persistence", () => ({
   editLinkInDraft: jest.fn()
 }));
 jest.mock("../../lib/util", () => ({
-  fetchAccessToken: jest.fn(),
   checkAttachmentsToRename: jest.fn(),
   getConfigurations: jest.fn(),
   isRepositoryVersioned: jest.fn(),
-  getClientCredentialsToken: jest.fn(),
+  getSdmInstanceName: jest.fn(),
+  transformSDMServiceBindingToJWTBearerCredentialsDestination: jest.fn(),
   isRestrictedCharactersInName: jest.fn(),
   getStatusCondition: jest.fn(),
   getPropertyTitles: jest.fn(),
@@ -128,11 +153,27 @@ jest.mock("@sap/cds/lib", () => {
           getPayload: jest.fn().mockReturnValue({ ext_attr: { zdn: "test-subdomain" } })
         }
       }
+    },
+    // Add ql property to reference global mocks
+    get ql() {
+      return {
+        SELECT: global.SELECT,
+        UPDATE: global.UPDATE,
+        DELETE: global.DELETE
+      };
     }
   };
   return mockCds;
 });
 jest.mock("node-cache");
+
+// Mock the cache instance used in sdm.js
+const mockCacheInstance = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn()
+};
+NodeCache.mockImplementation(() => mockCacheInstance);
 
 // Global Mocks for CAP Query Functions (Used in Link Persistence Logic)
 global.SELECT = {
@@ -147,6 +188,13 @@ global.UPDATE = jest.fn().mockReturnValue({
   set: jest.fn().mockReturnThis(),
   where: jest.fn().mockResolvedValue()
 });
+global.DELETE = {
+  from: jest.fn().mockReturnThis(),
+  where: jest.fn().mockResolvedValue()
+};
+
+// Destructure SELECT and UPDATE from global for easier usage in tests
+const { SELECT, UPDATE } = global;
 
 
 // Global entity definition setup for link tests to avoid "Cannot read properties of undefined (reading 'keys')"
@@ -159,14 +207,61 @@ const mockUpKeyStructure = {
 };
 
 const cds = require("@sap/cds/lib");
-cds.model.definitions['ProcessorService.Incidents.attachments'] = {};
-cds.model.definitions['ProcessorService.Incidents.attachments.drafts'] = mockUpKeyStructure;
-cds.model.definitions['Test.Entity.attachments'] = {}; // Added to satisfy test structure
-cds.model.definitions['Test.Entity.attachments.drafts'] = mockUpKeyStructure; // Added to satisfy test structure
+cds.model.definitions['ProcessorService.Incidents.references'] = {};
+cds.model.definitions['ProcessorService.Incidents.references.drafts'] = mockUpKeyStructure;
+cds.model.definitions['Test.Entity.references'] = {}; // Added to satisfy test structure
+cds.model.definitions['Test.Entity.references.drafts'] = mockUpKeyStructure; // Added to satisfy test structure
+
+// Add entity with 'references' composition for testing alternative composition names
+cds.model.definitions['Test.Entity.references'] = {};
+cds.model.definitions['Test.Entity.references.drafts'] = mockUpKeyStructure;
+cds.model.definitions['Test.EntityWithReferences'] = {
+  elements: {
+    references: {
+      type: 'cds.Composition',
+      target: 'Test.Entity.references'
+    }
+  }
+};
+cds.model.definitions['Test.Entity.references'] = {
+  includes: ['sap.attachments.Attachments']
+};
+cds.model.definitions['ProcessorService.Orders'] = {
+  elements: {
+    references: {
+      type: 'cds.Composition',
+      target: 'ProcessorService.Orders.references'
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Orders.references'] = {
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Orders.references.drafts'] = {
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
 
 describe("SDMAttachmentsService", () => {
   // Ensure attachmentIDRegex is available globally
   global.attachmentIDRegex = /ID=([0-9a-fA-F-]{36})/;
+  
+  // Helper function to setup destination mocks
+  function setupDestinationMocks(mockDestination = { url: "http://example.com" }) {
+    getSdmInstanceName.mockReturnValue("sdm-instance");
+    retrieveJwt.mockResolvedValue("mock-jwt");
+    getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+    return mockDestination;
+  }
   
   describe("checkRepositoryType", () => {
     let service;
@@ -189,14 +284,14 @@ describe("SDMAttachmentsService", () => {
       
       getConfigurations.mockReturnValue({ repositoryId: "repo123" });
       cache.get.mockReturnValue(undefined);
-      getClientCredentialsToken.mockResolvedValue("mock-token");
+      const mockDestination = { url: "http://example.com" };
+      service.getTechnicalDestination = jest.fn().mockResolvedValue(mockDestination);
       getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
       isRepositoryVersioned.mockReturnValue(false);
   
       await service.checkRepositoryType(mockReq);
   
-      expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
-      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, "mock-token");
+      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, mockDestination);
       expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
       expect(mockReq.reject).not.toHaveBeenCalled();
     });
@@ -206,24 +301,193 @@ describe("SDMAttachmentsService", () => {
       
       getConfigurations.mockReturnValue({ repositoryId: "repo123" });
       cache.get.mockReturnValue(undefined);
-      getClientCredentialsToken.mockResolvedValue("mock-token");
+      const mockDestination = { url: "http://example.com" };
+      service.getTechnicalDestination = jest.fn().mockResolvedValue(mockDestination);
       getRepositoryInfo.mockResolvedValue({ data: "mock-repo-info" });
       isRepositoryVersioned.mockResolvedValue(true);
   
       await service.checkRepositoryType(mockReq);
   
-      expect(getClientCredentialsToken).toHaveBeenCalledWith(service.creds);
-      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, "mock-token");
+      expect(getRepositoryInfo).toHaveBeenCalledWith(mockReq, service.creds, mockDestination);
       expect(isRepositoryVersioned).toHaveBeenCalledWith({ data: "mock-repo-info" }, "repo123");
       expect(mockReq.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+
+    it("should use cached repository type when available", async () => {
+      const mockReq = { reject: jest.fn() };
+      
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+      
+      // Set up cds.context to provide subdomain
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              getPayload: () => ({
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              })
+            }
+          }
+        }
+      };
+      
+      // Mock NodeCache.prototype.get to return "versioned" for the specific key
+      NodeCache.prototype.get.mockImplementation((key) => {
+        if (key === "repo123_test-subdomain") {
+          return "versioned";
+        }
+        return undefined;
+      });
+      
+      // Spy on getTechnicalDestination
+      const getTechnicalDestinationSpy = jest.spyOn(service, 'getTechnicalDestination');
+
+      await service.checkRepositoryType(mockReq);
+
+      // Should not call getTechnicalDestination since cache is available
+      expect(getTechnicalDestinationSpy).not.toHaveBeenCalled();
+      expect(getRepositoryInfo).not.toHaveBeenCalled();
+      // Should reject because cached value is "versioned"
+      expect(mockReq.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+
+    it("should not reject when cached repository type is non-versioned", async () => {
+      const mockReq = { reject: jest.fn() };
+      
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+      
+      // Set up cds.context
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              getPayload: () => ({
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              })
+            }
+          }
+        }
+      };
+      
+      // Mock NodeCache.prototype.get to return "non-versioned"
+      NodeCache.prototype.get.mockImplementation((key) => {
+        if (key === "repo123_test-subdomain") {
+          return "non-versioned";
+        }
+        return undefined;
+      });
+
+      await service.checkRepositoryType(mockReq);
+
+      expect(mockReq.reject).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("init", () => {
+    it("should initialize credentials and originalUrlMap", async () => {
+      const service = new SDMAttachmentsService();
+      service.options = { credentials: { uri: "test-uri", clientId: "test-id" } };
+      
+      // The parent class init is called via super.init()
+      // Just ensure init runs without error and sets the properties
+      await service.init();
+
+      expect(service.creds).toEqual({ uri: "test-uri", clientId: "test-id" });
+      expect(service.originalUrlMap).toBeInstanceOf(Map);
+    });
+  });
+
+  describe("getTechnicalDestination", () => {
+    it("should get technical destination with subdomain from context", async () => {
+      const service = new SDMAttachmentsService();
+      
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const mockDestination = { url: "http://example.com" };
+      getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+      const result = await service.getTechnicalDestination();
+
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+        destinationName: "sdm-instance",
+        useCache: true,
+        serviceBindingTransformFn: expect.any(Function)
+      });
+      expect(result).toEqual(mockDestination);
+    });
+  });
+
+  describe("getDestination", () => {
+    it("should get destination and cache it on request object", async () => {
+      const service = new SDMAttachmentsService();
+      const mockReq = {
+        _sdmDestination: undefined
+      };
+
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const mockDestination = { url: "http://example.com" };
+      getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+      const result = await service.getDestination(mockReq);
+
+      expect(retrieveJwt).toHaveBeenCalledWith(mockReq);
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+        destinationName: "sdm-instance",
+        jwt: "user-jwt",
+        useCache: true,
+        serviceBindingTransformFn: expect.any(Function)
+      });
+      expect(result).toEqual(mockDestination);
+      expect(mockReq._sdmDestination).toEqual(mockDestination);
+    });
+
+    it("should return cached destination when available", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const cachedDestination = { url: "http://cached.com" };
+      const mockReq = {
+        _sdmDestination: cachedDestination
+      };
+
+      const result = await service.getDestination(mockReq);
+
+      expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
+      expect(result).toEqual(cachedDestination);
+    });
+  });
+
+  describe("getSDMCredentials", () => {
+    it("should return credentials", () => {
+      const service = new SDMAttachmentsService();
+      service.creds = { uri: "test-uri", clientId: "test-client" };
+
+      const result = service.getSDMCredentials();
+
+      expect(result).toEqual({ uri: "test-uri", clientId: "test-client" });
     });
   });
 
   describe("Test get method", () => {
     let service;
     let repoInfo
-    const token = "mocked_token";
-    const clientCredentialToken = "mocked_client_credential_token";
     beforeEach(() => {
 
       NodeCache.prototype.get.mockClear();
@@ -243,8 +507,7 @@ describe("SDMAttachmentsService", () => {
       getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
       isRepositoryVersioned.mockResolvedValue(false);
-      fetchAccessToken.mockResolvedValue(token);
-      getClientCredentialsToken.mockResolvedValue(clientCredentialToken);
+      setupDestinationMocks();
     });
 
     it("should interact with DB, fetch access token and readAttachment with correct parameters", async () => {
@@ -257,26 +520,27 @@ describe("SDMAttachmentsService", () => {
         },
       };
       
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+      
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
+      const mockDestination = setupDestinationMocks();
 
       // set req in service instance
       getURLFromAttachments.mockResolvedValueOnce(response);
-      readAttachment.mockResolvedValueOnce("dummy_content");
+      readAttachment.mockResolvedValueOnce({ status: 200, data: "dummy_content" });
 
-      await service.get(attachments, keys, req); // call get method
+      const result = await service.get(attachments, keys, req); // call get method
 
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "tokenValue"
-      );
       expect(readAttachment).toHaveBeenCalledWith(
         "mockUrl",
-        token,
+        mockDestination,
         service.creds
       );
+      expect(result).toBe("dummy_content");
     });
 
     it("should throw error if readAttachment fails", async () => {
@@ -288,14 +552,17 @@ describe("SDMAttachmentsService", () => {
         },
       };
       
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+      
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
+      const mockDestination = setupDestinationMocks();
       const errorMessage = new Error("Attachment not found in the repository");
       errorMessage.code = 404;
     
       getURLFromAttachments.mockResolvedValueOnce(response);
-      fetchAccessToken.mockResolvedValueOnce("mockToken");
       readAttachment.mockImplementationOnce(() => {
         throw errorMessage;
       });
@@ -305,13 +572,9 @@ describe("SDMAttachmentsService", () => {
       );
   
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "tokenValue"
-      );
       expect(readAttachment).toHaveBeenCalledWith(
         "mockUrl",
-        "mockToken", // Passing the mocked token value
+        mockDestination,
         service.creds
       );
     });
@@ -327,33 +590,33 @@ describe("SDMAttachmentsService", () => {
         },
       };
       
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+      
       const attachments = ["attachment1", "attachment2"];
       const keys = ["key1", "key2"];
       const response = { url: "mockUrl" };
+      const mockDestination = setupDestinationMocks();
 
       // set req in service instance
       getURLFromAttachments.mockResolvedValueOnce(response);
-      readAttachment.mockResolvedValueOnce("dummy_content");
+      readAttachment.mockResolvedValueOnce({ status: 200, data: "dummy_content" });
 
-      await service.get(attachments, keys, req); // call get method
+      const result = await service.get(attachments, keys, req); // call get method
 
       expect(getURLFromAttachments).toHaveBeenCalledWith(keys, attachments);
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "tokenValue"
-      );
       expect(readAttachment).toHaveBeenCalledWith(
         "mockUrl",
-        token,
+        mockDestination,
         service.creds
       );
+      expect(result).toBe("dummy_content");
     });
   });
 
-  describe('renameHandler', () => {
+  describe('draftEntityRenameHandler', () => {
     let service;
     let req;
-    let token;
   
     beforeEach(() => {
       jest.resetAllMocks();
@@ -375,9 +638,18 @@ describe("SDMAttachmentsService", () => {
         },
         warn: jest.fn()
       };
-      token = 'sampleAccessToken';
       
-      cds.model.definitions['sampleTarget.attachments'] = {};
+      cds.model.definitions['sampleTarget'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'sampleTarget.references'
+          }
+        }
+      };
+      cds.model.definitions['sampleTarget.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
     });
   
     it('should not rename if no attachments are modified', async () => {
@@ -385,14 +657,13 @@ describe("SDMAttachmentsService", () => {
       service.updateDraftAttachments = jest.fn();
       service.updateNonDraftAttachments = jest.fn();
   
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       getDraftAttachments.mockResolvedValue([]);
   
-      await service.renameHandler(req);
+      await service.draftEntityRenameHandler(req);
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
-      expect(fetchAccessToken).not.toHaveBeenCalled();
-      expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.attachments'], req, 'repo123');
+      expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.references'], req, 'repo123');
       expect(service.updateDraftAttachments).not.toHaveBeenCalled();
       expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
       expect(req.warn).not.toHaveBeenCalled();
@@ -415,16 +686,15 @@ describe("SDMAttachmentsService", () => {
       service.clearSecondaryPropertiesCache = jest.fn();
       service.handleWarning = jest.fn().mockReturnValue("");
   
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       getDraftAttachments.mockResolvedValue(allAttachments);
       getPropertyTitles.mockReturnValue(["Title1", "Title2"]);
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
       getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
   
-      await service.renameHandler(req);
+      await service.draftEntityRenameHandler(req);
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(service.updateDraftAttachments).toHaveBeenCalledTimes(2);
       expect(service.updateNonDraftAttachments).toHaveBeenCalledTimes(2);
       expect(service.clearSecondaryPropertiesCache).toHaveBeenCalledWith('repo123');
@@ -452,32 +722,16 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
       getSecondaryTypeProperties.mockReturnValue(new Map());
       
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       getDraftAttachments.mockResolvedValue(allAttachments);
   
-      await service.renameHandler(req);
+      await service.draftEntityRenameHandler(req);
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(service.updateDraftAttachments).toHaveBeenCalledTimes(1);
       expect(service.updateNonDraftAttachments).toHaveBeenCalledTimes(1);
       expect(service.clearSecondaryPropertiesCache).toHaveBeenCalledWith('repo123');
       expect(req.warn).toHaveBeenCalledWith(500, mockErrorMessage);
-    });
-
-    it('should handle errors during fetchAccessToken', async () => {
-      fetchAccessToken.mockRejectedValue(new Error('Token fetch failed'));
-      getDraftAttachments.mockResolvedValue([{ HasActiveEntity: false, ID: 'draft1' }]);
-      service.isFileNameDuplicateInDrafts = jest.fn();
-      service.updateDraftAttachments = jest.fn();
-      service.updateNonDraftAttachments = jest.fn();
-  
-      await expect(service.renameHandler(req)).rejects.toThrow('Token fetch failed');
-  
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
-      expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
-      expect(service.updateDraftAttachments).not.toHaveBeenCalled();
-      expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
     });
 
     it('should handle errors during updateDraftAttachments', async () => {
@@ -494,11 +748,11 @@ describe("SDMAttachmentsService", () => {
       service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
       service.clearSecondaryPropertiesCache = jest.fn();
   
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       getDraftAttachments.mockResolvedValue(allAttachments);
       
-      service._updateAttachments = jest.fn((req, token, attachment) => {
-        if (attachment.ID === 'draft1') {
+      service._updateAttachments = jest.fn((req, context) => {
+        if (context.attachment.ID === 'draft1') {
           return Promise.reject(new Error('Draft update failed'));
         }
         return [];
@@ -508,18 +762,114 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
       getSecondaryTypeProperties.mockReturnValue(new Map());
       
-      await expect(service.renameHandler(req)).rejects.toThrow('Draft update failed');
+      await expect(service.draftEntityRenameHandler(req)).rejects.toThrow('Draft update failed');
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'sampleTokenValue');
       expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
+    });
+
+    // Test with "references" composition instead of "attachments"
+    it('should work with references composition instead of attachments', async () => {
+      req.target.name = 'ProcessorService.Orders';
+      const referencesEntity = cds.model.definitions['ProcessorService.Orders.references'];
+      
+      const draftReferences = [
+        { HasActiveEntity: false, ID: 'draft1' }
+      ];
+      const nonDraftReferences = [
+        { HasActiveEntity: true, ID: 'nonDraft1' }
+      ];
+      const allReferences = [...draftReferences, ...nonDraftReferences];
+  
+      service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
+      service.updateDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.clearSecondaryPropertiesCache = jest.fn();
+      service.handleWarning = jest.fn().mockReturnValue("");
+  
+      setupDestinationMocks();
+      getDraftAttachments.mockResolvedValue(allReferences);
+      getPropertyTitles.mockReturnValue(["Title1", "Title2"]);
+      getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
+      getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
+  
+      await service.draftEntityRenameHandler(req);
+  
+      expect(getDraftAttachments).toHaveBeenCalledWith(referencesEntity, req, 'repo123');
+      expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allReferences, req);
+      expect(service.updateDraftAttachments).toHaveBeenCalledTimes(1);
+      expect(service.updateNonDraftAttachments).toHaveBeenCalledTimes(1);
+      expect(service.clearSecondaryPropertiesCache).toHaveBeenCalledWith('repo123');
+      expect(req.warn).not.toHaveBeenCalled();
+    });
+
+    it('should discover and process all attachment compositions', async () => {
+      // Create an entity with multiple attachment compositions
+      req.target.name = 'Test.EntityWithMultiple';
+      cds.model.definitions['Test.EntityWithMultiple'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.references'
+          },
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.documents'
+          },
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.EntityWithMultiple.files'
+          }
+        }
+      };
+      cds.model.definitions['Test.EntityWithMultiple.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.EntityWithMultiple.documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.EntityWithMultiple.files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+  
+      service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
+      service.updateDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
+      service.clearSecondaryPropertiesCache = jest.fn();
+      service.handleWarning = jest.fn().mockReturnValue("");
+  
+      setupDestinationMocks();
+      getDraftAttachments.mockResolvedValue([{ HasActiveEntity: false, ID: 'draft1' }]);
+      getPropertyTitles.mockReturnValue({});
+      getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
+      getSecondaryTypeProperties.mockReturnValue(new Map());
+  
+      await service.draftEntityRenameHandler(req);
+  
+      // Should be called 3 times, once for each composition
+      expect(getDraftAttachments).toHaveBeenCalledTimes(3);
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.references'], 
+        req, 
+        'repo123'
+      );
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.documents'], 
+        req, 
+        'repo123'
+      );
+      expect(getDraftAttachments).toHaveBeenCalledWith(
+        cds.model.definitions['Test.EntityWithMultiple.files'], 
+        req, 
+        'repo123'
+      );
     });
   });
 
   describe('updateNonDraftAttachments', () => {
     let service;
     let req;
-    let token;
+    
     let attachment;
     let attachmentsEntity;
     let secondaryPropertiesWithInvalidDefinitions;
@@ -533,10 +883,9 @@ describe("SDMAttachmentsService", () => {
       req = {
         reject: jest.fn(),
         data: {
-          attachments: [{ ID: 'attachment1', filename: 'file1.txt' }]
+          references: [{ ID: 'attachment1', filename: 'file1.txt' }]
         }
       };
-      token = 'mockToken';
       attachment = { ID: 'attachment1', filename: 'file1.txt' };
       attachmentsEntity = {};
       secondaryPropertiesWithInvalidDefinitions = {};
@@ -549,6 +898,7 @@ describe("SDMAttachmentsService", () => {
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
       updateAttachment.mockResolvedValue(200);
       isRestrictedCharactersInName.mockReturnValue(false);
+      setupDestinationMocks();
     });
   
     it('should return an error if filename contains restricted characters', async () => {
@@ -556,11 +906,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
@@ -569,7 +919,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -578,11 +929,11 @@ describe("SDMAttachmentsService", () => {
     
       const response = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
       expect(response).toEqual(
         [{typeOfError: 'empty name', name: null}]
@@ -594,11 +945,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -610,7 +961,7 @@ describe("SDMAttachmentsService", () => {
         req,
         attachment,
         service.creds,
-        token,
+        expect.objectContaining({ url: expect.any(String) }),
         { property1: 'updatedValue1', 'cmis:name': 'file1.txt' },
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -620,11 +971,11 @@ describe("SDMAttachmentsService", () => {
       getFileNameForAttachmentID.mockResolvedValue(null);
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -636,7 +987,7 @@ describe("SDMAttachmentsService", () => {
         req,
         attachment,
         service.creds,
-        token,
+        expect.objectContaining({ url: expect.any(String) }),
         { property1: 'updatedValue1', 'cmis:name': 'file1.txt' },
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -648,11 +999,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'no sdm roles', name: 'file1.txt' }]);
@@ -661,7 +1012,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -670,11 +1022,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'duplicate', name: 'file1.txt' }]);
@@ -683,7 +1035,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -692,11 +1045,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'not found', name: 'file1.txt' }]);
@@ -705,7 +1058,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
 
@@ -714,16 +1068,16 @@ describe("SDMAttachmentsService", () => {
       getFileNameForAttachmentID.mockResolvedValue('file1.txt'); // Simulate fileNameInDB
       getPropertiesForID.mockResolvedValue({ property1: 'value1' }); // Simulate properties from DB
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' }); // Simulate updated properties
-      updateAttachment.mockResolvedValue(500); // Simulate an unexpected response code
+      updateAttachment.mockRejectedValue(new Error(sdmRolesErrorMessage)); // Simulate an unexpected response code
     
       // Call the method
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Verify the result contains the error for the unexpected response code
@@ -741,7 +1095,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Ensure updateAttachment was called with the correct arguments
@@ -749,7 +1104,7 @@ describe("SDMAttachmentsService", () => {
         req,
         attachment,
         service.creds,
-        token,
+        expect.objectContaining({ url: expect.any(String) }),
         { property1: 'updatedValue1' },
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -759,11 +1114,11 @@ describe("SDMAttachmentsService", () => {
       updateAttachment.mockRejectedValue(new Error(`${unsupportedProperties} property1, property2`));
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -777,7 +1132,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -786,11 +1142,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateNonDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -805,7 +1161,35 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
+      );
+    });
+
+    // Test with 'references' composition name
+    it('should work with references composition name', async () => {
+      req.data = {
+        references: [{ ID: 'attachment1', filename: 'file1.txt' }]
+      };
+      isRestrictedCharactersInName.mockReturnValue(true);
+
+      const result = await service.updateNonDraftAttachments(
+        req,
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'references'
+      );
+
+      expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
+      expect(service.replacePropertiesInAttachment).toHaveBeenCalledWith(
+        req,
+        'attachment1',
+        'file1.txt',
+        { property1: 'value1' },
+        secondaryTypeProperties,
+        'references'
       );
     });
   });
@@ -813,7 +1197,7 @@ describe("SDMAttachmentsService", () => {
   describe('updateDraftAttachments', () => {
     let service;
     let req;
-    let token;
+    
     let attachment;
     let attachmentsEntity;
     let secondaryPropertiesWithInvalidDefinitions;
@@ -826,10 +1210,9 @@ describe("SDMAttachmentsService", () => {
       req = {
         reject: jest.fn(),
         data: {
-          attachments: [{ ID: 'attachment1', filename: 'file1.txt' }]
+          references: [{ ID: 'attachment1', filename: 'file1.txt' }]
         }
       };
-      token = 'mockToken';
       attachment = { ID: 'attachment1', filename: 'file1.txt', url: 'mockUrl' };
       attachmentsEntity = {};
       secondaryPropertiesWithInvalidDefinitions = {};
@@ -845,6 +1228,7 @@ describe("SDMAttachmentsService", () => {
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
       updateAttachment.mockResolvedValue(200);
       isRestrictedCharactersInName.mockReturnValue(false);
+      setupDestinationMocks();
     });
   
     it('should return an error if filename contains restricted characters', async () => {
@@ -852,11 +1236,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'restricted characters', name: 'file1.txt' }]);
@@ -865,7 +1249,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -874,11 +1259,11 @@ describe("SDMAttachmentsService", () => {
   
       const response = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(response).toEqual(
@@ -891,11 +1276,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(getUpdatedSecondaryProperties).toHaveBeenCalledWith(
@@ -907,7 +1292,7 @@ describe("SDMAttachmentsService", () => {
         req,
         attachment,
         service.creds,
-        token,
+        expect.objectContaining({ url: expect.any(String) }),
         { property1: 'updatedValue1', 'cmis:name': 'file1.txt' },
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -919,11 +1304,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'no sdm roles', name: 'file1.txt' }]);
@@ -932,7 +1317,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -941,11 +1327,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'duplicate', name: 'file1.txt' }]);
@@ -954,7 +1340,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -963,11 +1350,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([{ typeOfError: 'not found', name: 'file1.txt' }]);
@@ -976,7 +1363,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
 
@@ -985,16 +1373,16 @@ describe("SDMAttachmentsService", () => {
       service.getAttachementDataInSDM.mockResolvedValue({ filename: 'file1.txt', folderId: 'mockFolderId' });
       getPropertiesForID.mockResolvedValue({ property1: 'value1' });
       getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
-      updateAttachment.mockResolvedValue(500); // Simulate an unexpected response code
+      updateAttachment.mockRejectedValue(new Error(sdmRolesErrorMessage)); // Simulate an unexpected response code
     
       // Call the method
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       expect(result).toEqual([
@@ -1011,7 +1399,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     
       // Ensure updateAttachment was called with the correct arguments
@@ -1019,7 +1408,7 @@ describe("SDMAttachmentsService", () => {
         req,
         attachment,
         service.creds,
-        token,
+        expect.objectContaining({ url: expect.any(String) }),
         { property1: 'updatedValue1' },
         secondaryPropertiesWithInvalidDefinitions
       );
@@ -1030,11 +1419,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -1048,7 +1437,8 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
     });
   
@@ -1057,11 +1447,11 @@ describe("SDMAttachmentsService", () => {
   
       const result = await service.updateDraftAttachments(
         req,
-        token,
         attachment,
         attachmentsEntity,
         secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
   
       expect(result).toEqual([
@@ -1076,8 +1466,39 @@ describe("SDMAttachmentsService", () => {
         'attachment1',
         'file1.txt',
         { property1: 'value1' },
-        secondaryTypeProperties
+        secondaryTypeProperties,
+        'attachments'
       );
+    });
+
+    it('should handle unexpected status code (default case) by throwing error', async () => {
+      // Mock dependencies
+      getFileNameForAttachmentID.mockResolvedValue('file1.txt');
+      getPropertiesForID.mockResolvedValue({ property1: 'value1' });
+      getUpdatedSecondaryProperties.mockReturnValue({ property1: 'updatedValue1' });
+      // Return an unexpected status code (e.g., 500) that triggers default case
+      updateAttachment.mockResolvedValue(500);
+    
+      // Call the method
+      const result = await service.updateNonDraftAttachments(
+        req,
+        attachment,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+    
+      // The default case throws an error which is caught and added to failedReq
+      expect(result).toEqual([
+        {
+          typeOfError: 'bad request',
+          name: 'file1.txt',
+          message: sdmRolesErrorMessage
+        }
+      ]);
+      
+      expect(service.replacePropertiesInAttachment).toHaveBeenCalled();
     });
   });
 
@@ -1091,7 +1512,7 @@ describe("SDMAttachmentsService", () => {
       service = new SDMAttachmentsService();
       req = {
         data: {
-          attachments: [
+          references: [
             { ID: 'attachment1', filename: 'oldFileName', property1: 'oldValue1', property2: 'oldValue2' },
             { ID: 'attachment2', filename: 'anotherOldFileName', property3: 'oldValue3' }
           ]
@@ -1107,9 +1528,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1', property2: 'newValue2' };
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.secondaryKey1).toBe('newValue1');
       expect(updatedAttachment.secondaryKey2).toBe('newValue2');
@@ -1118,9 +1539,9 @@ describe("SDMAttachmentsService", () => {
     it('should not modify properties if propertiesInDB is null', () => {
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, null, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, null, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1130,9 +1551,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1', property2: 'newValue2' };
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'nonExistentID', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'nonExistentID', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('oldFileName'); // Ensure filename is not modified
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1142,9 +1563,9 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property3: 'newValue3' }; // No matching keys in secondaryTypeProperties
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.property1).toBe('oldValue1'); // Ensure properties are not modified
       expect(updatedAttachment.property2).toBe('oldValue2');
@@ -1154,12 +1575,52 @@ describe("SDMAttachmentsService", () => {
       const propertiesInDB = { property1: 'newValue1' }; // Only one matching property
       const fileName = 'newFileName';
   
-      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties);
+      service.replacePropertiesInAttachment(req, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, 'references');
   
-      const updatedAttachment = req.data.attachments.find(att => att.ID === 'attachment1');
+      const updatedAttachment = req.data.references.find(att => att.ID === 'attachment1');
       expect(updatedAttachment.filename).toBe('newFileName');
       expect(updatedAttachment.secondaryKey1).toBe('newValue1'); // Ensure matching property is updated
       expect(updatedAttachment.secondaryKey2).toBeUndefined(); // Ensure non-matching property is not updated
+    });
+
+    it('should handle direct PATCH operation when compositionName is not provided', () => {
+      const reqDirectPatch = {
+        data: {
+          ID: 'attachment1',
+          filename: 'oldFileName',
+          property1: 'oldValue1'
+        }
+      };
+      
+      const propertiesInDB = { property1: 'newValue1' };
+      const fileName = 'newFileName';
+      
+      // Call without compositionName to trigger direct PATCH path
+      service.replacePropertiesInAttachment(reqDirectPatch, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, null);
+      
+      expect(reqDirectPatch.data.filename).toBe('newFileName');
+      expect(reqDirectPatch.data.secondaryKey1).toBe('newValue1');
+    });
+
+    it('should handle direct PATCH operation when req.data.ID matches the target ID', () => {
+      const reqDirectPatch = {
+        data: {
+          ID: 'attachment1',
+          filename: 'oldFileName',
+          property1: 'oldValue1',
+          property2: 'oldValue2'
+        }
+      };
+      
+      const propertiesInDB = { property1: 'patchedValue1', property2: 'patchedValue2' };
+      const fileName = 'patchedFile.pdf';
+      
+      // Call without compositionName but with matching ID
+      service.replacePropertiesInAttachment(reqDirectPatch, 'attachment1', fileName, propertiesInDB, secondaryTypeProperties, undefined);
+      
+      expect(reqDirectPatch.data.filename).toBe('patchedFile.pdf');
+      expect(reqDirectPatch.data.secondaryKey1).toBe('patchedValue1');
+      expect(reqDirectPatch.data.secondaryKey2).toBe('patchedValue2');
     });
   });
 
@@ -1246,7 +1707,7 @@ describe("SDMAttachmentsService", () => {
 
     it('should handle edit link when status is 403 (user not authorized)', async () => {
       getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
-      fetchAccessToken.mockResolvedValue('test-access-token');
+      setupDestinationMocks();
       editLink.mockResolvedValue({
           status: 403,
           response: { data: {} }
@@ -1257,7 +1718,301 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
-  describe('registerUpdateHandlers', () => {
+  describe('registerHandlers', () => {
+    let service;
+    let mockSrv;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      
+      mockSrv = {
+        before: jest.fn(),
+        after: jest.fn(),
+        on: jest.fn(),
+        entities: {}
+      };
+    });
+
+    it('should call super.registerHandlers if it exists', () => {
+      const service = new SDMAttachmentsService();
+      
+      const mockSrvWithEntities = {
+        ...mockSrv,
+        entities: {
+          TestEntity: {
+            elements: {
+              attachments: {
+                _target: {
+                  "@_is_media_data": true,
+                  drafts: {}
+                }
+              }
+            }
+          }
+        }
+      };
+      
+      // The service extends the parent class and calls super.registerHandlers
+      // Just verify it doesn't throw and processes entities
+      expect(() => service.registerHandlers(mockSrvWithEntities)).not.toThrow();
+      expect(mockSrv.before).toHaveBeenCalled();
+    });
+
+    it('should not throw if super.registerHandlers does not exist', () => {
+      // Create a service without mocking super.registerHandlers
+      const serviceWithoutSuper = new SDMAttachmentsService();
+      
+      mockSrv.entities = {};
+      
+      expect(() => serviceWithoutSuper.registerHandlers(mockSrv)).not.toThrow();
+    });
+
+    it('should iterate through all entities and register handlers for attachments', () => {
+      const mockTarget = {
+        "@_is_media_data": true,
+        drafts: null
+      };
+      
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            attachments: {
+              _target: mockTarget
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Orders, mockTarget);
+    });
+
+    it('should skip elements without @_is_media_data', () => {
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            normalField: {
+              _target: {
+                "@_is_media_data": false
+              }
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).not.toHaveBeenCalled();
+    });
+
+    it('should skip elements without _target', () => {
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            normalField: {}
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).not.toHaveBeenCalled();
+    });
+
+    it('should skip SiblingEntity element', () => {
+      const mockTarget = {
+        "@_is_media_data": true
+      };
+      
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            SiblingEntity: {
+              _target: mockTarget
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).not.toHaveBeenCalled();
+    });
+
+    it('should process multiple entities with attachments', () => {
+      const mockTarget1 = {
+        "@_is_media_data": true,
+        drafts: null
+      };
+      
+      const mockTarget2 = {
+        "@_is_media_data": true,
+        drafts: 'target.drafts'
+      };
+      
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            attachments: {
+              _target: mockTarget1
+            }
+          }
+        },
+        Incidents: {
+          elements: {
+            documents: {
+              _target: mockTarget2
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).toHaveBeenCalledTimes(2);
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Orders, mockTarget1);
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Incidents, mockTarget2);
+    });
+
+    it('should handle entities with multiple attachment compositions', () => {
+      const mockTarget1 = {
+        "@_is_media_data": true
+      };
+      
+      const mockTarget2 = {
+        "@_is_media_data": true
+      };
+      
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            attachments: {
+              _target: mockTarget1
+            },
+            documents: {
+              _target: mockTarget2
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).toHaveBeenCalledTimes(2);
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Orders, mockTarget1);
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Orders, mockTarget2);
+    });
+
+    it('should handle empty entities object', () => {
+      mockSrv.entities = {};
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).not.toHaveBeenCalled();
+    });
+
+    it('should handle entity with no elements', () => {
+      mockSrv.entities = {
+        Orders: {
+          elements: {}
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      expect(registerSDMHandlersSpy).not.toHaveBeenCalled();
+    });
+
+    it('should handle mixed entities with and without attachments', () => {
+      const mockTarget = {
+        "@_is_media_data": true
+      };
+      
+      mockSrv.entities = {
+        Orders: {
+          elements: {
+            attachments: {
+              _target: mockTarget
+            }
+          }
+        },
+        Products: {
+          elements: {
+            name: {},
+            description: {}
+          }
+        },
+        Incidents: {
+          elements: {
+            notes: {
+              _target: {
+                "@_is_media_data": false
+              }
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      service.registerHandlers(mockSrv);
+      
+      // Only Orders should trigger handler registration
+      expect(registerSDMHandlersSpy).toHaveBeenCalledTimes(1);
+      expect(registerSDMHandlersSpy).toHaveBeenCalledWith(mockSrv, mockSrv.entities.Orders, mockTarget);
+    });
+
+    it('should handle when parent class has no registerHandlers method', () => {
+      const service = new SDMAttachmentsService();
+      
+      // Remove the parent's registerHandlers method
+      delete Object.getPrototypeOf(Object.getPrototypeOf(service)).registerHandlers;
+      
+      const mockSrv = {
+        before: jest.fn(),
+        after: jest.fn(),
+        on: jest.fn(),
+        entities: {
+          TestEntity: {
+            elements: {
+              attachments: {
+                _target: {
+                  "@_is_media_data": true,
+                  drafts: {}
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const registerSDMHandlersSpy = jest.spyOn(service, 'registerSDMHandlers');
+      
+      // Should not throw error even when super.registerHandlers doesn't exist
+      expect(() => service.registerHandlers(mockSrv)).not.toThrow();
+      expect(registerSDMHandlersSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('registerSDMHandlers', () => {
     let service;
     let mockSrv;
     let entity;
@@ -1283,7 +2038,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it('should register all handlers correctly', () => {
-      service.registerUpdateHandlers(mockSrv, entity, target);
+      service.registerSDMHandlers(mockSrv, entity, target);
 
       // Verify before handlers
       expect(mockSrv.before).toHaveBeenCalledWith(
@@ -1298,7 +2053,12 @@ describe("SDMAttachmentsService", () => {
       );
       expect(mockSrv.before).toHaveBeenCalledWith(
         ["DELETE"], 
-        [target.drafts], 
+        target.drafts, 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "DELETE", 
+        target, 
         expect.any(Function)
       );
       expect(mockSrv.before).toHaveBeenCalledWith(
@@ -1316,11 +2076,26 @@ describe("SDMAttachmentsService", () => {
         target.drafts, 
         expect.any(Function)
       );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "CREATE", 
+        target, 
+        expect.any(Function)
+      );
+      expect(mockSrv.before).toHaveBeenCalledWith(
+        "UPDATE", 
+        target, 
+        expect.any(Function)
+      );
 
       // Verify after handlers
       expect(mockSrv.after).toHaveBeenCalledWith(
         ["DELETE","UPDATE"], 
         [entity, entity.drafts], 
+        expect.any(Function)
+      );
+      expect(mockSrv.after).toHaveBeenCalledWith(
+        "DELETE", 
+        target, 
         expect.any(Function)
       );
 
@@ -1332,11 +2107,147 @@ describe("SDMAttachmentsService", () => {
 
     it('should not register PUT handler when target.drafts is undefined', () => {
       const targetWithoutDrafts = {};
-      service.registerUpdateHandlers(mockSrv, entity, targetWithoutDrafts);
+      service.registerSDMHandlers(mockSrv, entity, targetWithoutDrafts);
 
-      // Verify PUT handler for drafts is not called
+      // Verify PUT handler for non-draft target is called instead
       const putCalls = mockSrv.before.mock.calls.filter(call => call[0] === 'PUT');
-      expect(putCalls).toHaveLength(0);
+      expect(putCalls.length).toBeGreaterThan(0);
+      expect(putCalls[0][1]).toBe(targetWithoutDrafts);
+    });
+
+    it('should register openAttachment handler that calls openAttachment method', async () => {
+      const mockReq = { data: { attachmentId: '123' } };
+      const mockResult = { url: 'http://example.com/file' };
+      
+      jest.spyOn(service, 'openAttachment').mockResolvedValue(mockResult);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      // Get the handler function registered for openAttachment
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'openAttachment');
+      expect(onCalls).toBeDefined();
+      
+      const handlerFn = onCalls[1];
+      const result = await handlerFn(mockReq);
+      
+      expect(service.openAttachment).toHaveBeenCalledWith(mockReq);
+      expect(result).toBe(mockResult);
+    });
+
+    it('should register createLink handler that calls handleCreateLinkAction method', async () => {
+      const mockReq = { data: { url: 'http://example.com', title: 'Link' } };
+      const mockResult = { ID: 'link-123', url: 'http://example.com' };
+      
+      jest.spyOn(service, 'handleCreateLinkAction').mockResolvedValue(mockResult);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      // Get the handler function registered for createLink
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'createLink');
+      expect(onCalls).toBeDefined();
+      
+      const handlerFn = onCalls[1];
+      const result = await handlerFn(mockReq);
+      
+      expect(service.handleCreateLinkAction).toHaveBeenCalledWith(mockReq);
+      expect(result).toBe(mockResult);
+    });
+
+    it('should register editLink handler that calls handleEditLinkAction method', async () => {
+      const mockReq = { data: { ID: 'link-123', title: 'Updated Link' } };
+      const mockResult = { ID: 'link-123', title: 'Updated Link' };
+      
+      jest.spyOn(service, 'handleEditLinkAction').mockResolvedValue(mockResult);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      // Get the handler function registered for editLink
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'editLink');
+      expect(onCalls).toBeDefined();
+      
+      const handlerFn = onCalls[1];
+      const result = await handlerFn(mockReq);
+      
+      expect(service.handleEditLinkAction).toHaveBeenCalledWith(mockReq);
+      expect(result).toBe(mockResult);
+    });
+
+    it('should register all three custom action handlers', () => {
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      const actionNames = mockSrv.on.mock.calls.map(call => call[0]);
+      
+      expect(actionNames).toContain('openAttachment');
+      expect(actionNames).toContain('createLink');
+      expect(actionNames).toContain('editLink');
+      expect(mockSrv.on).toHaveBeenCalledTimes(3);
+    });
+
+    it('should handle errors thrown by openAttachment method', async () => {
+      const mockReq = { data: { attachmentId: '123' } };
+      const mockError = new Error('Attachment not found');
+      
+      jest.spyOn(service, 'openAttachment').mockRejectedValue(mockError);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'openAttachment');
+      const handlerFn = onCalls[1];
+      
+      await expect(handlerFn(mockReq)).rejects.toThrow('Attachment not found');
+    });
+
+    it('should handle errors thrown by handleCreateLinkAction method', async () => {
+      const mockReq = { data: { url: 'invalid-url' } };
+      const mockError = new Error('Invalid link URL');
+      
+      jest.spyOn(service, 'handleCreateLinkAction').mockRejectedValue(mockError);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'createLink');
+      const handlerFn = onCalls[1];
+      
+      await expect(handlerFn(mockReq)).rejects.toThrow('Invalid link URL');
+    });
+
+    it('should handle errors thrown by handleEditLinkAction method', async () => {
+      const mockReq = { data: { ID: 'link-123' } };
+      const mockError = new Error('Link not found');
+      
+      jest.spyOn(service, 'handleEditLinkAction').mockRejectedValue(mockError);
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      const onCalls = mockSrv.on.mock.calls.find(call => call[0] === 'editLink');
+      const handlerFn = onCalls[1];
+      
+      await expect(handlerFn(mockReq)).rejects.toThrow('Link not found');
+    });
+
+    it('should pass correct this context to custom action handlers', async () => {
+      const mockReq = { data: {} };
+      
+      // Mock all three methods
+      jest.spyOn(service, 'openAttachment').mockResolvedValue({});
+      jest.spyOn(service, 'handleCreateLinkAction').mockResolvedValue({});
+      jest.spyOn(service, 'handleEditLinkAction').mockResolvedValue({});
+      
+      service.registerSDMHandlers(mockSrv, entity, target);
+      
+      // Execute each handler
+      const openHandler = mockSrv.on.mock.calls.find(call => call[0] === 'openAttachment')[1];
+      const createHandler = mockSrv.on.mock.calls.find(call => call[0] === 'createLink')[1];
+      const editHandler = mockSrv.on.mock.calls.find(call => call[0] === 'editLink')[1];
+      
+      await openHandler(mockReq);
+      await createHandler(mockReq);
+      await editHandler(mockReq);
+      
+      // Verify all methods were called
+      expect(service.openAttachment).toHaveBeenCalledWith(mockReq);
+      expect(service.handleCreateLinkAction).toHaveBeenCalledWith(mockReq);
+      expect(service.handleEditLinkAction).toHaveBeenCalledWith(mockReq);
     });
   });
 
@@ -1349,22 +2260,24 @@ describe("SDMAttachmentsService", () => {
     });
 
     it('should handle _updateAttachments when Object.keys length is 0', async () => {
-      const req = { data: { attachments: [{ ID: '123', filename: 'test.txt' }] } };
-      const token = 'test-token';
-      const attachment = { ID: '123', filename: 'test.txt' };
-      const attachmentsEntity = {};
-      const secondaryPropertiesWithInvalidDefinitions = {};
-      const secondaryTypeProperties = new Map();
-      const filenameInSDM = 'test.txt';
+      const req = { data: { references: [{ ID: '123', filename: 'test.txt' }] } };
+      const context = {
+        attachment: { ID: '123', filename: 'test.txt' },
+        attachmentsEntity: {},
+        filenameInSDM: 'test.txt',
+        compositionName: 'references',
+        secondaryProperties: {
+          invalidDefinitions: {},
+          typeProperties: new Map()
+        }
+      };
 
       // Mock functions to return empty objects
       getPropertiesForID.mockResolvedValue({});
       getUpdatedSecondaryProperties.mockReturnValue({});
+      setupDestinationMocks();
 
-      const result = await service._updateAttachments(
-        req, token, attachment, attachmentsEntity, 
-        secondaryPropertiesWithInvalidDefinitions, secondaryTypeProperties, filenameInSDM
-      );
+      const result = await service._updateAttachments(req, context);
 
       expect(result).toEqual([]);
       expect(updateAttachment).not.toHaveBeenCalled();
@@ -1384,8 +2297,10 @@ describe("SDMAttachmentsService", () => {
 
     it('should handle getAttachementDataInSDM with undefined response', async () => {
       getAttachment.mockResolvedValue(undefined);
+      const mockReq = {};
+      setupDestinationMocks();
 
-      const result = await service.getAttachementDataInSDM('uri', 'token', 'objectId');
+      const result = await service.getAttachementDataInSDM('uri', 'objectId', mockReq);
 
       expect(result).toEqual({
         filename: undefined,
@@ -1420,7 +2335,7 @@ describe("SDMAttachmentsService", () => {
         linkUrl: "http://example.com"
       });
 
-      fetchAccessToken.mockResolvedValue("mockToken");
+      setupDestinationMocks();
       decodeAccessToken.mockReturnValue({ "sdm-roles": [] }); // No SDM roles
       checkIfSDMRolesExistInToken.mockReturnValue(false);
       getAttachment.mockResolvedValue({ status: 403 }); // Mock unauthorized response
@@ -1445,10 +2360,13 @@ describe("SDMAttachmentsService", () => {
         filename: 'test.txt',
         content: Buffer.from('test content')
       }];
-      const token = 'mock-token';
       const parentId = 'parent-123';
       const req = {
-        reject: jest.fn()
+        reject: jest.fn(),
+        target: {
+          name: 'TestEntity.attachments',
+          isDraft: true
+        }
       };
 
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
@@ -1458,8 +2376,9 @@ describe("SDMAttachmentsService", () => {
           data: {}
         }
       });
+      setupDestinationMocks();
 
-      await service.onCreate(data, service.creds, token, req, parentId);
+      await service.onCreate(data, service.creds, req, parentId);
 
       expect(req.reject).toHaveBeenCalledWith(403, expect.any(String));
     });
@@ -1467,33 +2386,31 @@ describe("SDMAttachmentsService", () => {
     it('should handle _updateAttachments when updatedSecondaryProperties is empty', async () => {
       const req = {
         data: {
-          attachments: [{
+          references: [{
             ID: 'attachment-123',
             filename: 'test.txt'
           }]
         }
       };
-      const token = 'mock-token';
-      const attachment = {
-        ID: 'attachment-123',
-        filename: 'test.txt'
+      const context = {
+        attachment: {
+          ID: 'attachment-123',
+          filename: 'test.txt'
+        },
+        attachmentsEntity: { name: 'TestEntity' },
+        filenameInSDM: 'test.txt',
+        compositionName: 'references',
+        secondaryProperties: {
+          invalidDefinitions: {},
+          typeProperties: new Map()
+        }
       };
-      const attachmentsEntity = { name: 'TestEntity' };
-      const secondaryPropertiesWithInvalidDefinitions = {};
-      const secondaryTypeProperties = new Map();
-      const filenameInSDM = 'test.txt';
 
       getPropertiesForID.mockResolvedValue({});
+      getUpdatedSecondaryProperties.mockReturnValue({});
+      setupDestinationMocks();
       
-      const result = await service._updateAttachments(
-        req,
-        token, 
-        attachment,
-        attachmentsEntity,
-        secondaryPropertiesWithInvalidDefinitions,
-        secondaryTypeProperties,
-        filenameInSDM
-      );
+      const result = await service._updateAttachments(req, context);
 
       expect(result).toEqual([]);
     });
@@ -1577,7 +2494,6 @@ describe("SDMAttachmentsService", () => {
   describe('getAttachementDataInSDM', () => {
     let service;
     const uri = 'someUri';
-    const token = 'someToken';
     const objectId = 'someObjectId';
 
     beforeEach(() => {
@@ -1600,9 +2516,10 @@ describe("SDMAttachmentsService", () => {
         },
       };
       getAttachment.mockResolvedValue(mockResponse);
+      const req = { user: { id: 'testUser' } };
   
       // Act
-      const result = await service.getAttachementDataInSDM(uri, token, objectId);
+      const result = await service.getAttachementDataInSDM(uri, objectId, req);
   
       // Assert
       expect(result).toEqual({
@@ -1615,9 +2532,10 @@ describe("SDMAttachmentsService", () => {
       // Arrange
       const mockError = new Error('Some error');
       getAttachment.mockRejectedValue(mockError);
+      const req = { user: { id: 'testUser' } };
   
       // Act & Assert
-      await expect(service.getAttachementDataInSDM(uri, token, objectId)).rejects.toThrow('Some error');
+      await expect(service.getAttachementDataInSDM(uri, objectId, req)).rejects.toThrow('Some error');
     });
   
     it('should return undefined folderId if parentIds array is empty', async () => {
@@ -1631,9 +2549,10 @@ describe("SDMAttachmentsService", () => {
         },
       };
       getAttachment.mockResolvedValue(mockResponse);
+      const req = { user: { id: 'testUser' } };
   
       // Act
-      const result = await service.getAttachementDataInSDM(uri, token, objectId);
+      const result = await service.getAttachementDataInSDM(uri, objectId, req);
   
       // Assert
       expect(result).toEqual({
@@ -1660,10 +2579,23 @@ describe("SDMAttachmentsService", () => {
     afterEach(() => {
       jest.clearAllMocks();
     });
+
+    test('should return a handler function', async () => {
+      const service = new SDMAttachmentsService();
+      const mockAttachments = { name: 'TestAttachments' };
+      
+      const handler = service.draftSaveHandler(mockAttachments);
+      
+      // Verify handler is a function
+      expect(typeof handler).toBe('function');
+      
+      // Verify handler accepts res and req parameters
+      expect(handler.length).toBe(2);
+    });
   
     test('should skip when req.data.content is not provided', async () => {
       const req = { data: {} };
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
       expect(service.checkRepositoryType).not.toHaveBeenCalled();
     });
   
@@ -1691,18 +2623,17 @@ describe("SDMAttachmentsService", () => {
           }
         }
       };
-      const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'sample.txt' },
         { HasActiveEntity: true, ID: '67890', filename: 'other.txt' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
     
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
       
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(attachment_val, req);
-      expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req, token);
+      expect(service.create).toHaveBeenCalledWith([{ ...attachment_val[0], content: 'some content' }], draftAttachments, req);
       expect(req.data.content).toBeNull();
     });
 
@@ -1732,13 +2663,12 @@ describe("SDMAttachmentsService", () => {
                 }
               }
             };
-             const token = 'token123';
       const attachment_val = [{ HasActiveEntity: true, ID: '12345' }];
   
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
   
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
   
       expect(service.create).not.toHaveBeenCalled();
       expect(req.data.content).toBeNull();
@@ -1746,12 +2676,12 @@ describe("SDMAttachmentsService", () => {
 
     test('should skip when no attachments are found', async () => {
       const draftAttachments = [];
-      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+      const req = { data: { content: 'some content', ID: '12345' }, target: draftAttachments, user: { authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } } };
       const attachment_val = [];
   
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
   
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(service.create).not.toHaveBeenCalled();
@@ -1760,7 +2690,7 @@ describe("SDMAttachmentsService", () => {
 
     test('should skip processing when req.data.content is null after initial check', async () => {
       const draftAttachments = [];
-      const req = { data: { content: null, ID: '12345' }, target: draftAttachments, user: { tokenInfo: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } };
+      const req = { data: { content: null, ID: '12345' }, target: draftAttachments, user: { authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('mockTokenValue') } } } };
       const attachment_val = [
         { HasActiveEntity: false, ID: '12345' },
         { HasActiveEntity: true, ID: '67890' },
@@ -1769,7 +2699,7 @@ describe("SDMAttachmentsService", () => {
   
       req.data.content = null; // simulating content being reset to null after initial check
   
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(service.create).not.toHaveBeenCalled();
@@ -1798,16 +2728,15 @@ describe("SDMAttachmentsService", () => {
           tokenInfo: {
             getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
           } }, reject: jest.fn() };
-          const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'invalid/name' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       isRestrictedCharactersInName.mockReturnValue(true);
   
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
   
       expect(req.reject).toHaveBeenCalledWith(409, nameConstrainErr(['invalid/name'], "Upload"));
     });
@@ -1834,16 +2763,15 @@ describe("SDMAttachmentsService", () => {
               tokenInfo: {
                 getTokenValue: jest.fn().mockReturnValue('mockTokenValue')
               } }, reject: jest.fn() };
-              const token = 'token123';
           const attachment_val = [
             { HasActiveEntity: false, ID: '4555', filename: null },
             { HasActiveEntity: true, ID: '67890' },
           ];
           getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
-          fetchAccessToken.mockResolvedValue(token);
+          setupDestinationMocks();
           isRestrictedCharactersInName.mockReturnValue(true);
 
-          await service.draftSaveHandler(req);
+          await service.draftAttachmentUploadHandler(req);
 
           expect(service.create).not.toHaveBeenCalled();
         });
@@ -1872,20 +2800,19 @@ describe("SDMAttachmentsService", () => {
         },
         reject: jest.fn()
       };
-      const token = 'token123';
       const attachment_val = [
         { HasActiveEntity: false, ID: 'afc3d040-60ae-4bf2-a44f-1da4043f4257', filename: 'validname' },
         { HasActiveEntity: true, ID: '67890' },
       ];
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
 
-      fetchAccessToken.mockResolvedValue(token);
+      setupDestinationMocks();
       isRestrictedCharactersInName.mockReturnValue(false);
 
-      await service.draftSaveHandler(req);
+      await service.draftAttachmentUploadHandler(req);
 
       expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req, token);
+      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req);
       expect(req.data.content).toBeNull();
     });
   });
@@ -1999,9 +2926,20 @@ describe("SDMAttachmentsService", () => {
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
       isRepositoryVersioned.mockResolvedValueOnce(false);
       
-      cds.model.definitions["myName.attachments"] = {};
-      cds.model.definitions["Attachments.attachments"] = {};
-      cds.model.definitions["testName.attachments"] = {};
+      // Setup entity with composition
+      cds.model.definitions["myName"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'myName.references'
+          }
+        }
+      };
+      cds.model.definitions["myName.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions["Attachments.references"] = {};
+      cds.model.definitions["testName.references"] = {};
     });
     it("should add attachments to delete in req when deletions are present", async () => {
       const mockedReq = {
@@ -2014,7 +2952,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [
+          references: [
             { _op: "delete", ID: "1" },
             { _op: "delete", ID: "2" },
             { _op: "insert", ID: "3" },
@@ -2022,7 +2960,7 @@ describe("SDMAttachmentsService", () => {
         }),
         attachmentsToDelete: undefined,
       };
-      const mockedAttachments = cds.model.definitions["myName.attachments"];
+      const mockedAttachments = cds.model.definitions["myName.references"];
 
       getURLsToDeleteFromAttachments.mockResolvedValueOnce([
         "attachment3",
@@ -2051,7 +2989,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [],
+          references: [],
         }),
         attachmentsToDelete: undefined,
       };
@@ -2073,11 +3011,11 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: jest.fn().mockResolvedValueOnce({
-          attachments: [],
+          references: [],
         }),
         attachmentsToDelete: undefined,
       };
-      delete cds.model.definitions["myOtherName.attachments"];
+      delete cds.model.definitions["myOtherName.references"];
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.diff).not.toHaveBeenCalled(); // Diff is not called if attachments entity is undefined
       expect(getURLsToDeleteFromAttachments).not.toHaveBeenCalled();
@@ -2085,6 +3023,18 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("attachDeletionData() should set req.parentId if event is DELETE and getFolderIdForEntity() returns non-empty array", async () => {
+      cds.model.definitions["Attachments"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Attachments.references'
+          }
+        }
+      };
+      cds.model.definitions["Attachments.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
       const mockedReq = {
         target: {
           name: 'Attachments',
@@ -2095,7 +3045,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
 
@@ -2103,11 +3053,23 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByIDAsPath.mockResolvedValueOnce("folder");
       await service.attachDeletionData(mockedReq);
-      expect(mockedReq.parentId).toEqual("folder");
+      expect(mockedReq.parentId).toEqual(["folder"]);
       expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
     });
 
     it("attachDeletionData() should not set req.parentId if event is DELETE and getFolderIdForEntity() returns empty array", async () => {
+      cds.model.definitions["Attachments"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Attachments.references'
+          }
+        }
+      };
+      cds.model.definitions["Attachments.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
       const mockedReq = {
         target: {
           name: 'Attachments',
@@ -2118,18 +3080,16 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "DELETE",
       };
-      
+
       getURLsToDeleteFromAttachments.mockResolvedValueOnce(["url"]);
       getFolderIdByIDAsPath.mockResolvedValueOnce(null);
       await service.attachDeletionData(mockedReq);
       expect(mockedReq.parentId).toBeUndefined();
       expect(getFolderIdByIDAsPath).toHaveBeenCalledTimes(1);
-    });
-
-    it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
+    });    it("attachDeletionData() should not call getFolderIdForEntity() if event is not DELETE", async () => {
       const mockReq = {
         target: { name: "testName" },
         user: {
@@ -2138,7 +3098,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
         event: "CREATE",
       };
 
@@ -2156,7 +3116,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
         diff: () =>
-          Promise.resolve({ attachments: [{ _op: "delete", ID: "1" }] }),
+          Promise.resolve({ references: [{ _op: "delete", ID: "1" }] }),
       };
       getURLsToDeleteFromAttachments.mockResolvedValueOnce([]); // returning empty array
       await service.attachDeletionData(mockReq);
@@ -2255,8 +3215,8 @@ describe("SDMAttachmentsService", () => {
 
       const expectedErrorResponse = "test_error_response";
 
-      cds.model.definitions["testTarget.attachments"] = {};
-      fetchAccessToken.mockResolvedValueOnce("test_token");
+      cds.model.definitions["testTarget.references"] = {};
+      setupDestinationMocks();
       deleteAttachmentsOfFolder.mockResolvedValue({});
       service.handleRequest = jest
       .fn()
@@ -2264,7 +3224,6 @@ describe("SDMAttachmentsService", () => {
       .mockResolvedValueOnce({ message: expectedErrorResponse, ID: "2" });
       await service.deleteAttachmentsWithKeys(records, req);
 
-      expect(fetchAccessToken).toHaveBeenCalledTimes(1);
       expect(deleteAttachmentsOfFolder).toHaveBeenCalledTimes(2);
       expect(service.handleRequest).toHaveBeenCalledTimes(2);
       expect(req.attachmentsToDelete).toHaveLength(1);
@@ -2284,7 +3243,7 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-      fetchAccessToken.mockResolvedValueOnce("test_token");
+      setupDestinationMocks();
 
       await service.deleteAttachmentsWithKeys(records, req);
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
@@ -2302,18 +3261,14 @@ describe("SDMAttachmentsService", () => {
           },
         },
       };
-      fetchAccessToken.mockResolvedValueOnce("test_token");
+      const mockDestination = setupDestinationMocks();
       deleteFolderWithAttachments.mockResolvedValueOnce({});
       
       await service.deleteAttachmentsWithKeys([], mockReq);
       
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "tokenValue"
-      );
       expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
         service.creds,
-        "test_token",
+        mockDestination,
         "some_folder_id"
       );
       expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
@@ -2333,14 +3288,14 @@ describe("SDMAttachmentsService", () => {
         parentId: "1234",
         attachmentsToDelete: [],
       };
-      fetchAccessToken.mockResolvedValueOnce("test_token");
+      const mockDestination = setupDestinationMocks();
       deleteFolderWithAttachments.mockResolvedValueOnce({});
 
       await service.deleteAttachmentsWithKeys(records, req);
       expect(deleteFolderWithAttachments).toHaveBeenCalledTimes(1);
       expect(deleteFolderWithAttachments).toHaveBeenCalledWith(
         service.creds,
-        "test_token",
+        mockDestination,
         req.parentId
       );
     });
@@ -2368,7 +3323,7 @@ describe("SDMAttachmentsService", () => {
         warn: jest.fn()
       };
 
-      cds.model.definitions[mockReq.target.name + ".attachments"] = {
+      cds.model.definitions[mockReq.target.name + ".references"] = {
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -2401,17 +3356,21 @@ describe("SDMAttachmentsService", () => {
   });
 
   describe('onCreate', () => {
-    let data, credentials, token, req, parentId, service;
-  
+    let data, credentials, req, parentId, service;
+
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+      setupDestinationMocks();
       data = [{ filename: 'file1' }];
       credentials = { user: 'user', pass: 'pass' };
-      token = 'token';
       req = {
         reject: jest.fn(),
+        target: {
+          name: 'ProcessorService.Orders.references',
+          isDraft: true
+        }
       };
       parentId = 'parent123';
     });
@@ -2424,7 +3383,7 @@ describe("SDMAttachmentsService", () => {
       });
       updateAttachmentInDraft.mockResolvedValue(true);
   
-      await service.onCreate(data, credentials, token, req, parentId);
+      await service.onCreate(data, credentials, req, parentId);
   
       expect(createAttachment).toHaveBeenCalledTimes(1);
       expect(updateAttachmentInDraft).toHaveBeenCalledTimes(1);
@@ -2438,7 +3397,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: { message: 'Malware Service Exception: Virus found in the file!' } }
       });
   
-      await service.onCreate(data, credentials, token, req, parentId);
+      await service.onCreate(data, credentials, req, parentId);
   
       expect(req.reject).toHaveBeenCalledWith(403, virusFileErr(['file1']));
     });
@@ -2450,7 +3409,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: { exception: 'nameConstraintViolation' } }
       });
   
-      await service.onCreate(data, credentials, token, req, parentId);
+      await service.onCreate(data, credentials, req, parentId);
   
       expect(req.reject).toHaveBeenCalledWith(409, duplicateFileErr(['file1']));
     });
@@ -2462,7 +3421,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: { exception: 'some other error' } }
       });
   
-      await service.onCreate(data, credentials, token, req, parentId);
+      await service.onCreate(data, credentials, req, parentId);
   
       expect(req.reject).toHaveBeenCalledWith(otherFileErr(['file1']));
     });
@@ -2478,7 +3437,7 @@ describe("SDMAttachmentsService", () => {
       service.creds = { uri: "http://mock-uri/" }; // Add mock credentials
 
       // Mock role checking functions
-      fetchAccessToken.mockResolvedValue("mockToken");
+      setupDestinationMocks();
       decodeAccessToken.mockReturnValue({ "sdm-roles": ["user"] });
       checkIfSDMRolesExistInToken.mockReturnValue(true);
       getAttachment.mockResolvedValue({ status: 200 }); // Mock getAttachment
@@ -2590,7 +3549,7 @@ describe("SDMAttachmentsService", () => {
       cds.model.definitions['MyEntity'] = { entity: "MyEntity" };
       getConfigurations.mockReturnValue({repositoryId: "repo123" });
       getDraftAttachmentsMetadataForLinkCreation.mockResolvedValue([{ filename: "existingLink" }]);
-      fetchAccessToken.mockResolvedValueOnce("mockToken");
+      setupDestinationMocks();
     });
 
     it("should process link creation successfully", async () => {
@@ -2607,10 +3566,6 @@ describe("SDMAttachmentsService", () => {
         "linkName",
         req
       );
-      expect(fetchAccessToken).toHaveBeenCalledWith(
-        service.creds,
-        "tokenValue"
-      );
       expect(service.processLinkCreation).toHaveBeenCalledWith(
         {
           filename: "linkName",
@@ -2619,8 +3574,7 @@ describe("SDMAttachmentsService", () => {
           linkUrl: "http://example.com"
         },
         cds.model.definitions.MyEntity,
-        req,
-        "mockToken"
+        req
       );
     });
 
@@ -2645,7 +3599,6 @@ describe("SDMAttachmentsService", () => {
     let req;
     let attachment;
     let linkToCreateInSDM;
-    let token;
 
     beforeEach(() => {
       jest.clearAllMocks();
@@ -2653,6 +3606,7 @@ describe("SDMAttachmentsService", () => {
       service.creds = {};
       service.getParentId = jest.fn().mockResolvedValue("parentId");
       service.createLink = jest.fn().mockResolvedValue();
+      setupDestinationMocks();
       req = {
         req: { url: "/MyEntity(ID=123e4567-e89b-12d3-a456-426614174000)" }
       };
@@ -2669,22 +3623,19 @@ describe("SDMAttachmentsService", () => {
         repositoryId: "repo123",
         linkUrl: "http://example.com"
       };
-      token = "mockToken";
     });
 
     it("should call getParentId and createLink with correct arguments", async () => {
-      await service.processLinkCreation(linkToCreateInSDM, attachment, req, token);
+      await service.processLinkCreation(linkToCreateInSDM, attachment, req);
 
       expect(service.getParentId).toHaveBeenCalledWith(
         attachment,
         req,
-        token,
         "123e4567-e89b-12d3-a456-426614174000"
       );
       expect(service.createLink).toHaveBeenCalledWith(
         linkToCreateInSDM,
         service.creds,
-        token,
         req,
         "parentId",
         "upIdField"
@@ -2694,14 +3645,14 @@ describe("SDMAttachmentsService", () => {
     it("should throw if getParentId fails", async () => {
       service.getParentId.mockRejectedValue(new Error("parent error"));
       await expect(
-        service.processLinkCreation(linkToCreateInSDM, attachment, req, token)
+        service.processLinkCreation(linkToCreateInSDM, attachment, req)
       ).rejects.toThrow("parent error");
     });
 
     it("should throw if createLink fails", async () => {
       service.createLink.mockRejectedValue(new Error("create error"));
       await expect(
-        service.processLinkCreation(linkToCreateInSDM, attachment, req, token)
+        service.processLinkCreation(linkToCreateInSDM, attachment, req)
       ).rejects.toThrow("create error");
     });
   });
@@ -2711,7 +3662,6 @@ describe("SDMAttachmentsService", () => {
     let req;
     let linkToCreateInSDM;
     let credentials;
-    let token;
     let parentId;
     let upIdKey;
 
@@ -2720,7 +3670,7 @@ describe("SDMAttachmentsService", () => {
       service = new SDMAttachmentsService();
       credentials = { user: "user", pass: "pass" };
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
-      token = "mockToken";
+      setupDestinationMocks();
       parentId = "parentId";
       upIdKey = "upIdField";
       linkToCreateInSDM = {
@@ -2740,6 +3690,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("should update draft if createAttachment returns 201", async () => {
+      const mockDestination = setupDestinationMocks();
       createAttachment.mockResolvedValueOnce({
         status: 201,
         data: {
@@ -2750,13 +3701,13 @@ describe("SDMAttachmentsService", () => {
         }
       });
       
-      await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(createAttachment).toHaveBeenCalledWith(
         linkToCreateInSDM,
         credentials,
-        token,
-        parentId
+        parentId,
+        mockDestination
       );
       expect(updateLinkInDraft).toHaveBeenCalledWith(
         req,
@@ -2783,7 +3734,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: { exception: "nameConstraintViolation" } }
       });
       
-      await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(req.reject).toHaveBeenCalledWith(409, duplicateFileErr(['linkName']));
     });
@@ -2794,7 +3745,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: {} }
       });
       
-      await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(req.reject).toHaveBeenCalledWith(403, "You do not have the required permissions to upload links. Please contact your administrator for access.");
     });
@@ -2805,7 +3756,7 @@ describe("SDMAttachmentsService", () => {
         response: { data: { message: "some error" } }
       });
       
-      await service.createLink(linkToCreateInSDM, credentials, token, req, parentId, upIdKey);
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(req.reject).toHaveBeenCalledWith("some error");
     });
@@ -2850,20 +3801,19 @@ describe("SDMAttachmentsService", () => {
         linkUrl: 'http://original-link.com'
       };
       getAttachmentById.mockResolvedValue(existingAttachment);
-      fetchAccessToken.mockResolvedValue('test-access-token');
+      const mockDestination = setupDestinationMocks();
       editLink.mockResolvedValue({ status: 200 });
       editLinkInDraft.mockResolvedValue();
 
      const result = await service.handleEditLinkAction(req);
 
       expect(getAttachmentById).toHaveBeenCalledWith(attachmentId, 'test-entity');
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'test-user-token');
       expect(editLink).toHaveBeenCalledWith(
           'existing-object-id',
           'MyLink',
           'http://new-link.com',
           service.creds,
-          'test-access-token'
+          mockDestination
       );
       expect(editLinkInDraft).toHaveBeenCalledWith(req, {
           ID: attachmentId,
@@ -2887,7 +3837,7 @@ describe("SDMAttachmentsService", () => {
       service.originalUrlMap.set(attachmentId, 'http://original-baseline.com');
       
       getAttachmentById.mockResolvedValue(existingAttachment);
-      fetchAccessToken.mockResolvedValue('test-access-token');
+      setupDestinationMocks();
       editLink.mockResolvedValue({ status: 200 });
       editLinkInDraft.mockResolvedValue();
       
@@ -2914,7 +3864,7 @@ describe("SDMAttachmentsService", () => {
 
     it('should reject with 403 for unauthorized users', async () => {
       getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
-      fetchAccessToken.mockResolvedValue('test-access-token');
+      setupDestinationMocks();
       editLink.mockResolvedValue({ status: 403 });
       
       await service.handleEditLinkAction(req);
@@ -2923,7 +3873,7 @@ describe("SDMAttachmentsService", () => {
     
     it('should reject with error message for other failures', async () => {
       getAttachmentById.mockResolvedValue({ url: 'some-url', filename: 'some-file.url' });
-      fetchAccessToken.mockResolvedValue('test-access-token');
+      setupDestinationMocks();
 
       editLink.mockResolvedValue({
         status: 500,
@@ -2948,6 +3898,12 @@ describe("SDMAttachmentsService", () => {
       // FIX: Spy on the actual method to assert calls
       service.updateBaselinesForEntity = jest.fn();
       
+      // Mock global.UPDATE for mimeType fix using mockImplementation to avoid breaking other tests
+      global.UPDATE.mockClear().mockImplementation(() => ({
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue()
+      }));
+      
       req = {
         target: {
           name: 'Test.Entity.drafts'
@@ -2955,27 +3911,48 @@ describe("SDMAttachmentsService", () => {
       };
     });
     
-    it('should handle entity patterns when no target name', async () => {
-      req.target = {}; // Simulate no target name
+    it('should call updateBaselinesForEntity for attachment compositions', async () => {
+      // Set up proper target name
+      req.target = { name: 'ProcessorService.Incidents' };
+      req.data = { ID: 'test-id' };
+      
+      // Mock the parent entity with references composition
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'ProcessorService.Incidents.references'
+          }
+        }
+      };
       
       // Mock the entity definitions that the method looks for
-      cds.model.definitions['ProcessorService.Incidents.attachments'] = { entity: 'TestAttachments' };
-      cds.model.definitions['ProcessorService.Incidents.attachments.drafts'] = { entity: 'TestAttachmentsDrafts' };
+      cds.model.definitions['ProcessorService.Incidents.references'] = { 
+        entity: 'TestAttachments',
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+      };
       
-      await service.handleDraftSaveForLinks(req);
+      await service.handleDraftSaveForLinks({}, req);
       
-      // FIX: Assert calls to the spied function
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.attachments');
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.attachments.drafts');
-      expect(service.updateBaselinesForEntity).toHaveBeenCalledTimes(2);
+      // Assert updateBaselinesForEntity is called for the attachments entity
+      expect(service.updateBaselinesForEntity).toHaveBeenCalledWith('ProcessorService.Incidents.references');
+      expect(service.updateBaselinesForEntity).toHaveBeenCalledTimes(1);
     });
     
-    it('should not call updateBaselinesForEntity when target name is available', async () => {
-      // Target name is available: 'Test.Entity.drafts'
+    it('should not call updateBaselinesForEntity when no composition entities exist', async () => {
+      // Target name exists but no matching composition entities are defined
+      req.target = { name: 'Test.Entity.drafts' };
+      req.data = {};
       
-      await service.handleDraftSaveForLinks(req);
+      // Clean up entity definitions from previous test
+      delete cds.model.definitions['ProcessorService.Incidents'];
+      delete cds.model.definitions['ProcessorService.Incidents.references'];
+      delete cds.model.definitions['ProcessorService.Incidents.references.drafts'];
       
-      // FIX: Assert NOT called when target name is present (as per sdm.js logic)
+      await service.handleDraftSaveForLinks({}, req);
+      
+      // updateBaselinesForEntity should not be called when composition entities don't exist
       expect(service.updateBaselinesForEntity).not.toHaveBeenCalled();
     });
   });
@@ -3065,8 +4042,7 @@ describe("SDMAttachmentsService", () => {
         data: { ID: 'parent123' },
         target: { name: 'Parent.drafts' },
         user: {
-          authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('test-auth-token') } },
-          tokenInfo: { getTokenValue: jest.fn().mockReturnValue('test-token') }
+          authInfo: { token: { getTokenValue: jest.fn().mockReturnValue('test-token') } }
         }
       };
       
@@ -3074,9 +4050,20 @@ describe("SDMAttachmentsService", () => {
       global.SELECT.where.mockClear();
       
       // FIX: Add mock key structure for the target entity's attachments draft
-      cds.model.definitions['Parent.attachments.drafts'] = mockUpKeyStructure;
+      cds.model.definitions['Parent'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Parent.references'
+          }
+        }
+      };
+      cds.model.definitions['Parent.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Parent.references.drafts'] = mockUpKeyStructure;
       
-      fetchAccessToken.mockResolvedValue('access-token');
+      setupDestinationMocks();
     });
     
     it('should revert links with differing baseline URLs and delete from map', async () => {
@@ -3098,10 +4085,9 @@ describe("SDMAttachmentsService", () => {
       expect(service.revertLinkInSDM).toHaveBeenCalledWith(
         draftAttachments[0],
         'http://original.com',
-        'access-token'
+        req
       );
       expect(service.originalUrlMap.has('attach1')).toBe(false);
-      expect(fetchAccessToken).toHaveBeenCalledWith(service.creds, 'test-auth-token');
     });
     
     it('should skip attachments without baseline URLs', async () => {
@@ -3140,7 +4126,7 @@ describe("SDMAttachmentsService", () => {
       req.target.name = 'NonExistent.drafts';
       
       // Provide a minimal entity definition to prevent the crash
-      cds.model.definitions['NonExistent.attachments.drafts'] = {
+      cds.model.definitions['NonExistent.references.drafts'] = {
         keys: {
           up_: {
             keys: [{
@@ -3168,6 +4154,7 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       service.creds = 'test-credentials';
+      setupDestinationMocks();
     });
     
     it('should successfully revert link in SDM', async () => {
@@ -3177,18 +4164,19 @@ describe("SDMAttachmentsService", () => {
         url: 'object-id'
       };
       const originalUrl = 'http://original.com';
-      const token = 'access-token';
+      const req = { user: { id: 'testUser' } };
+      const mockDestination = setupDestinationMocks();
       
       editLink.mockResolvedValue({ status: 200 });
       
-      await service.revertLinkInSDM(draftAttachment, originalUrl, token);
+      await service.revertLinkInSDM(draftAttachment, originalUrl, req);
       
       expect(editLink).toHaveBeenCalledWith(
         'object-id',
         'test',
         'http://original.com',
         service.creds,
-        token
+        mockDestination
       );
     });
     
@@ -3199,18 +4187,19 @@ describe("SDMAttachmentsService", () => {
         url: 'object-id'
       };
       const originalUrl = 'http://original.com';
-      const token = 'access-token';
+      const req = { user: { id: 'testUser' } };
+      const mockDestination = setupDestinationMocks();
       
       editLink.mockResolvedValue({ status: 200 });
       
-      await service.revertLinkInSDM(draftAttachment, originalUrl, token);
+      await service.revertLinkInSDM(draftAttachment, originalUrl, req);
       
       expect(editLink).toHaveBeenCalledWith(
         'object-id',
         'test',
         'http://original.com',
         service.creds,
-        token
+        mockDestination
       );
     });
     
@@ -3221,11 +4210,11 @@ describe("SDMAttachmentsService", () => {
         url: 'object-id'
       };
       const originalUrl = 'http://original.com';
-      const token = 'access-token';
+      const req = { user: { id: 'testUser' } };
       
       editLink.mockRejectedValue(new Error('SDM Error'));
       
-      await expect(service.revertLinkInSDM(draftAttachment, originalUrl, token))
+      await expect(service.revertLinkInSDM(draftAttachment, originalUrl, req))
       .rejects.toThrow('SDM Error');
     });
   });
@@ -3233,10 +4222,12 @@ describe("SDMAttachmentsService", () => {
   describe("getParentId", () => {
     let service;
     let mockReq;
+    let mockDestination;
     beforeEach(() => {
       NodeCache.prototype.get.mockClear();
       jest.clearAllMocks();
       getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+      mockDestination = setupDestinationMocks();
       service = new SDMAttachmentsService();
       service.creds = { uaa: "mocked uaa" };
       mockReq = {
@@ -3252,7 +4243,7 @@ describe("SDMAttachmentsService", () => {
         info: jest.fn(),
       };
 
-      cds.model.definitions[mockReq.target.name + ".attachments"] = {
+      cds.model.definitions[mockReq.target.name + ".references"] = {
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -3262,26 +4253,24 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("getParentId should call getFolderIdByPath if getFolderIdForEntity returns empty array", async () => {
-      const attachments = cds.model.definitions[mockReq.target.name + ".attachments"]
-      const token = "mocked_token"
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"]
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce("mocked_folder_id");
       const upId = "mocked_up_id";
 
-      await service.getParentId(attachments, mockReq, token, upId)
+      await service.getParentId(attachments, mockReq, upId)
  
       expect(getFolderIdByPath).toHaveBeenCalledWith(
         mockReq,
         service.creds,
-        "mocked_token",
-        cds.model.definitions[mockReq.target.name + ".attachments"],
-        upId
+        cds.model.definitions[mockReq.target.name + ".references"],
+        upId,
+        mockDestination
       );
     });
   
     it("getParentId should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"]
-      let token = "mocked_token"
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"]
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce(null);
       const upId = "mocked_up_id"
@@ -3295,19 +4284,19 @@ describe("SDMAttachmentsService", () => {
         }
       );
 
-      await service.getParentId(attachments, mockReq, token, upId);
+      await service.getParentId(attachments, mockReq, upId);
  
       expect(createFolder).toHaveBeenCalledWith(
         mockReq,
         service.creds,
-        "mocked_token",
-        cds.model.definitions[mockReq.target.name + ".attachments"],
-        upId
+        cds.model.definitions[mockReq.target.name + ".references"],
+        upId,
+        mockDestination
       );
     });
   
     it("getParentId should reject with 403 if createFolder response status is 403 and message matches userDoesNotHaveRequiredScope", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"];
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"];
       let token = "mocked_token";
       getFolderIdForEntity.mockResolvedValueOnce([]);
       getFolderIdByPath.mockResolvedValueOnce(null);
@@ -3329,7 +4318,7 @@ describe("SDMAttachmentsService", () => {
     });
 
     it("getParentId should return parentId if folderId is not null in folderIds", async () => {
-      let attachments = cds.model.definitions[mockReq.target.name + ".attachments"];
+      let attachments = cds.model.definitions[mockReq.target.name + ".references"];
       let token = "mocked_token";
 
       const folderIds = [
@@ -3503,7 +4492,7 @@ describe("SDMAttachmentsService", () => {
   
     it('should return the status as "Clean"', async () => {
       const status = await service.getStatus();
-      expect(status).toBe("Clean");
+      expect(status).toEqual({ status: "Clean", lastScan: null });
     });
   });
 
@@ -3533,27 +4522,40 @@ describe("SDMAttachmentsService", () => {
         diff: jest.fn(),
       };
   
-      cds.model.definitions["testName.attachments.drafts"] = {};
+      cds.model.definitions["testName"] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'testName.references'
+          }
+        }
+      };
+      cds.model.definitions["testName.references"] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions["testName.references.drafts"] = {
+        includes: ['sap.attachments.Attachments']
+      };
     });
   
     it("should attach attachments to delete in req when they are present in drafts", async () => {
-      mockDraftAttachments = cds.model.definitions["testName.attachments.drafts"];
+      mockDraftAttachments = cds.model.definitions["testName.references.drafts"];
   
       const attachmentsToDelete = ["attachment1", "attachment2"];
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
-      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      setupDestinationMocks();
       getFolderIdByIDAsPath.mockResolvedValueOnce("mock_folder_id");
   
       await service.attachDraftDeletionData(mockReq);
   
       expect(getURLsToDeleteFromDraftAttachments).toHaveBeenCalledWith("mocked_id", mockDraftAttachments);
       expect(mockReq.attachmentsToDelete).toEqual(attachmentsToDelete);
-      expect(mockReq.parentId).toEqual("mock_folder_id");
+      expect(mockReq.parentId).toEqual(["mock_folder_id"]);
     });
   
     it("should not set `parentId` if the number of attachments in diff is different from `attachmentsToDelete`", async () => {
@@ -3561,7 +4563,7 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(attachmentsToDelete);
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2", "attachment3"],
+        references: ["attachment1", "attachment2", "attachment3"],
       });
   
       await service.attachDraftDeletionData(mockReq);
@@ -3570,7 +4572,7 @@ describe("SDMAttachmentsService", () => {
     });
   
     it("should not attach attachments to delete if no draft attachments are found", async () => {
-      delete cds.model.definitions["testName.attachments.drafts"];
+      delete cds.model.definitions["testName.references.drafts"];
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]);
   
       await service.attachDraftDeletionData(mockReq);
@@ -3583,7 +4585,7 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce([]); // Empty array to simulate no deletions
   
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
       await service.attachDraftDeletionData(mockReq);
@@ -3602,11 +4604,11 @@ describe("SDMAttachmentsService", () => {
       
       // Both arrays should be of the same length to trigger folderId fetch logic
       mockReq.diff.mockResolvedValueOnce({
-        attachments: ["attachment1", "attachment2"],
+        references: ["attachment1", "attachment2"],
       });
   
       // Simulate fetching a token, but folder ID fetch returns falsy
-      fetchAccessToken.mockResolvedValueOnce("mocked_token");
+      setupDestinationMocks();
       getFolderIdByIDAsPath.mockResolvedValueOnce(null); // Falsy value to test this situation
   
       await service.attachDraftDeletionData(mockReq);
@@ -3616,146 +4618,2440 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
-  describe("registerUpdateHandlers", () => {
-    let mockSrv;
+  describe('checkRepositoryType', () => {
     let service;
+
     beforeEach(() => {
-      mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
-      };
+      jest.clearAllMocks();
       service = new SDMAttachmentsService();
-      service.attachDeletionData = jest.fn();
-      service.draftSaveHandler = jest.fn();
-      service.deleteAttachmentsWithKeys = jest.fn();
+      service.creds = { key: 'test-creds' };
     });
-    it("should call srv.before for DELETE with correct target and callback", () => {
-      service.registerUpdateHandlers(mockSrv, "entity", "target");
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        ["DELETE", "UPDATE"],
-        "entity",
-        expect.any(Function)
+
+    it('should reject with error when repository is versioned', async () => {
+      const req = { reject: jest.fn() };
+      
+      // Mock getConfigurations to return a repositoryId
+      getConfigurations.mockReturnValue({ repositoryId: 'test-repo' });
+      
+      // Mock user token info
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: () => ({ ext_attr: { zdn: 'test-subdomain' } })
+          }
+        }
+      };
+      
+      // Mock cache to return undefined (not cached)
+      mockCacheInstance.get.mockReturnValue(undefined);
+      
+      // Mock repository info calls
+      const mockDestination = { url: "http://example.com" };
+      service.technicalUserDestn = mockDestination;
+      getRepositoryInfo.mockResolvedValue({ capabilities: {} });
+      isRepositoryVersioned.mockReturnValue(true);
+      
+      await service.checkRepositoryType(req);
+      
+      expect(req.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+
+    it('should reject with error when cached repository type is versioned', async () => {
+      const req = { reject: jest.fn() };
+      
+      getConfigurations.mockReturnValue({ repositoryId: 'test-repo' });
+      
+      cds.context = {
+        user: {
+          tokenInfo: {
+            getPayload: () => ({ ext_attr: { zdn: 'test-subdomain' } })
+          }
+        }
+      };
+      
+      // Mock cache to return "versioned"
+      mockCacheInstance.get.mockReturnValue('versioned');
+      
+      // Create service AFTER setting up mocks
+      const cachedService = new SDMAttachmentsService();
+      cachedService.creds = { key: 'test-creds' };
+      
+      await cachedService.checkRepositoryType(req);
+      
+      expect(req.reject).toHaveBeenCalledWith(400, versionedRepositoryErr);
+    });
+  });
+
+  describe('get method error paths', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should reject with 403 when content is "Forbidden"', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { authInfo: { token: { getTokenValue: () => 'test-token' } } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      setupDestinationMocks();
+      readAttachment.mockResolvedValue('Forbidden');
+
+      await expect(service.get(attachments, keys, req)).rejects.toThrow(
+        expect.objectContaining({
+          message: userNotAuthorisedReadError,
+          status: 403
+        })
       );
     });
 
-    it("should call srv.before for SAVE with correct callback", () => {
-      service.registerUpdateHandlers(mockSrv, "entity", "target");
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        "SAVE",
-        "entity",
-        expect.any(Function)
+    it('should reject with 404 when content is "Not Found"', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { authInfo: { token: { getTokenValue: () => 'test-token' } } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      setupDestinationMocks();
+      readAttachment.mockResolvedValue('Not Found');
+
+      await expect(service.get(attachments, keys, req)).rejects.toThrow(
+        expect.objectContaining({
+          message: attachmentNotFound,
+          status: 404
+        })
       );
     });
 
-    it("should call srv.after for DELETE with correct target and callback", () => {
-      service.registerUpdateHandlers(mockSrv, "entity", "target");
-      expect(mockSrv.after).toHaveBeenCalledWith(
-        ["DELETE", "UPDATE"],
-        ["entity", undefined],
-        expect.any(Function)
-      );
-    });
-    it("should call srv.before for PUT with correct target.drafts and callback", () => {
-      const target = { drafts: "drafts" };
-      service.registerUpdateHandlers(mockSrv, "entity", target);
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        "PUT",
-        target.drafts,
-        expect.any(Function)
+    it('should reject with 500 for other error types', async () => {
+      const req = {
+        reject: jest.fn(),
+        user: { authInfo: { token: { getTokenValue: () => 'test-token' } } }
+      };
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      // Set up HTTP context for get() method
+      cds.context = { http: { req } };
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+      setupDestinationMocks();
+      readAttachment.mockResolvedValue('Some other error');
+
+      await expect(service.get(attachments, keys, req)).rejects.toThrow(
+        expect.objectContaining({
+          message: errorMessage,
+          status: 500
+        })
       );
     });
 
-    it("should not call srv.before for PUT when target.drafts is not defined", () => {
-      const target = {};
-      service.registerUpdateHandlers(mockSrv, "entity", target);
-      expect(mockSrv.before).not.toHaveBeenCalledWith(
-        "PUT",
-        undefined,
-        expect.any(Function)
-      );
+    it('should throw error when HTTP request context is not available', async () => {
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      // Set up context without HTTP request
+      cds.context = {};
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+
+      await expect(service.get(attachments, keys)).rejects.toThrow('HTTP request context not available');
     });
 
-    it("should register 'openAttachment' handler and call openAttachment", async () => {
-      const mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
+    it('should throw error when cds.context is undefined', async () => {
+      const keys = { ID: 'test-id' };
+      const attachments = {};
+
+      // No context at all
+      cds.context = undefined;
+
+      getURLFromAttachments.mockResolvedValue({ url: 'test-url' });
+
+      await expect(service.get(attachments, keys)).rejects.toThrow('HTTP request context not available');
+    });
+  });
+
+  describe('processCompositionRename', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should return early when attachmentsEntity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity' },
+        data: {}
+      };
+      
+      // Mock entity definition to not exist
+      cds.model.definitions['Test.Entity.references'] = undefined;
+      
+      const result = await service.processCompositionRename(req, 'references', 'test-repo');
+      
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('getAttachmentCompositions', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+
+    it('should return empty array when entity definition does not exist', () => {
+      const targetEntity = { name: 'NonExistent.Entity' };
+      
+      delete cds.model.definitions['NonExistent.Entity'];
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when entity has no elements', () => {
+      const targetEntity = { name: 'Test.EmptyEntity' };
+      
+      cds.model.definitions['Test.EmptyEntity'] = {};
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should find composition named "references"', () => {
+      const targetEntity = { name: 'Test.EntityWithReferences' };
+      
+      cds.model.definitions['Test.EntityWithReferences'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should find composition named "attachments"', () => {
+      const targetEntity = { name: 'Test.EntityWithAttachments' };
+      
+      cds.model.definitions['Test.EntityWithAttachments'] = {
+        elements: {
+          attachments: {
+            type: 'cds.Composition',
+            target: 'Test.Attachments'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Attachments'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['attachments']);
+    });
+
+    it('should find composition with custom name "documents"', () => {
+      const targetEntity = { name: 'Test.EntityWithDocuments' };
+      
+      cds.model.definitions['Test.EntityWithDocuments'] = {
+        elements: {
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.Documents'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['documents']);
+    });
+
+    it('should find composition with custom name "files"', () => {
+      const targetEntity = { name: 'Test.EntityWithFiles' };
+      
+      cds.model.definitions['Test.EntityWithFiles'] = {
+        elements: {
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.Files'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['files']);
+    });
+
+    it('should find multiple attachment compositions with different names', () => {
+      const targetEntity = { name: 'Test.EntityWithMultipleCompositions' };
+      
+      cds.model.definitions['Test.EntityWithMultipleCompositions'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          documents: {
+            type: 'cds.Composition',
+            target: 'Test.Documents'
+          },
+          files: {
+            type: 'cds.Composition',
+            target: 'Test.Files'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.Documents'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.Files'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toContain('references');
+      expect(result).toContain('documents');
+      expect(result).toContain('files');
+      expect(result.length).toBe(3);
+    });
+
+    it('should ignore compositions that do not have sap.attachments.Attachments includes', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedCompositions' };
+      
+      cds.model.definitions['Test.EntityWithMixedCompositions'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          otherComposition: {
+            type: 'cds.Composition',
+            target: 'Test.OtherEntity'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.OtherEntity'] = {
+        includes: ['SomeOtherAspect']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should ignore non-composition elements', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedElements' };
+      
+      cds.model.definitions['Test.EntityWithMixedElements'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.References'
+          },
+          title: {
+            type: 'cds.String'
+          },
+          status: {
+            type: 'cds.Integer'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.References'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['references']);
+    });
+
+    it('should handle composition without target definition', () => {
+      const targetEntity = { name: 'Test.EntityWithBrokenComposition' };
+      
+      cds.model.definitions['Test.EntityWithBrokenComposition'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.NonExistentTarget'
+          }
+        }
+      };
+      
+      // Target definition doesn't exist
+      delete cds.model.definitions['Test.NonExistentTarget'];
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should handle composition target without includes property', () => {
+      const targetEntity = { name: 'Test.EntityWithIncompleteTarget' };
+      
+      cds.model.definitions['Test.EntityWithIncompleteTarget'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.IncompleteTarget'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.IncompleteTarget'] = {
+        // No includes property
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should work with any composition name following naming convention', () => {
+      const testCases = [
+        'attachments',
+        'references',
+        'documents',
+        'files',
+        'media',
+        'uploads',
+        'resources',
+        'assets',
+        'binaries'
+      ];
+
+      testCases.forEach(compositionName => {
+        const targetEntity = { name: `Test.EntityWith${compositionName}` };
+        
+        cds.model.definitions[`Test.EntityWith${compositionName}`] = {
+          elements: {
+            [compositionName]: {
+              type: 'cds.Composition',
+              target: `Test.${compositionName}`
+            }
+          }
+        };
+        
+        cds.model.definitions[`Test.${compositionName}`] = {
+          includes: ['sap.attachments.Attachments']
+        };
+        
+        const result = service.getAttachmentCompositions(targetEntity);
+        
+        expect(result).toEqual([compositionName]);
+      });
+    });
+  });
+
+  describe('replacePropertiesInAttachment', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+    });
+
+    it('should return early when req.data does not have compositionName', () => {
+      const req = { data: {} };
+      const id = 'test-id';
+      const fileName = 'test.pdf';
+      const propertiesInDB = {};
+      const secondaryTypeProperties = new Map();
+      const compositionName = 'references';
+      
+      service.replacePropertiesInAttachment(req, id, fileName, propertiesInDB, secondaryTypeProperties, compositionName);
+      
+      // Should return early without error
+      expect(req.data[compositionName]).toBeUndefined();
+    });
+
+    it('should return early when attachment with ID is not found', () => {
+      const req = { 
+        data: { 
+          references: [
+            { ID: 'other-id', filename: 'other.pdf' }
+          ] 
+        } 
+      };
+      const id = 'test-id';
+      const fileName = 'test.pdf';
+      const propertiesInDB = {};
+      const secondaryTypeProperties = new Map();
+      const compositionName = 'references';
+      
+      service.replacePropertiesInAttachment(req, id, fileName, propertiesInDB, secondaryTypeProperties, compositionName);
+      
+      // Attachment filename should not be changed
+      expect(req.data.references[0].filename).toBe('other.pdf');
+    });
+  });
+
+  describe('attachDraftDeletionData - edge cases', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should handle when draftAttachments entity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity.drafts' },
+        data: { ID: 'test-id' },
+        diff: jest.fn().mockResolvedValue({ references: [] }),
+        event: 'DELETE',
+        user: {
+          authInfo: { token: { getTokenValue: () => 'test-token' } }
+        }
       };
 
-      const service = new SDMAttachmentsService();
-      service.openAttachment = jest.fn().mockResolvedValue("openAttachmentResult");
-
-      service.registerUpdateHandlers(mockSrv, "entity", { drafts: "drafts" });
-
-      // Find the handler registered for 'openAttachment'
-      const openAttachmentCall = mockSrv.on.mock.calls.find(
-        ([eventName]) => eventName === "openAttachment"
-      );
-      expect(openAttachmentCall).toBeDefined();
-
-      // Simulate calling the handler
-      const handler = openAttachmentCall[1];
-      const req = { error: jest.fn() };
-      const result = await handler(req);
-
-      expect(service.openAttachment).toHaveBeenCalledWith(req);
-      expect(result).toBe("openAttachmentResult");
-      expect(req.error).not.toHaveBeenCalled();
+      cds.model.definitions['Test.Entity'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.Entity.references'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.Entity.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      
+      // Draft entity doesn't exist
+      delete cds.model.definitions['Test.Entity.references.drafts'];
+      
+      await service.attachDraftDeletionData(req);
+      
+      // Should not throw and should not set attachmentsToDelete
+      expect(req.attachmentsToDelete).toBeUndefined();
     });
 
-    it("should register 'createLink' handler and call handleCreateLinkAction", async () => {
-      const mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
+    it('should return early when baseEntity does not exist in model', async () => {
+      const req = {
+        target: { name: 'NonExistent.Entity.drafts' },
+        data: { ID: 'test-id' },
+        event: 'DELETE'
       };
-      const service = new SDMAttachmentsService();
-      service.handleCreateLinkAction = jest.fn().mockResolvedValue("createLinkResult");
 
-      service.registerUpdateHandlers(mockSrv, "entity", { drafts: "drafts" });
-
-      // Find the handler registered for 'createLink'
-      const createLinkCall = mockSrv.on.mock.calls.find(
-        ([eventName]) => eventName === "createLink"
-      );
-      expect(createLinkCall).toBeDefined();
-
-      // Simulate calling the handler
-      const handler = createLinkCall[1];
-      const req = { error: jest.fn() };
-      const result = await handler(req);
-
-      expect(service.handleCreateLinkAction).toHaveBeenCalledWith(req);
-      expect(result).toBe("createLinkResult");
-      expect(req.error).not.toHaveBeenCalled();
+      // Ensure base entity doesn't exist
+      delete cds.model.definitions['NonExistent.Entity'];
+      
+      await service.attachDraftDeletionData(req);
+      
+      // Should return early without processing
+      expect(req.attachmentsToDelete).toBeUndefined();
     });
-    
-    it("should register 'editLink' handler and call handleEditLinkAction", async () => {
-      const mockSrv = {
-        before: jest.fn(),
-        after: jest.fn(),
-        on: jest.fn(),
+  });
+
+  describe('handleDraftDiscardForLinks - edge cases', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+      service.creds = { key: 'test-creds' };
+    });
+
+    it('should continue when attachmentsEntity does not exist', async () => {
+      const req = {
+        target: { name: 'Test.Entity.drafts' },
+        data: { ID: 'test-id' },
+        user: {
+          authInfo: { token: { getTokenValue: () => 'test-token' } }
+        }
       };
-      const service = new SDMAttachmentsService();
-      service.handleEditLinkAction = jest.fn().mockResolvedValue("editLinkResult");
+
+      cds.model.definitions['Test.Entity'] = {
+        elements: {
+          references: {
+            type: 'cds.Composition',
+            target: 'Test.Entity.references'
+          }
+        }
+      };
       
-      service.registerUpdateHandlers(mockSrv, "entity", { drafts: "drafts" });
+      cds.model.definitions['Test.Entity.references'] = {
+        includes: ['sap.attachments.Attachments']
+      };
       
-      // Find the handler registered for 'editLink'
-      const editLinkCall = mockSrv.on.mock.calls.find(
-        ([eventName]) => eventName === "editLink"
-      );
-      expect(editLinkCall).toBeDefined();
+      // Draft entity doesn't exist
+      delete cds.model.definitions['Test.Entity.references.drafts'];
       
-      // Simulate calling the handler
-      const handler = editLinkCall[1];
-      const req = { error: jest.fn() };
-      const result = await handler(req);
+      setupDestinationMocks();
       
-      expect(service.handleEditLinkAction).toHaveBeenCalledWith(req);
-      expect(result).toBe("editLinkResult");
-      expect(req.error).not.toHaveBeenCalled();
+      await service.handleDraftDiscardForLinks(req);
+      
+      // Should not throw
+    });
+  });
+
+  describe('handleDraftDiscardForLinks - missing entity', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+    });
+
+    it('should handle missing entity definition gracefully', async () => {
+      const req = {
+        target: { name: 'NonExistent.Entity.drafts' },
+        data: { ID: 'test-id' },
+        user: {
+          authInfo: { token: { getTokenValue: () => 'test-token' } }
+        }
+      };
+
+      // Ensure entity doesn't exist
+      delete cds.model.definitions['NonExistent.Entity'];
+      
+      await service.handleDraftDiscardForLinks(req);
+      
+      // Should not throw and should not call any SDM operations
+    });
+  });
+
+  // ========================================================================
+  // NON-DRAFT ATTACHMENT FEATURE TESTS
+  // ========================================================================
+
+  describe("Non-Draft Attachment Features", () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { 
+        uri: "http://mock-sdm.com",
+        clientId: "mock-client-id", 
+        clientSecret: "mock-client-secret" 
+      };
+    });
+
+    describe("getStatus", () => {
+      it("should return clean status object for any attachment", async () => {
+        const Attachments = cds.model.definitions['ProcessorService.Orders.references'];
+        const key = { ID: '123e4567-e89b-12d3-a456-426614174000' };
+
+        const result = await service.getStatus(Attachments, key);
+
+        expect(result).toEqual({
+          status: "Clean",
+          lastScan: null
+        });
+      });
+
+      it("should return clean status without requiring actual DB lookup", async () => {
+        // This validates that getStatus doesn't access database or SDM
+        const Attachments = cds.model.definitions['ProcessorService.Orders.references'];
+        const key = { ID: 'non-existent-id' };
+
+        const result = await service.getStatus(Attachments, key);
+
+        expect(result).toEqual({
+          status: "Clean",
+          lastScan: null
+        });
+        // Verify no external calls were made
+        expect(createAttachment).not.toHaveBeenCalled();
+        expect(readAttachment).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("onCreate - Non-Draft Support", () => {
+      beforeEach(() => {
+        getConfigurations.mockReturnValue({ repositoryId: 'test-repo-id' });
+        service.getDestination = jest.fn().mockResolvedValue({ url: 'http://mock-sdm.com' });
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({
+            ID: 'attachment-123',
+            filename: 'test.pdf',
+            folderId: 'folder-123',
+            url: 'mock-object-id',
+            repositoryId: 'test-repo-id',
+            status: 'Clean'
+          })
+        });
+      });
+
+      it("should handle non-draft attachment upload successfully", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'test.pdf',
+          content: Buffer.from('test content'),
+          mimeType: 'application/pdf'
+        }];
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: {
+            succinctProperties: {
+              'cmis:objectId': 'mock-object-id'
+            }
+          }
+        });
+
+        UPDATE.mockReturnValue({
+          set: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue(1)
+        });
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        expect(createAttachment).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ID: 'attachment-123',
+            filename: 'test.pdf'
+          }),
+          service.creds,
+          'parent-folder-id',
+          expect.any(Object)
+        );
+
+        expect(UPDATE).toHaveBeenCalledWith(mockReq.target);
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should use updateAttachmentInDraft for draft entities", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references.drafts',
+            isDraft: true 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'test.pdf',
+          content: Buffer.from('test content')
+        }];
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: {
+            succinctProperties: {
+              'cmis:objectId': 'mock-object-id'
+            }
+          }
+        });
+
+        updateAttachmentInDraft.mockResolvedValue();
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        expect(updateAttachmentInDraft).toHaveBeenCalledWith(
+          mockReq,
+          expect.objectContaining({
+            ID: 'attachment-123',
+            url: 'mock-object-id'
+          })
+        );
+        expect(UPDATE).not.toHaveBeenCalled();
+      });
+
+      it("should handle SDM upload failure and reject with duplicate error", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'duplicate.pdf',
+          content: Buffer.from('test content')
+        }];
+
+        // Simulate Axios error from SDM (409 duplicate)
+        const axiosError = new Error('Conflict');
+        axiosError.isAxiosError = true;
+        axiosError.response = {
+          status: 409,
+          data: {
+            message: 'File already exists',
+            exception: 'nameConstraintViolation'
+          }
+        };
+
+        createAttachment.mockRejectedValue(axiosError);
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        expect(mockReq.reject).toHaveBeenCalledWith(
+          409,
+          expect.any(String)
+        );
+        expect(mockReq.reject.mock.calls[0][1]).toContain('duplicate.pdf');
+      });
+
+      it("should cleanup orphaned metadata for failed non-draft upload", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'test.pdf',
+          content: Buffer.from('test content')
+        }];
+
+        const axiosError = new Error('Upload failed');
+        axiosError.isAxiosError = true;
+        axiosError.response = {
+          status: 500,
+          data: { message: 'Internal server error' }
+        };
+
+        createAttachment.mockRejectedValue(axiosError);
+
+        const mockDelete = jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue(1)
+        });
+        global.DELETE = {
+          from: mockDelete
+        };
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        expect(mockDelete).toHaveBeenCalledWith(mockReq.target);
+        expect(mockReq.reject).toHaveBeenCalled();
+      });
+
+      it("should handle virus detection and reject with 403", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'virus.pdf',
+          content: Buffer.from('malicious content')
+        }];
+
+        const axiosError = new Error('Virus detected');
+        axiosError.isAxiosError = true;
+        axiosError.response = {
+          status: 403,
+          data: {
+            message: 'Malware Service Exception: Virus found in the file!'
+          }
+        };
+
+        createAttachment.mockRejectedValue(axiosError);
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        expect(mockReq.reject).toHaveBeenCalledWith(403, expect.stringContaining('virus.pdf'));
+      });
+
+      it("should handle UPDATE failure for non-draft attachment", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          ID: 'attachment-123',
+          filename: 'test.pdf',
+          content: Buffer.from('test content'),
+          mimeType: 'application/pdf'
+        }];
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: {
+            succinctProperties: {
+              'cmis:objectId': 'mock-object-id'
+            }
+          }
+        });
+
+        const updateError = new Error('Database update failed');
+        UPDATE.mockReturnValue({
+          set: jest.fn().mockReturnThis(),
+          where: jest.fn().mockRejectedValue(updateError)
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue(null) // Verify will return null after failed update
+        });
+
+        await expect(service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id'))
+          .rejects.toThrow('Database update failed');
+      });
+
+      it("should handle missing ID case in non-draft upload", async () => {
+        const mockReq = {
+          target: { 
+            name: 'ProcessorService.Orders.references',
+            isDraft: false 
+          },
+          reject: jest.fn()
+        };
+
+        const attachmentData = [{
+          filename: 'test.pdf',
+          content: Buffer.from('test content'),
+          mimeType: 'application/pdf'
+          // No ID field
+        }];
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: {
+            succinctProperties: {
+              'cmis:objectId': 'mock-object-id'
+            }
+          }
+        });
+
+        await service.onCreate(attachmentData, service.creds, mockReq, 'parent-folder-id');
+
+        // Should not call UPDATE when ID is missing
+        expect(UPDATE).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("nonDraftAttachmentCreateHandler", () => {
+      beforeEach(() => {
+        getConfigurations.mockReturnValue({ repositoryId: 'test-repo-id' });
+        service.checkRepositoryType = jest.fn().mockResolvedValue();
+        service.getParentId = jest.fn().mockResolvedValue('parent-folder-id');
+        service.onCreate = jest.fn().mockResolvedValue();
+        service.getDestination = jest.fn().mockResolvedValue({ url: 'http://mock-sdm.com' });
+      });
+
+      it("should skip processing if no content provided", async () => {
+        const mockReq = {
+          data: { filename: 'test.pdf', ID: 'test-id' },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'CREATE'
+        };
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(service.onCreate).not.toHaveBeenCalled();
+      });
+
+      it("should skip processing for draft entities", async () => {
+        const mockReq = {
+          data: { 
+            filename: 'test.pdf', 
+            ID: 'test-id',
+            content: Buffer.from('test') 
+          },
+          target: { name: 'Orders.references.drafts', isDraft: true },
+          event: 'CREATE'
+        };
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(service.onCreate).not.toHaveBeenCalled();
+      });
+
+      it("should handle CREATE event for non-draft attachment", async () => {
+        const mockReq = {
+          data: {
+            ID: 'attachment-123',
+            filename: 'test.pdf',
+            content: Buffer.from('test content'),
+            up__ID: 'parent-entity-id'
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'CREATE',
+          reject: jest.fn()
+        };
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({
+            ID: 'attachment-123',
+            url: 'mock-object-id',
+            folderId: 'parent-folder-id',
+            repositoryId: 'test-repo-id',
+            status: 'Clean',
+            type: 'sap-icon://document'
+          })
+        });
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(service.onCreate).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ID: 'attachment-123',
+              filename: 'test.pdf'
+            })
+          ]),
+          service.creds,
+          mockReq,
+          'parent-folder-id'
+        );
+
+        expect(mockReq.data.content).toBeNull();
+        expect(mockReq.data.url).toBe('mock-object-id');
+        expect(mockReq.data.folderId).toBe('parent-folder-id');
+      });
+
+      it("should handle PUT /content event for existing attachment", async () => {
+        const mockReq = {
+          data: {
+            content: Buffer.from('updated content')
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'UPDATE',
+          req: {
+            url: '/Orders(ID=123e4567-e89b-12d3-a456-426614174000)/references(ID=223e4567-e89b-12d3-a456-426614174000)/content'
+          },
+          reject: jest.fn()
+        };
+
+        const mockMetadata = {
+          ID: '223e4567-e89b-12d3-a456-426614174000',
+          filename: 'existing.pdf',
+          up__ID: '123e4567-e89b-12d3-a456-426614174000'
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue(mockMetadata)
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn()
+            .mockResolvedValueOnce(mockMetadata) // First call for metadata
+            .mockResolvedValueOnce({ // Second call after onCreate
+              ID: '223e4567-e89b-12d3-a456-426614174000',
+              url: 'updated-object-id',
+              folderId: 'parent-folder-id',
+              repositoryId: 'test-repo-id',
+              status: 'Clean',
+              type: 'sap-icon://document'
+            })
+        });
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(service.onCreate).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ID: '223e4567-e89b-12d3-a456-426614174000',
+              filename: 'existing.pdf'
+            })
+          ]),
+          service.creds,
+          mockReq,
+          'parent-folder-id'
+        );
+
+        expect(mockReq.data.up__ID).toBe('123e4567-e89b-12d3-a456-426614174000');
+      });
+
+      it("should reject if attachment not found during PUT", async () => {
+        const mockReq = {
+          data: { content: Buffer.from('content') },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'UPDATE',
+          req: { url: '/Orders(ID=123e4567-e89b-12d3-a456-426614174000)/references(ID=323e4567-e89b-12d3-a456-426614174000)/content' },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue(null)
+        });
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(404, 'Attachment not found');
+        expect(service.onCreate).not.toHaveBeenCalled();
+      });
+
+      it("should reject if filename contains restricted characters", async () => {
+        const mockReq = {
+          data: {
+            ID: 'attachment-123',
+            filename: 'invalid/file.pdf',
+            content: Buffer.from('test')
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'CREATE',
+          reject: jest.fn()
+        };
+
+        isRestrictedCharactersInName.mockReturnValue(true);
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('invalid/file.pdf'));
+        expect(service.onCreate).not.toHaveBeenCalled();
+      });
+
+      it("should reject if filename is empty", async () => {
+        const mockReq = {
+          data: {
+            ID: 'attachment-123',
+            filename: '   ',
+            content: Buffer.from('test')
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'CREATE',
+          reject: jest.fn()
+        };
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        await service.nonDraftAttachmentCreateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(400, expect.stringContaining('empty'));
+        expect(service.onCreate).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("nonDraftAttachmentUpdateHandler", () => {
+      beforeEach(() => {
+        service._updateAttachments = jest.fn().mockResolvedValue([]);
+        getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
+        getSecondaryTypeProperties.mockReturnValue({});
+        
+        // Mock the attachments entity definition
+        cds.model.definitions['Orders.references'] = {
+          name: 'Orders.references',
+          kind: 'entity'
+        };
+      });
+
+      it("should skip processing for draft entities", async () => {
+        const mockReq = {
+          data: { ID: 'test-id', filename: 'new-name.pdf' },
+          target: { name: 'Orders.references.drafts', isDraft: true }
+        };
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(service._updateAttachments).not.toHaveBeenCalled();
+      });
+
+      it("should skip processing for PUT /content operations", async () => {
+        const mockReq = {
+          data: { 
+            ID: 'test-id', 
+            content: Buffer.from('data') 
+          },
+          target: { name: 'Orders.references', isDraft: false }
+        };
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(service._updateAttachments).not.toHaveBeenCalled();
+      });
+
+      it("should skip if only ID is in request data", async () => {
+        const mockReq = {
+          data: { ID: 'test-id' },
+          target: { name: 'Orders.references', isDraft: false }
+        };
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(service._updateAttachments).not.toHaveBeenCalled();
+      });
+
+      it("should handle filename update successfully", async () => {
+        const mockReq = {
+          data: { 
+            ID: 'attachment-123', 
+            filename: 'renamed.pdf' 
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        const mockCurrentAttachment = {
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue(mockCurrentAttachment)
+        });
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(service._updateAttachments).toHaveBeenCalledWith(
+          mockReq,
+          expect.objectContaining({
+            attachment: expect.objectContaining({
+              ID: 'attachment-123',
+              filename: 'renamed.pdf'
+            }),
+            filenameInSDM: 'original.pdf'
+          })
+        );
+
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should reject if attachment not found", async () => {
+        const mockReq = {
+          data: { 
+            ID: 'missing-id', 
+            filename: 'new.pdf' 
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue(null)
+        });
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(404, 'Attachment not found');
+      });
+
+      it("should reject with 409 for restricted characters error", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'invalid/name.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'invalid/name.pdf',
+          typeOfError: 'restricted characters'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('invalid/name.pdf'));
+      });
+
+      it("should reject with 400 for empty name error", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: '' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: '',
+          typeOfError: 'empty name'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(400, expect.stringContaining('empty'));
+      });
+
+      it("should reject with 409 for duplicate error", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'duplicate.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'duplicate.pdf',
+          typeOfError: 'duplicate'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('duplicate.pdf'));
+      });
+
+      it("should reject with 403 for no SDM roles error", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'new.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'new.pdf',
+          typeOfError: 'no sdm roles'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(403, expect.stringContaining('permissions'));
+      });
+
+      it("should warn for unsupported properties but not reject", async () => {
+        const mockReq = {
+          data: { 
+            ID: 'attachment-123', 
+            filename: 'test.pdf',
+            unsupportedProp: 'value'
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'test.pdf',
+          typeOfError: 'unsupported properties',
+          details: 'cmis:prop1,cmis:prop2'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.warn).toHaveBeenCalled();
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should reject with 404 for 'not found' error", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'notfound.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf', url: 'object-id' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'notfound.pdf',
+          typeOfError: 'not found'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(404, expect.stringContaining('notfound.pdf'));
+      });
+
+      it("should reject with 500 for 'bad request' error with custom message", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'invalid.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf', url: 'object-id' })
+        });
+
+        const customErrorMessage = 'Custom bad request error message';
+        service._updateAttachments.mockResolvedValue([{
+          name: 'invalid.pdf',
+          typeOfError: 'bad request',
+          message: customErrorMessage
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(500, customErrorMessage);
+      });
+
+      it("should reject with 500 and default message for 'bad request' error without custom message", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'invalid.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf', url: 'object-id' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'invalid.pdf',
+          typeOfError: 'bad request'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(500, expect.stringContaining('invalid.pdf'));
+        expect(mockReq.reject).toHaveBeenCalledWith(500, expect.stringContaining('Update failed'));
+      });
+
+      it("should reject with 500 for unknown error types", async () => {
+        const mockReq = {
+          data: { ID: 'attachment-123', filename: 'error.pdf' },
+          target: { name: 'Orders.references', isDraft: false },
+          reject: jest.fn()
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn().mockResolvedValue({ ID: 'attachment-123', filename: 'old.pdf', url: 'object-id' })
+        });
+
+        service._updateAttachments.mockResolvedValue([{
+          name: 'error.pdf',
+          typeOfError: 'unknown error type'
+        }]);
+
+        await service.nonDraftAttachmentUpdateHandler(mockReq);
+
+        expect(mockReq.reject).toHaveBeenCalledWith(500, 'Update failed');
+      });
+    });
+
+    describe("nonDraftEntityRenameHandler", () => {
+      beforeEach(() => {
+        getConfigurations.mockReturnValue({ repositoryId: 'test-repo-id' });
+        getPropertyTitles.mockReturnValue({});
+        getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
+        getSecondaryTypeProperties.mockReturnValue({});
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        service._updateAttachments = jest.fn().mockResolvedValue([]);
+      });
+
+      it("should skip if no attachments entity defined", async () => {
+        const mockReq = {
+          target: { name: 'Orders' },
+          diff: jest.fn()
+        };
+
+        // Ensure no attachments composition exists
+        cds.model.definitions['Orders.attachments'] = undefined;
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(mockReq.diff).not.toHaveBeenCalled();
+      });
+
+      it("should skip if no attachments in diff", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({ attachments: [] })
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(service._updateAttachments).not.toHaveBeenCalled();
+      });
+
+      it("should skip if only deleted or created attachments in diff", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [
+              { ID: 'att-1', _op: 'delete' },
+              { ID: 'att-2', _op: 'create' }
+            ]
+          })
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(service._updateAttachments).not.toHaveBeenCalled();
+      });
+
+      it("should process attachment rename when filename changes", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders'},
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'renamed.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        const mockAttachmentsEntity = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = mockAttachmentsEntity;
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(200);
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(updateAttachment).toHaveBeenCalled();
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should reject if filename has restricted characters", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'invalid/name.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(true);
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(mockReq.warn).toHaveBeenCalled();
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should skip empty filename and use original", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: '',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        // Empty filename falls back to original filename, so no update needed
+        expect(mockReq.warn).not.toHaveBeenCalled();
+        expect(mockReq.reject).not.toHaveBeenCalled();
+      });
+
+      it("should handle 403 error (no SDM roles) from updateAttachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'renamed.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "renamed.pdf" });
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(403);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Access denied');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'no sdm roles', name: 'renamed.pdf' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Access denied');
+      });
+
+      it("should handle 409 error (duplicate) from updateAttachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'duplicate.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "duplicate.pdf" });
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(409);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Duplicate file');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'duplicate', name: 'duplicate.pdf' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Duplicate file');
+      });
+
+      it("should handle 404 error (not found) from updateAttachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'notfound.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "notfound.pdf" });
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(404);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('File not found');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'not found', name: 'notfound.pdf' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'File not found');
+      });
+
+      it("should handle unsupported properties exception from updateAttachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'file.pdf',
+              customProp: 'value',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "file.pdf", "customProp": "value" });
+        setupDestinationMocks();
+        
+        const errorMessage = unsupportedProperties + " customProp is not supported";
+        updateAttachment.mockRejectedValue(new Error(errorMessage));
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Unsupported properties warning');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'unsupported properties', details: 'customProp is not supported' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Unsupported properties warning');
+      });
+
+      it("should handle generic exception from updateAttachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'file.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "file.pdf" });
+        setupDestinationMocks();
+        
+        const errorMessage = "Network error occurred";
+        updateAttachment.mockRejectedValue(new Error(errorMessage));
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Bad request error');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'bad request', name: 'file.pdf', message: 'Network error occurred' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Bad request error');
+      });
+
+      it("should handle multiple errors from multiple attachments", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [
+              {
+                ID: 'attachment-1',
+                filename: 'file1.pdf',
+                _op: 'update'
+              },
+              {
+                ID: 'attachment-2',
+                filename: 'file2.pdf',
+                _op: 'update'
+              }
+            ]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn()
+          .mockResolvedValueOnce({
+            ID: 'attachment-1',
+            filename: 'original1.pdf',
+            url: 'object-id-1'
+          })
+          .mockResolvedValueOnce({
+            ID: 'attachment-2',
+            filename: 'original2.pdf',
+            url: 'object-id-2'
+          });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "file.pdf" });
+        setupDestinationMocks();
+        
+        updateAttachment
+          .mockResolvedValueOnce(403)  // First attachment returns 403
+          .mockResolvedValueOnce(409); // Second attachment returns 409
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Multiple errors');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [
+            { typeOfError: 'no sdm roles', name: 'file1.pdf' },
+            { typeOfError: 'duplicate', name: 'file2.pdf' }
+          ],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Multiple errors');
+      });
+
+      it("should not warn if no errors occurred", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: 'success.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "success.pdf" });
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(200);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith([], {});
+        expect(mockReq.warn).not.toHaveBeenCalled();
+      });
+
+      it("should handle empty filename (null) and add empty name error", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: null,
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: null,  // Current filename is also null
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'empty name', name: null }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Empty filename error');
+      });
+
+      it("should handle whitespace-only filename and add empty name error", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: '   ',  // Whitespace only
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'empty name', name: '   ' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Empty filename error');
+      });
+
+      it("should handle filename with only tabs and newlines as empty", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'attachment-123',
+              filename: '\t\n  ',  // Tabs and newlines
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue({
+          ID: 'attachment-123',
+          filename: 'original.pdf',
+          url: 'object-id'
+        });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [{ typeOfError: 'empty name', name: '\t\n  ' }],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Empty filename error');
+      });
+
+      it("should skip processing when currentAttachment is not found", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'non-existent-attachment',
+              filename: 'new.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue(null);  // No attachment found
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        // Should not process this attachment
+        expect(getPropertiesForID).not.toHaveBeenCalled();
+        expect(updateAttachment).not.toHaveBeenCalled();
+        expect(handleWarningSpy).toHaveBeenCalledWith([], {});
+        expect(mockReq.warn).not.toHaveBeenCalled();
+      });
+
+      it("should skip processing when currentAttachment is undefined", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [{
+              ID: 'undefined-attachment',
+              filename: 'new.pdf',
+              _op: 'update'
+            }]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn().mockResolvedValue(undefined);  // Undefined attachment
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        // Should not process this attachment
+        expect(getPropertiesForID).not.toHaveBeenCalled();
+        expect(updateAttachment).not.toHaveBeenCalled();
+        expect(handleWarningSpy).toHaveBeenCalledWith([], {});
+        expect(mockReq.warn).not.toHaveBeenCalled();
+      });
+
+      it("should process valid attachments and skip missing ones in same request", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [
+              {
+                ID: 'missing-attachment',
+                filename: 'missing.pdf',
+                _op: 'update'
+              },
+              {
+                ID: 'valid-attachment',
+                filename: 'valid.pdf',
+                _op: 'update'
+              }
+            ]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn()
+          .mockResolvedValueOnce(null)  // First attachment not found
+          .mockResolvedValueOnce({      // Second attachment found
+            ID: 'valid-attachment',
+            filename: 'original.pdf',
+            url: 'object-id'
+          });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+        getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "valid.pdf" });
+        setupDestinationMocks();
+        updateAttachment.mockResolvedValue(200);
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        // Should only process the valid attachment
+        expect(updateAttachment).toHaveBeenCalledTimes(1);
+        expect(handleWarningSpy).toHaveBeenCalledWith([], {});
+        expect(mockReq.warn).not.toHaveBeenCalled();
+      });
+
+      it("should handle mixed errors including empty name and missing attachment", async () => {
+        const mockReq = {
+          target: { name: 'ProcessorService.Orders' },
+          diff: jest.fn().mockResolvedValue({
+            attachments: [
+              {
+                ID: 'empty-filename-attachment',
+                filename: null,
+                _op: 'update'
+              },
+              {
+                ID: 'missing-attachment',
+                filename: 'missing.pdf',
+                _op: 'update'
+              },
+              {
+                ID: 'restricted-chars-attachment',
+                filename: 'file/with/slashes.pdf',
+                _op: 'update'
+              }
+            ]
+          }),
+          reject: jest.fn(),
+          warn: jest.fn()
+        };
+
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments']
+        };
+
+        const mockWhere = jest.fn().mockReturnThis();
+        const mockColumns = jest.fn()
+          .mockResolvedValueOnce({
+            ID: 'empty-filename-attachment',
+            filename: null,
+            url: 'object-id-1'
+          })
+          .mockResolvedValueOnce(null)  // Missing attachment
+          .mockResolvedValueOnce({
+            ID: 'restricted-chars-attachment',
+            filename: 'original.pdf',
+            url: 'object-id-3'
+          });
+
+        SELECT.one.from.mockReturnValue({
+          where: mockWhere,
+          columns: mockColumns
+        });
+
+        isRestrictedCharactersInName
+          .mockReturnValueOnce(false)  // For null filename
+          .mockReturnValueOnce(true);  // For restricted chars filename
+
+        const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Multiple validation errors');
+
+        await service.nonDraftEntityRenameHandler(mockReq);
+
+        expect(handleWarningSpy).toHaveBeenCalledWith(
+          [
+            { typeOfError: 'empty name', name: null },
+            { typeOfError: 'restricted characters', name: 'file/with/slashes.pdf' }
+          ],
+          {}
+        );
+        expect(mockReq.warn).toHaveBeenCalledWith(500, 'Multiple validation errors');
+      });
+    });
+
+    describe("attachNonDraftAttachmentDeletionData", () => {
+      let service;
+      let mockReq;
+
+      beforeEach(() => {
+        jest.clearAllMocks();
+        service = new SDMAttachmentsService();
+      });
+
+      it("should return early if target is not media data", async () => {
+        mockReq = {
+          target: { name: 'TestEntity' },
+          subject: 'TestSubject'
+        };
+
+        await service.attachNonDraftAttachmentDeletionData(mockReq);
+
+        expect(mockReq.attachmentsToDelete).toBeUndefined();
+      });
+
+      it("should return early if subject is missing", async () => {
+        mockReq = {
+          target: { 
+            name: 'TestEntity',
+            "@_is_media_data": true
+          }
+        };
+
+        await service.attachNonDraftAttachmentDeletionData(mockReq);
+
+        expect(mockReq.attachmentsToDelete).toBeUndefined();
+      });
+
+      it("should attach attachments to delete when attachments exist", async () => {
+        const mockAttachments = [
+          { url: 'http://example.com/file1', ID: '1' },
+          { url: 'http://example.com/file2', ID: '2' }
+        ];
+
+        mockReq = {
+          target: { 
+            name: 'TestAttachments',
+            "@_is_media_data": true
+          },
+          subject: 'TestSubject'
+        };
+
+        SELECT.from.mockReturnValue({
+          columns: jest.fn().mockResolvedValue(mockAttachments)
+        });
+
+        await service.attachNonDraftAttachmentDeletionData(mockReq);
+
+        expect(mockReq.attachmentsToDelete).toEqual([
+          { url: 'http://example.com/file1', ID: '1', target: 'TestAttachments' },
+          { url: 'http://example.com/file2', ID: '2', target: 'TestAttachments' }
+        ]);
+      });
+
+      it("should not set attachmentsToDelete if no attachments found", async () => {
+        mockReq = {
+          target: { 
+            name: 'TestAttachments',
+            "@_is_media_data": true
+          },
+          subject: 'TestSubject'
+        };
+
+        SELECT.from.mockReturnValue({
+          columns: jest.fn().mockResolvedValue([])
+        });
+
+        await service.attachNonDraftAttachmentDeletionData(mockReq);
+
+        expect(mockReq.attachmentsToDelete).toBeUndefined();
+      });
+
+      it("should handle single attachment deletion", async () => {
+        const mockAttachment = [
+          { url: 'http://example.com/single-file', ID: '123' }
+        ];
+
+        mockReq = {
+          target: { 
+            name: 'SingleAttachment',
+            "@_is_media_data": true
+          },
+          subject: 'TestSubject'
+        };
+
+        SELECT.from.mockReturnValue({
+          columns: jest.fn().mockResolvedValue(mockAttachment)
+        });
+
+        await service.attachNonDraftAttachmentDeletionData(mockReq);
+
+        expect(mockReq.attachmentsToDelete).toEqual([
+          { url: 'http://example.com/single-file', ID: '123', target: 'SingleAttachment' }
+        ]);
+        expect(mockReq.attachmentsToDelete).toHaveLength(1);
+      });
     });
   });
 
