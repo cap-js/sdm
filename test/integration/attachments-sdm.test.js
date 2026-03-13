@@ -560,6 +560,9 @@ describe('Attachments Integration Tests --UPDATE', () => {
 });
 
 describe('Attachments Integration Tests --LINK', () => {
+  let editLinkIncidentID;
+  let editLinkAttachmentID;
+
   it('should successfully create a link and verify it is openable after multiple edits', async () => {
     let linkIncidentID;
     let linkAttachmentID;
@@ -1223,9 +1226,6 @@ const config = {
   });
 
   it('should successfully edit an existing link with valid URL using editLink API', async () => {
-    let editLinkIncidentID;
-    let editLinkAttachmentID;
-
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -1281,11 +1281,6 @@ const config = {
     expect(response.data.linkUrl).toBe(updatedUrl);
 
     response = await api.openAttachmentSaved(appUrl, serviceName, entityName, editLinkIncidentID, srvpath, editLinkAttachmentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
-
-    response = await api.deleteEntity(appUrl, serviceName, entityName, editLinkIncidentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -1487,6 +1482,36 @@ const config = {
     if (response.status !== "OK") {
       // Log cleanup failure but don't fail the test since the main functionality passed
       console.warn("Cleanup failed for discardTestIncidentID:", response.message);
+    }
+  });
+
+  it('should not allow editing a link without SDM role', async () => {
+    // Enter draft mode with no-SDM-role user (reusing editLinkIncidentID from previous test)
+    const config = {
+      headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+    };
+    apiNoSDMRole = new Api(config);
+    let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, editLinkIncidentID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Try to edit the link with valid URL using no-SDM-role user
+    const updatedUrl = 'https://updated-norole.com';
+    response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toBe("Request failed with status code 403");
+
+    // Save entity draft with no-SDM-role user to exit draft mode
+    response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message)
+    }
+
+    // Cleanup - delete entity with authorized user
+    response = await api.deleteEntity(appUrl, serviceName, entityName, editLinkIncidentID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for editLinkIncidentID:", response.message);
     }
   });
 });
