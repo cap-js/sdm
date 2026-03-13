@@ -63,7 +63,8 @@ let {
   linkNameConstraintMessage,
   unsupportedProperties,
   attachmentNotFound,
-  errorMessage
+  errorMessage,
+  mimeTypeInvalidError
 } = require("../../lib/util/messageConsts");
 
 jest.mock("@cap-js/attachments/srv/basic", () => class {
@@ -3400,6 +3401,18 @@ describe("SDMAttachmentsService", () => {
       await service.onCreate(data, credentials, req, parentId);
   
       expect(req.reject).toHaveBeenCalledWith(403, virusFileErr(['file1']));
+    });
+
+    it('should reject when MIME type is blocked', async () => {
+      createAttachment
+      .mockResolvedValueOnce({
+        status: 403,
+        response: { data: { exception: 'streamNotSupported', message: 'MIME type is blocked' } }
+      });
+  
+      await service.onCreate(data, credentials, req, parentId);
+  
+      expect(req.reject).toHaveBeenCalledWith(403, mimeTypeInvalidError);
     });
   
     it('should reject when there is a name constraint violation', async () => {
