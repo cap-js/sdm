@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## Version 1.9.0
+
+### Added
+- Added support for attachments in non-draft entities.
+
+### Fixed
+- Fixed issue where deleting an entity without attachments failed to remove the corresponding folder in SDM.
+- Resolved issue where setting custom property values to null did not reset the values in SDM.
+- Improved error and warning messages when users without SDM Roles attempt to update custom properties or rename attachments.
+- Fixed issue where the edit-link button was not displayed when editing entities with link type attachments.
+
 ## Version 1.8.2
 
 ### Fixed
