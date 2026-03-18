@@ -5,6 +5,8 @@ const expect = require('@sap/cds/lib/test/expect');
 const tenancyModel = process.env.TENANCY_MODEL || 'single';
 const tenant = process.env.TENANT;
 
+const { userNotAuthorisedErrorEditLink } = require("../../lib/util/messageConsts");
+
 let token;
 let noSDMRoleToken;
 let api;
@@ -1500,7 +1502,7 @@ const config = {
     const updatedUrl = 'https://updated-norole.com';
     response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
     expect(response.status).toBe("FAILED");
-    expect(response.message).toBe("Request failed with status code 403");
+    expect(response.message).toBe(userNotAuthorisedErrorEditLink);
 
     // Save entity draft with no-SDM-role user to exit draft mode
     response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
