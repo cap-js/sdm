@@ -442,6 +442,22 @@ describe("SDMAttachmentsService", () => {
         _sdmDestination: undefined
       };
 
+      // Mock cds.context with origin to trigger JWT Bearer flow
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                origin: "sap.custom",
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
       retrieveJwt.mockReturnValue("user-jwt");
       getSdmInstanceName.mockReturnValue("sdm-instance");
       const mockDestination = { url: "http://example.com" };
@@ -472,6 +488,87 @@ describe("SDMAttachmentsService", () => {
 
       expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
       expect(result).toEqual(cachedDestination);
+    });
+
+    it("should use Client Credentials when origin is not present in token", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const mockReq = {
+        _sdmDestination: undefined
+      };
+
+      // Mock cds.context without origin in token payload
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+                // No 'origin' field here
+              }
+            }
+          }
+        }
+      };
+
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const mockDestination = { url: "http://example.com" };
+      getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+      const result = await service.getDestination(mockReq);
+
+      // Should call with Client Credentials (no jwt parameter)
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+        destinationName: "sdm-instance",
+        useCache: true,
+        serviceBindingTransformFn: expect.any(Function)
+      });
+      expect(result).toEqual(mockDestination);
+      expect(mockReq._sdmDestination).toEqual(mockDestination);
+    });
+
+    it("should use JWT Bearer when origin is present in token", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const mockReq = {
+        _sdmDestination: undefined
+      };
+
+      // Mock cds.context with origin in token payload
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                origin: "sap.custom",
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const mockDestination = { url: "http://example.com" };
+      getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+      const result = await service.getDestination(mockReq);
+
+      // Should call with JWT Bearer (includes jwt parameter)
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+        destinationName: "sdm-instance",
+        jwt: "user-jwt",
+        useCache: true,
+        serviceBindingTransformFn: expect.any(Function)
+      });
+      expect(result).toEqual(mockDestination);
+      expect(mockReq._sdmDestination).toEqual(mockDestination);
     });
   });
 
