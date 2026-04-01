@@ -39,7 +39,9 @@ const {
   readAttachment,
   getFolderIdByPath,
   getFolderIdByIDAsPath,
+  getFolderIdByDynamicPath,
   createFolder,
+  createNestedFolders,
   deleteFolderWithAttachments,
   getAttachment,
   getRepositoryInfo,
@@ -132,7 +134,9 @@ jest.mock("../../lib/handler", () => ({
   readAttachment: jest.fn(),
   getFolderIdByPath: jest.fn(),
   getFolderIdByIDAsPath: jest.fn(),
+  getFolderIdByDynamicPath: jest.fn(),
   createFolder: jest.fn(),
+  createNestedFolders: jest.fn(),
   deleteFolderWithAttachments: jest.fn(),
   getAttachment: jest.fn(),
   renameAttachment: jest.fn(),
@@ -4347,6 +4351,134 @@ describe("SDMAttachmentsService", () => {
       expect(parentId).toEqual("mock_folder_id_1");
       expect(getFolderIdByPath).not.toHaveBeenCalled();
       expect(createFolder).not.toHaveBeenCalled();
+    });
+
+    it("getParentId should use sdmPath from metadata when available", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.data = { ID: "attachment-123" };
+      
+      // Mock global SELECT to return metadata with sdmPath
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue({ sdmPath: "project/documents/2024" })
+      });
+
+      getFolderIdByDynamicPath.mockResolvedValueOnce("existing-folder-id");
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(getFolderIdByDynamicPath).toHaveBeenCalledWith(
+        "repo123",
+        "project/documents/2024",
+        service.creds,
+        mockDestination
+      );
+      expect(parentId).toBe("existing-folder-id");
+      expect(getFolderIdForEntity).not.toHaveBeenCalled();
+    });
+
+    it("getParentId should use sdmPath from req.data when metadata sdmPath is not available", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.data = { ID: "attachment-123", sdmPath: "custom/path/files" };
+      
+      // Mock global SELECT to return metadata without sdmPath
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue({ sdmPath: null })
+      });
+
+      getFolderIdByDynamicPath.mockResolvedValueOnce("custom-folder-id");
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(getFolderIdByDynamicPath).toHaveBeenCalledWith(
+        "repo123",
+        "custom/path/files",
+        service.creds,
+        mockDestination
+      );
+      expect(parentId).toBe("custom-folder-id");
+    });
+
+    it("getParentId should create nested folders when sdmPath folder does not exist", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.data = { sdmPath: "new/nested/folder" };
+      
+      // Mock global SELECT to return no metadata
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue(null)
+      });
+
+      getFolderIdByDynamicPath.mockResolvedValueOnce(null);
+      createNestedFolders.mockResolvedValueOnce("newly-created-folder-id");
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(createNestedFolders).toHaveBeenCalledWith(
+        "repo123",
+        "new/nested/folder",
+        service.creds,
+        mockDestination
+      );
+      expect(parentId).toBe("newly-created-folder-id");
+    });
+
+    it("getParentId should fallback to default behavior when no sdmPath is provided", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.data = { ID: "attachment-123" };
+      
+      // Mock global SELECT to return metadata without sdmPath
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue({ sdmPath: null })
+      });
+
+      getFolderIdForEntity.mockResolvedValueOnce([{ folderId: "default-folder-id" }]);
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(getFolderIdForEntity).toHaveBeenCalled();
+      expect(parentId).toBe("default-folder-id");
+      expect(getFolderIdByDynamicPath).not.toHaveBeenCalled();
+      expect(createNestedFolders).not.toHaveBeenCalled();
+    });
+
+    it("getParentId should handle UPDATE event with sdmPath", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.event = "UPDATE";
+      mockReq.req = { url: "/attachments(ID=550e8400-e29b-41d4-a716-446655440001,IsActiveEntity=true)" };
+      
+      // Mock global SELECT to return metadata with sdmPath
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue({ sdmPath: "updated/path" })
+      });
+
+      getFolderIdByDynamicPath.mockResolvedValueOnce("updated-folder-id");
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(parentId).toBe("updated-folder-id");
+    });
+
+    it("getParentId should handle PUT event with sdmPath", async () => {
+      const attachments = cds.model.definitions[mockReq.target.name + ".references"];
+      mockReq.event = "PUT";
+      mockReq.req = { url: "/attachments(ID=550e8400-e29b-41d4-a716-446655440002,IsActiveEntity=false)" };
+      
+      // Mock global SELECT to return metadata with sdmPath
+      global.SELECT.one.from = jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue({ sdmPath: "draft/upload" })
+      });
+
+      getFolderIdByDynamicPath.mockResolvedValueOnce(null);
+      createNestedFolders.mockResolvedValueOnce("draft-folder-id");
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(createNestedFolders).toHaveBeenCalledWith(
+        "repo123",
+        "draft/upload",
+        service.creds,
+        mockDestination
+      );
+      expect(parentId).toBe("draft-folder-id");
     });
   });
 

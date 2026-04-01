@@ -18,6 +18,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Link as attachments: Provides the capability to support link or URL as attachments.
 - Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
 - Non-Draft Attachments: Provides the capability to work with attachments in non-draft (active) entities.
+- Dynamic SDM Folder Paths: Provides the capability to organize attachments in custom nested folder structures within the SDM repository.
 
 ### Table of Contents
 
@@ -28,6 +29,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
+- [Support for Dynamic SDM Folder Paths](#support-for-dynamic-sdm-folder-paths)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -629,6 +631,289 @@ service ProcessorService {
   entity Projects.attachments as projection on my.Projects.attachments;
 }
 ```
+
+## Support for Dynamic SDM Folder Paths
+
+This plugin provides advanced folder management capabilities, allowing you to organize attachments in custom nested folder structures within the SDM repository. Instead of using the default entity-based folder structure, you can specify dynamic paths to organize attachments hierarchically based on your business logic.
+
+### Key Features
+
+- **Nested Folder Creation**: Automatically create nested folder structures (e.g., `project/documents/2024/Q1`)
+- **Path-Based Organization**: Organize attachments by custom business criteria (department, year, project, etc.)
+- **Automatic Parent Resolution**: Automatically checks for existing folders or creates them as needed
+- **Race Condition Handling**: Built-in retry logic for concurrent folder creation scenarios
+- **Flexible Path Definition**: Define paths dynamically at runtime via the `sdmPath` property
+- **Compatible with All Modes**: Works with both draft and non-draft entities
+
+### How It Works
+
+The plugin extends the `Attachments` aspect with an optional `sdmPath` field. When provided, this field overrides the default folder resolution logic:
+
+1. **Path Validation**: The plugin checks if the specified folder path already exists in SDM
+2. **Nested Creation**: If any part of the path doesn't exist, the plugin creates all missing parent folders
+3. **ID Caching**: Successfully resolved folder IDs are used for attachment uploads
+4. **Fallback Logic**: If no `sdmPath` is provided, the plugin falls back to default entity-based folders
+
+### Entity Definition
+
+The `sdmPath` property is already included in the extended `Attachments` aspect:
+
+```cds
+using { sap.attachments.Attachments } from '@cap-js/sdm';
+
+extend aspect Attachments with {
+    folderId : String @title: 'Folder ID' @readonly;
+    repositoryId : String @title: 'Repository ID' @readonly default null;
+    linkUrl: String @(title: '{i18n>LinkURL}') default null;
+    type: String @(title: '{i18n>Type}') @(UI: {IsImageURL: true}) default 'sap-icon://document';
+    sdmPath: String default null;  // Custom folder path
+};
+```
+
+The `sdmPath` field is:
+- **Optional**: If not provided, default folder logic applies
+- **Hidden in UI**: Not displayed in the attachment list by default
+- **String-based**: Accepts forward-slash separated paths (e.g., `parent/child/grandchild`)
+
+### Usage Examples
+
+#### 1. Basic Nested Folder Structure
+
+Organize attachments by project and document type:
+
+```javascript
+// Create attachment with custom path
+await POST('/Incidents(ID=<incident-id>)/attachments', {
+  filename: 'incident-report.pdf',
+  sdmPath: 'incidents/2024/reports'
+});
+```
+
+This creates the folder structure:
+```
+SDM Repository Root
+└── incidents/
+    └── 2024/
+        └── reports/
+            └── incident-report.pdf
+```
+
+#### 2. Dynamic Path Based on Business Data
+
+Generate paths dynamically based on entity properties:
+
+```javascript
+// In a custom handler
+srv.before('CREATE', 'Attachments', async (req) => {
+  const incident = await SELECT.one.from(Incidents, req.data.up__ID);
+  
+  // Build path from incident properties
+  const year = new Date(incident.createdAt).getFullYear();
+  const priority = incident.priority || 'normal';
+  
+  req.data.sdmPath = `incidents/${year}/${priority}/${incident.customer.name}`;
+});
+```
+
+Resulting structure:
+```
+incidents/
+├── 2024/
+│   ├── high/
+│   │   └── CustomerA/
+│   │       └── attachment.pdf
+│   └── normal/
+│       └── CustomerB/
+│           └── attachment.pdf
+└── 2025/
+    └── high/
+        └── CustomerC/
+            └── attachment.pdf
+```
+
+#### 3. Department and Date-Based Organization
+
+Organize attachments by department and date:
+
+```javascript
+await POST('/Documents(ID=<doc-id>)/attachments', {
+  filename: 'contract.pdf',
+  sdmPath: 'legal/contracts/2024/march'
+});
+
+await POST('/Documents(ID=<doc-id>)/attachments', {
+  filename: 'invoice.pdf',
+  sdmPath: 'finance/invoices/2024/Q1'
+});
+```
+
+Structure:
+```
+legal/
+└── contracts/
+    └── 2024/
+        └── march/
+            └── contract.pdf
+
+finance/
+└── invoices/
+    └── 2024/
+        └── Q1/
+            └── invoice.pdf
+```
+
+#### 4. Project-Based Hierarchical Organization
+
+Create a deep hierarchy for project documents:
+
+```javascript
+const projectPath = `projects/${projectId}/documents/${documentType}/${year}`;
+
+await POST('/Projects(ID=<project-id>)/attachments', {
+  filename: 'design-spec.pdf',
+  sdmPath: projectPath
+});
+```
+
+Structure:
+```
+projects/
+└── PRJ-2024-001/
+    └── documents/
+        ├── specifications/
+        │   └── 2024/
+        │       └── design-spec.pdf
+        ├── reports/
+        │   └── 2024/
+        │       └── status-report.pdf
+        └── contracts/
+            └── 2024/
+                └── vendor-agreement.pdf
+```
+
+#### 5. Multi-Tenant Folder Separation
+
+Separate attachments by tenant in a multi-tenant environment:
+
+```javascript
+// In multi-tenant scenario
+srv.before('CREATE', 'Attachments', async (req) => {
+  const tenantId = cds.context.tenant;
+  const entityType = req.target.name.split('.').pop();
+  
+  req.data.sdmPath = `tenants/${tenantId}/${entityType}/${req.data.up__ID}`;
+});
+```
+
+Structure:
+```
+tenants/
+├── tenant-001/
+│   ├── Incidents/
+│   │   └── incident-123/
+│   │       └── attachment.pdf
+│   └── Projects/
+│       └── project-456/
+│           └── document.pdf
+└── tenant-002/
+    └── Incidents/
+        └── incident-789/
+            └── attachment.pdf
+```
+
+### Path Specification Rules
+
+- **Separator**: Use forward slash (`/`) to separate folder levels
+- **Empty Segments**: Empty path segments (e.g., `project//docs`) are automatically filtered out
+- **Trailing Slashes**: Trailing slashes (e.g., `project/docs/`) are ignored
+- **Special Characters**: Avoid special characters that are invalid in folder names
+- **Case Sensitivity**: Paths are case-sensitive based on SDM repository settings
+
+### Technical Details
+
+#### Folder Resolution Process
+
+When `sdmPath` is provided, the plugin executes this workflow:
+
+1. **Check Metadata**: Retrieve `sdmPath` from existing attachment metadata (for UPDATE/PUT operations)
+2. **Check Request Data**: Use `sdmPath` from request data if metadata is unavailable
+3. **Resolve Path**: Call `getFolderIdByDynamicPath` to check if the complete path exists
+4. **Create Nested Folders**: If path doesn't exist, call `createNestedFolders` to build the hierarchy
+5. **Use Folder ID**: Use resolved folder ID for attachment upload
+
+#### Race Condition Handling
+
+The plugin includes built-in retry logic for concurrent operations:
+
+```javascript
+// Inside createNestedFolders
+try {
+  // Try to create folder
+  const response = await executeHttpRequest(destination, {
+    method: 'POST',
+    url: createURL,
+    data: formData
+  });
+  parentId = response.data.succinctProperties['cmis:objectId'];
+} catch (error) {
+  // Retry: check if another process already created it
+  const retryFolderId = await getFolderIdByDynamicPath(
+    repositoryId, 
+    currentPath, 
+    credentials, 
+    destination
+  );
+  if (retryFolderId) {
+    parentId = retryFolderId;
+  } else {
+    throw error; // Permanent error
+  }
+}
+```
+
+This ensures safe concurrent folder creation across multiple requests.
+
+### Fallback Behavior
+
+If `sdmPath` is not provided or is null/empty, the plugin uses the default folder resolution:
+
+1. **Check Existing Folders**: Look up folders via `getFolderIdForEntity`
+2. **Check by Path**: Use `getFolderIdByPath` with entity-based naming
+3. **Create Default Folder**: Create a folder using entity ID as the name
+
+This ensures backward compatibility with existing implementations.
+
+### Best Practices
+
+1. **Consistent Naming**: Use consistent naming conventions across your application
+2. **Depth Limits**: Avoid excessively deep folder hierarchies (SDM may have limits)
+3. **Path Validation**: Validate custom paths in your application logic before sending to SDM
+4. **Business Logic**: Generate paths based on stable business attributes (IDs, dates, types)
+5. **Documentation**: Document your folder structure conventions for maintainability
+6. **Tenant Isolation**: In multi-tenant apps, always include tenant ID in the path
+
+### Performance Considerations
+
+- **Folder Caching**: Folder IDs are cached during the request lifecycle
+- **Batch Operations**: Folder creation for the same path is optimized (only created once)
+- **Existing Folders**: The plugin checks for existing folders before attempting creation
+- **Minimal Roundtrips**: The plugin minimizes API calls to SDM through smart caching
+
+### Limitations
+
+- **SDM Repository Limits**: Folder depth and naming may be subject to SDM repository configuration
+- **Concurrent Creates**: While race conditions are handled, extremely high concurrency may still cause conflicts
+- **Path Validation**: The plugin does not validate business logic of your paths (e.g., checking if year is valid)
+- **No Path Updates**: Changing `sdmPath` after attachment creation doesn't move files (create new attachment instead)
+
+### Error Handling
+
+The plugin provides clear error messages for common issues:
+
+- **Folder Creation Failed**: If the SDM repository rejects folder creation
+- **Invalid Path**: If the path contains invalid characters or structure
+- **Permission Denied**: If the user lacks SDM permissions for folder operations
+- **Repository Connection**: If SDM service is unavailable
 
 ## Support for Multitenancy
 

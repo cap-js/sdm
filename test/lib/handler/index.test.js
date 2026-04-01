@@ -34,7 +34,9 @@ const {
   readAttachment,
   getFolderIdByPath,
   getFolderIdByIDAsPath,
+  getFolderIdByDynamicPath,
   createFolder,
+  createNestedFolders,
   deleteFolderWithAttachments,
   getAttachment,
   getRepositoryInfo,
@@ -349,6 +351,245 @@ describe("handlers", () => {
   
       // Assert that the function returned null
       expect(response).toBeNull();
+    });
+  });
+
+  describe("getFolderIdByDynamicPath", () => {
+    let repositoryId, folderPath, credentials, destination;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      executeHttpRequest.mockClear();
+      repositoryId = "123";
+      folderPath = "project/documents";
+      credentials = { uri: "http://example.com/" };
+      destination = { url: "http://example.com" };
+    });
+
+    it("should return folderId when folder exists", async () => {
+      const mockResponse = {
+        data: { properties: { "cmis:objectId": { value: "folder-id-123" } } }
+      };
+      executeHttpRequest.mockResolvedValue(mockResponse);
+
+      const result = await getFolderIdByDynamicPath(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("folder-id-123");
+      expect(executeHttpRequest).toHaveBeenCalledWith(destination, {
+        method: 'GET',
+        url: `${credentials.uri}browser/${repositoryId}/root/${folderPath}?cmisselector=object`
+      });
+    });
+
+    it("should return null when folder does not exist", async () => {
+      executeHttpRequest.mockRejectedValue(new Error("Not found"));
+
+      const result = await getFolderIdByDynamicPath(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBeNull();
+    });
+
+    it("should handle nested folder paths correctly", async () => {
+      const nestedPath = "level1/level2/level3";
+      const mockResponse = {
+        data: { properties: { "cmis:objectId": { value: "nested-folder-id" } } }
+      };
+      executeHttpRequest.mockResolvedValue(mockResponse);
+
+      const result = await getFolderIdByDynamicPath(repositoryId, nestedPath, credentials, destination);
+
+      expect(result).toBe("nested-folder-id");
+      expect(executeHttpRequest).toHaveBeenCalledWith(destination, {
+        method: 'GET',
+        url: `${credentials.uri}browser/${repositoryId}/root/${nestedPath}?cmisselector=object`
+      });
+    });
+
+    it("should handle single folder path correctly", async () => {
+      const singlePath = "documents";
+      const mockResponse = {
+        data: { properties: { "cmis:objectId": { value: "single-folder-id" } } }
+      };
+      executeHttpRequest.mockResolvedValue(mockResponse);
+
+      const result = await getFolderIdByDynamicPath(repositoryId, singlePath, credentials, destination);
+
+      expect(result).toBe("single-folder-id");
+    });
+
+    it("should return null on network error", async () => {
+      executeHttpRequest.mockRejectedValue(new Error("Network error"));
+
+      const result = await getFolderIdByDynamicPath(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("createNestedFolders", () => {
+    let repositoryId, folderPath, credentials, destination;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      mockFormDataInstances = [];
+      repositoryId = "123";
+      credentials = { uri: "http://example.com/" };
+      destination = { url: "http://example.com" };
+    });
+
+    it("should create nested folders and return last folder ID", async () => {
+      folderPath = "project/documents/2024";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      // Für jedes Segment: GET (check), POST (create)
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "project" -> doesn't exist
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-1" } } }) // POST create "project"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "project/documents" -> doesn't exist
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-2" } } }) // POST create "documents"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "project/documents/2024" -> doesn't exist
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-3" } } }); // POST create "2024"
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("folder-3");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(6); // 3 GETs + 3 POSTs
+    });
+
+    it("should skip existing folders and only create missing ones", async () => {
+      folderPath = "existing/new";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      // First folder exists, second doesn't
+      executeHttpRequest
+        .mockResolvedValueOnce({ data: { properties: { "cmis:objectId": { value: "existing-folder-id" } } } }) // GET "existing" -> exists
+        .mockRejectedValueOnce(new Error("Not found")) // GET "existing/new" -> doesn't exist
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "new-folder-id" } } }); // POST create "new"
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("new-folder-id");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3); // 2 GETs + 1 POST
+    });
+
+    it("should handle single folder creation", async () => {
+      folderPath = "documents";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "documents" -> doesn't exist
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "single-folder-id" } } }); // POST create "documents"
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("single-folder-id");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(2); // 1 GET + 1 POST
+    });
+
+    it("should filter out empty path segments", async () => {
+      folderPath = "project//documents/"; // Double slash and trailing slash
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "project"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-1" } } }) // POST create "project"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "project/documents"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-2" } } }); // POST create "documents"
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("folder-2");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(4); // 2 GETs + 2 POSTs (only 2 folders)
+    });
+
+    it("should use parent folder ID when creating nested folders", async () => {
+      folderPath = "parent/child";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "parent"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "parent-id" } } }) // POST create "parent"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "parent/child"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "child-id" } } }); // POST create "child"
+
+      await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      // Check that second folder creation includes parent ID
+      const secondFormData = mockFormDataInstances[1];
+      expect(secondFormData.append).toHaveBeenCalledWith("objectId", "parent-id");
+    });
+
+    it("should handle race condition by retrying folder check on creation error", async () => {
+      folderPath = "concurrent/folder";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      // Simulate race condition: folder created by another process
+      const createError = new Error("Folder already exists");
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "concurrent"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "concurrent-folder-1" } } }) // POST create "concurrent"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "concurrent/folder"
+        .mockRejectedValueOnce(createError) // POST create "folder" fails (race)
+        .mockResolvedValueOnce({ data: { properties: { "cmis:objectId": { value: "existing-folder-2" } } } }); // Retry GET finds it
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("existing-folder-2");
+    });
+
+    it("should throw error when folder creation fails and retry also fails", async () => {
+      folderPath = "failing/folder";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      const createError = new Error("Permanent error");
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "failing"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "folder-1" } } }) // POST create "failing"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "failing/folder"
+        .mockRejectedValueOnce(createError) // POST create "folder" fails
+        .mockRejectedValueOnce(new Error("Not found")); // Retry GET also fails
+
+      await expect(createNestedFolders(repositoryId, folderPath, credentials, destination))
+        .rejects.toThrow("Permanent error");
+    });
+
+    it("should create all folders when none exist", async () => {
+      folderPath = "level1/level2/level3/level4";
+      
+      jest.clearAllMocks();
+      executeHttpRequest.mockReset();
+      
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("Not found")) // GET "level1"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "id-1" } } }) // POST "level1"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "level1/level2"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "id-2" } } }) // POST "level2"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "level1/level2/level3"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "id-3" } } }) // POST "level3"
+        .mockRejectedValueOnce(new Error("Not found")) // GET "level1/level2/level3/level4"
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "id-4" } } }); // POST "level4"
+
+      const result = await createNestedFolders(repositoryId, folderPath, credentials, destination);
+
+      expect(result).toBe("id-4");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(8); // 4 GETs + 4 POSTs
     });
   });
 
