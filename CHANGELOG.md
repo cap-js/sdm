@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+# Version 1.9.1
+
+### Fixed
+- Onboarding and Offboarding of repository issue leading to data loss has been fixed.
+
 ## Version 1.9.0
 
 ### Added
