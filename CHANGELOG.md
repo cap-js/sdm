@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 # Version 1.9.1
 
 ### Fixed
-- Onboarding and Offboarding of repository issue leading to data loss has been fixed.
+- Fixed issue where onboarding a tenant was skipping onboarding for another tenant and Offboarding of repository for one tenant was deleting data for other tenant.
 
 ## Version 1.9.0
 
