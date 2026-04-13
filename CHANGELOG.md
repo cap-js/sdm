@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
-# Version 1.9.1
+## Version 1.9.1
 
 ### Fixed
 - Fixed issue where onboarding a tenant was skipping onboarding for another tenant and Offboarding of repository for one tenant was deleting data for other tenant.
