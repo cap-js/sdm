@@ -998,7 +998,13 @@ describe("util", () => {
 
         const result = await transformSDMServiceBindingToClientCredentialsDestination(service, options);
 
-        expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({ name: "sdm-service" }), options);
+        expect(mockServiceToken).toHaveBeenCalledWith(
+          expect.objectContaining({ name: "sdm-service" }),
+          expect.objectContaining({
+            ...options,
+            jwt: { ext_attr: { zdn: undefined } }
+          })
+        );
         expect(result.authentication).toBe('OAuth2ClientCredentials');
         expect(result.name).toBe("sdm-service");
       });
@@ -1025,7 +1031,9 @@ describe("util", () => {
 
         expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://tenant-subdomain.example.com/oauth/token" })
-        }), {});
+        }), expect.objectContaining({
+          jwt: { ext_attr: { zdn: "tenant-subdomain" } }
+        }));
         expect(result.url).toBe("https://tenant-subdomain.example.com/oauth/token");
         expect(result.authentication).toBe('OAuth2ClientCredentials');
       });
@@ -1051,7 +1059,9 @@ describe("util", () => {
 
         expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
-        }), {});
+        }), expect.objectContaining({
+          jwt: { ext_attr: { zdn: undefined } }
+        }));
         expect(result.url).toBe("https://provider-subdomain.example.com/oauth/token");
       });
 
@@ -1076,7 +1086,9 @@ describe("util", () => {
 
         expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://provider-subdomain.example.com/oauth/token" })
-        }), {});
+        }), expect.objectContaining({
+          jwt: { ext_attr: { zdn: undefined } }
+        }));
         expect(result.authentication).toBe('OAuth2ClientCredentials');
       });
 
@@ -1103,7 +1115,9 @@ describe("util", () => {
         // Should use param-subdomain, not context-subdomain
         expect(mockServiceToken).toHaveBeenCalledWith(expect.objectContaining({
           credentials: expect.objectContaining({ url: "https://param-subdomain.example.com/oauth/token" })
-        }), {});
+        }), expect.objectContaining({
+          jwt: { ext_attr: { zdn: "param-subdomain" } }
+        }));
         expect(result.url).toBe("https://param-subdomain.example.com/oauth/token");
       });
     });
