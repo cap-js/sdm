@@ -44,7 +44,7 @@ jobs:
           echo "deb https://packages.cloudfoundry.org/debian stable main" \
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
-          sudo apt install cf-cli
+          sudo apt install cf8-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
       - name: Clone projects & Update manifest/mta files
         run: |
