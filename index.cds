@@ -4,6 +4,7 @@ extend aspect Attachments with {
     repositoryId : String @title: 'Repository ID' @readonly default null;
     linkUrl: String @(title: '{i18n>LinkURL}') default null;
     type: String @(title: '{i18n>Type}') @(UI: {IsImageURL: true}) default 'sap-icon://document';
+    holdId: String @title: 'Hold ID' @readonly default null;
 };
 annotate Attachments with @UI:{
   HeaderInfo: {
@@ -20,8 +21,8 @@ annotate Attachments with @UI:{
   ]
 } {
   url @readonly;
-  note @(title: '{i18n>Note}');
-  filename @(title: '{i18n>Filename}');
+  note @(title: '{i18n>Note}') @Common.FieldControl: {$edmJson: {$If: [{$Eq: [{$Path: 'holdId'}, 'SDM_PLUGIN_HOLD']}, 1, 3]}};
+  filename @(title: '{i18n>Filename}') @Common.FieldControl: {$edmJson: {$If: [{$Eq: [{$Path: 'holdId'}, 'SDM_PLUGIN_HOLD']}, 1, 3]}};
   modifiedAt @(odata.etag: null);
   content
       @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
@@ -30,4 +31,5 @@ annotate Attachments with @UI:{
   mimeType @UI.Hidden;
   status @UI.Hidden;
   repositoryId @UI.Hidden;
+  holdId @UI.Hidden;
 }
