@@ -42,7 +42,6 @@ jobs:
           --detect.blackduck.signature.scanner.memory=4096  \
           --detect.timeout=6000 \
           --blackduck.trust.cert=true \
-          --detect.project.user.groups="SAP_DOC_MGMT_CAP_NODEJS 1.0"  \
           --detect.project.name="SAP_DOC_MGMT_CAP_NODEJS 1.0" \
           --detect.project.version.name="1.0" \
           --detect.code.location.name="SAP_DOC_MGMT_CAP_NODEJS 1.0/1.0" \
