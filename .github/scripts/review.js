@@ -1,7 +1,5 @@
 const { context, getOctokit } = require("@actions/github");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const fs = require("fs");
-const path = require("path");
 
 // Utility functions
 //----------------------------------------------------------------------------------------------------------------
