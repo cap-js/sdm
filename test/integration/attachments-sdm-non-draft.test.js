@@ -35,50 +35,73 @@ beforeAll(async () => {
     clientSecret = credentials.clientSecretMT;
 
     if (tenant === 'SDM-DEV-CONSUMER-EU12') {
-      console.log('Running non-draft integration tests | SDM-DEV-CONSUMER-EU12 tenant');
+      console.log('Running integration tests | SDM-DEV-CONSUMER-EU12 tenant');
       authUrl = credentials.authUrlMTSDC;
     } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
-      console.log('Running non-draft integration tests | SDMGoogleWorkspaceConsumer tenant');
+      console.log('Running integration tests | SDMGoogleWorkspaceConsumer tenant');
       authUrl = credentials.authUrlMTGWC;
     }
   } else {
-    console.log('Running non-draft integration tests | Single tenant Scenario');
+    console.log('Running integration tests | Single tenant Scenario');
     appUrl = credentials.appUrl;
     clientId = credentials.clientID;
     clientSecret = credentials.clientSecret;
     authUrl = credentials.authUrl;
   }
 
-  try {
-    const authRes = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    token = authRes.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate Token:", error.message);
-    throw error;
-  }
+  if (tokenFlow === 'technicalUser') {
+    console.log('Technical user token flow');
+    try {
+      const authRes = await axios.post(
+          `${authUrl}/oauth/token?grant_type=client_credentials`,
+          null,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate technical user Token:", error.message);
+      throw error;
+    }
+  } else if (tokenFlow === 'namedUser') {
+    console.log('Named user token flow');
+    try {
+      const authRes = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate Token:", error.message);
+      throw error;
+    }
 
-  try {
-    const authResNoSDMRole = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    noSDMRoleToken = authResNoSDMRole.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate No-SDM-Role Token:", error.message);
-    throw error;
+    try {
+      const authResNoSDMRole = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      noSDMRoleToken = authResNoSDMRole.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate No-SDM-Role Token:", error.message);
+      throw error;
+    }
+  } else {
+    throw new Error(`Invalid TOKEN_FLOW specified: ${tokenFlow}. Expected 'namedUser' or 'technicalUser'.`);
   }
 
   const config = {
