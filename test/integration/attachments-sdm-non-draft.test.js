@@ -8,6 +8,7 @@ const FormData = require('form-data');
 
 const tenancyModel = process.env.TENANCY_MODEL || 'single';
 const tenant = process.env.TENANT;
+const tokenFlow = process.env.TOKEN_FLOW || 'namedUser';
 
 let token;
 let noSDMRoleToken;
