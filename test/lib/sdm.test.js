@@ -441,7 +441,20 @@ describe("SDMAttachmentsService", () => {
       const mockReq = {
         _sdmDestination: undefined
       };
-
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                origin: "sap.custom",
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
       retrieveJwt.mockReturnValue("user-jwt");
       getSdmInstanceName.mockReturnValue("sdm-instance");
       const mockDestination = { url: "http://example.com" };
@@ -474,7 +487,86 @@ describe("SDMAttachmentsService", () => {
       expect(result).toEqual(cachedDestination);
     });
   });
+  it("should use Client Credentials when origin is not present in token", async () => {
+    jest.clearAllMocks();
+    const service = new SDMAttachmentsService();
+    const mockReq = {
+      _sdmDestination: undefined
+    };
 
+    // Mock cds.context without origin in token payload
+    cds.context = {
+      user: {
+        authInfo: {
+          token: {
+            payload: {
+              ext_attr: {
+                zdn: "test-subdomain"
+              }
+              // No 'origin' field here
+            }
+          }
+        }
+      }
+    };
+
+    retrieveJwt.mockReturnValue("user-jwt");
+    getSdmInstanceName.mockReturnValue("sdm-instance");
+    const mockDestination = { url: "http://example.com" };
+    getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+    const result = await service.getDestination(mockReq);
+
+    // Should call with Client Credentials (no jwt parameter)
+    expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+      destinationName: "sdm-instance",
+      useCache: true,
+      serviceBindingTransformFn: expect.any(Function)
+    });
+    expect(result).toEqual(mockDestination);
+    expect(mockReq._sdmDestination).toEqual(mockDestination);
+  });
+
+  it("should use JWT Bearer when origin is present in token", async () => {
+    jest.clearAllMocks();
+    const service = new SDMAttachmentsService();
+    const mockReq = {
+      _sdmDestination: undefined
+    };
+
+    // Mock cds.context with origin in token payload
+    cds.context = {
+      user: {
+        authInfo: {
+          token: {
+            payload: {
+              origin: "sap.custom",
+              ext_attr: {
+                zdn: "test-subdomain"
+              }
+            }
+          }
+        }
+      }
+    };
+
+    retrieveJwt.mockReturnValue("user-jwt");
+    getSdmInstanceName.mockReturnValue("sdm-instance");
+    const mockDestination = { url: "http://example.com" };
+    getDestinationFromServiceBinding.mockResolvedValue(mockDestination);
+
+    const result = await service.getDestination(mockReq);
+
+    // Should call with JWT Bearer (includes jwt parameter)
+    expect(getDestinationFromServiceBinding).toHaveBeenCalledWith({
+      destinationName: "sdm-instance",
+      jwt: "user-jwt",
+      useCache: true,
+      serviceBindingTransformFn: expect.any(Function)
+    });
+    expect(result).toEqual(mockDestination);
+    expect(mockReq._sdmDestination).toEqual(mockDestination);
+  });
   describe("getSDMCredentials", () => {
     it("should return credentials", () => {
       const service = new SDMAttachmentsService();
@@ -7068,4 +7160,63 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('getAttachmentCompositions', () => {
+    let service;
+
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+      service.creds = { clientId: 'client-id', clientSecret: 'client-secret' };
+    });
+
+    it('should recognize Attachments without namespace prefix', () => {
+      const targetEntity = { name: 'Test.EntityWithShortAttachments' };
+
+      cds.model.definitions['Test.EntityWithShortAttachments'] = {
+        elements: {
+          attachments: {
+            type: 'cds.Composition',
+            target: 'Test.ShortAttachments'
+          }
+        }
+      };
+
+      cds.model.definitions['Test.ShortAttachments'] = {
+        includes: ['Attachments']  // Without 'sap.attachments.' prefix
+      };
+
+      const result = service.getAttachmentCompositions(targetEntity);
+
+      expect(result).toEqual(['attachments']);
+    });
+
+    it('should recognize both full and short Attachments includes', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedIncludes' };
+
+      cds.model.definitions['Test.EntityWithMixedIncludes'] = {
+        elements: {
+          fullAttachments: {
+            type: 'cds.Composition',
+            target: 'Test.FullAttachments'
+          },
+          shortAttachments: {
+            type: 'cds.Composition',
+            target: 'Test.ShortAttachments'
+          }
+        }
+      };
+
+      cds.model.definitions['Test.FullAttachments'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.ShortAttachments'] = {
+        includes: ['Attachments']
+      };
+
+      const result = service.getAttachmentCompositions(targetEntity);
+
+      expect(result).toContain('fullAttachments');
+      expect(result).toContain('shortAttachments');
+      expect(result.length).toBe(2);
+    });
+  });
 });
