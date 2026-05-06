@@ -6,9 +6,12 @@ on:
 
 jobs:
   respond:
-    # This job will now run for comments on both issues and pull requests,
-    # as long as the comment is not from the bot itself.
-    if: github.event.comment.author.login != 'github-actions[bot]'
+    # Only run for org owners, members, and repo collaborators to prevent
+    # arbitrary users from triggering AI bot responses.
+    if: |
+      github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR'
     runs-on: ubuntu-latest
     permissions:
       contents: read

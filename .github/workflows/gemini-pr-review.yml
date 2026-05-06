@@ -6,8 +6,12 @@ on:
 
 jobs:
   review:
-    # Ensure this job only runs if the comment was made on a Pull Request
-    if: github.event.issue.pull_request
+    # Only run for org owners, members, and repo collaborators on PR comments.
+    if: |
+      github.event.issue.pull_request &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR')
     runs-on: ubuntu-latest
     permissions:
       contents: read

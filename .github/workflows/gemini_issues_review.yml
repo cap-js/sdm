@@ -7,8 +7,12 @@ on:
 
 jobs:
   summarize:
-    # Ensure the job only runs for new issues and not from the bot itself
-    if: github.event.issue.author.login != 'github-actions[bot]'
+    # Only run for org owners, members, and repo collaborators to prevent
+    # external users from triggering AI analysis of repository content.
+    if: |
+      github.event.issue.author_association == 'OWNER' ||
+      github.event.issue.author_association == 'MEMBER' ||
+      github.event.issue.author_association == 'COLLABORATOR'
     runs-on: ubuntu-latest
     permissions:
       contents: read
