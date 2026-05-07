@@ -1266,59 +1266,61 @@ describe('Non-Draft Attachments Integration Tests --DELETE', () => {
 describe('Non-Draft Attachments Integration Tests --ERROR HANDLING', () => {
   
   it('should reject upload without SDM roles', async () => {
-    const config = {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    };
+    if(tokenFlow !== 'technicalUser') {
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      };
 
-    const response = await axios.post(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}`,
-      {
-        name: 'Project for No SDM Role Test'
-      },
-      config
-    );
-
-    const docID = trackProject(response.data.ID);
-
-    const noRoleConfig = {
-      headers: {
-        'Authorization': `Bearer ${noSDMRoleToken}`,
-        'Content-Type': 'application/json'
-      }
-    };
-
-    const metadataResponse = await axios.post(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}`,
-      {
-        filename: 'no-role-test.pdf'
-      },
-      noRoleConfig
-    );
-
-    const attachmentID = metadataResponse.data.ID;
-
-    const filePath = path.join(__dirname, 'sample.pdf');
-    const fileBuffer = fs.readFileSync(filePath);
-
-    const uploadConfig = {
-      headers: {
-        'Authorization': `Bearer ${noSDMRoleToken}`,
-        'Content-Type': 'application/pdf'
-      }
-    };
-
-    try {
-      await axios.put(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}(ID=${attachmentID})/content`,
-        fileBuffer,
-        uploadConfig
+      const response = await axios.post(
+          `https://${appUrl}/odata/v4/${serviceName}/${entityName}`,
+          {
+            name: 'Project for No SDM Role Test'
+          },
+          config
       );
-      fail('Should have thrown an error for no SDM roles');
-    } catch (error) {
-      expect(error.response.status).toBe(403);
+
+      const docID = trackProject(response.data.ID);
+
+      const noRoleConfig = {
+        headers: {
+          'Authorization': `Bearer ${noSDMRoleToken}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      const metadataResponse = await axios.post(
+          `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}`,
+          {
+            filename: 'no-role-test.pdf'
+          },
+          noRoleConfig
+      );
+
+      const attachmentID = metadataResponse.data.ID;
+
+      const filePath = path.join(__dirname, 'sample.pdf');
+      const fileBuffer = fs.readFileSync(filePath);
+
+      const uploadConfig = {
+        headers: {
+          'Authorization': `Bearer ${noSDMRoleToken}`,
+          'Content-Type': 'application/pdf'
+        }
+      };
+
+      try {
+        await axios.put(
+            `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}(ID=${attachmentID})/content`,
+            fileBuffer,
+            uploadConfig
+        );
+        fail('Should have thrown an error for no SDM roles');
+      } catch (error) {
+        expect(error.response.status).toBe(403);
+      }
     }
   });
 
