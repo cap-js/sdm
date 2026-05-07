@@ -29,7 +29,7 @@ function extractId(line) {
  * @param {string} entityId - the entity ID whose attachments folder is the upload target
  */
 async function createDocumentInCmis(cmisName, filePath, entityId) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId + '__attachments');
+  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
   const parentFolderObjectId = extractId(folderLine);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
@@ -48,7 +48,7 @@ async function createDocumentInCmis(cmisName, filePath, entityId) {
  */
 async function deleteDocumentFromCmis(entityId, fileName) {
   // Step 1: resolve the parent folder object ID
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId + '__attachments');
+  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
   const parentFolderObjectId = extractId(folderLine);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
@@ -73,7 +73,7 @@ async function deleteDocumentFromCmis(entityId, fileName) {
  * @param {string} outputPath - local path to save the downloaded content
  */
 async function readDocumentFromCmis(entityId, fileName, outputPath) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId + '__attachments');
+  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
   const parentFolderObjectId = extractId(folderLine);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
@@ -96,7 +96,7 @@ async function readDocumentFromCmis(entityId, fileName, outputPath) {
  * @returns {Promise<string>} the JSON metadata string returned by the CMIS API
  */
 async function readDocumentMetadataFromCmis(entityId, fileName) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId + '__attachments');
+  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
   const parentFolderObjectId = extractId(folderLine);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 

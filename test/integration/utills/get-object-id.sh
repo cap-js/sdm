@@ -109,7 +109,7 @@ OBJECT_ID=$(echo "$BODY" \
   | grep -o '"cmis:objectId"[^}]*"value":"[^"]*"' \
   | head -1 \
   | grep -o '"value":"[^"]*"' \
-  | sed 's/"value":"//;s/"$//')
+  | sed 's/"value":"//;s/"$//' || true)
 
 if [[ -z "$OBJECT_ID" ]]; then
   echo "ERROR: No ${CMIS_TYPE} found with name '${CMIS_NAME}'."

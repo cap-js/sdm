@@ -43,6 +43,7 @@ function run(scriptPath, ...args) {
 function runAndCaptureOutput(scriptPath, ...args) {
   return new Promise((resolve, reject) => {
     const stdoutLines = [];
+    const stderrLines = [];
 
     const child = execFile('bash', [scriptPath, ...args], { maxBuffer: 10 * 1024 * 1024 });
 
@@ -54,6 +55,7 @@ function runAndCaptureOutput(scriptPath, ...args) {
 
     child.stderr.on('data', data => {
       for (const line of data.toString().split('\n').filter(l => l)) {
+        stderrLines.push(line);
         console.error(`[script-err] ${line}`);
       }
     });
@@ -61,7 +63,9 @@ function runAndCaptureOutput(scriptPath, ...args) {
     child.on('error', reject);
     child.on('close', code => {
       if (code !== 0) {
-        reject(new Error(`${scriptPath} exited with code ${code}`));
+        const output = stdoutLines.join('\n');
+        const errOutput = stderrLines.join('\n');
+        reject(new Error(`${scriptPath} exited with code ${code}\nstdout: ${output}\nstderr: ${errOutput}`));
       } else {
         resolve(stdoutLines.length > 0 ? stdoutLines[stdoutLines.length - 1] : null);
       }
