@@ -1518,6 +1518,53 @@ const config = {
   });
 });
 
+describe('Attachments Integration Tests --CMIS METADATA', () => {
+  it('should verify SDM createdBy field matches the authenticated user', async () => {
+    // Create a fresh entity with an attachment to verify createdBy
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const metadataEntityID = response.incidentID;
+
+    const file = {
+      filename: "metadata-test.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+
+    const postData = {
+      up__ID: metadataEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, metadataEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, metadataEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Verify cmis:createdBy using CMIS helper
+    const { getCmisProperty } = require('./utills/cmis-document-helper');
+    const createdBy = await getCmisProperty(metadataEntityID, "metadata-test.pdf", "cmis:createdBy");
+    expect(createdBy).toBeTruthy();
+    expect(createdBy).toBe(credentials.username);
+    console.log(`SDM createdBy field verified: ${createdBy}`);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, metadataEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed:", response.message);
+    }
+  });
+});
+
 describe('Attachments Integration Tests --DELETE', () => {
   it('should delete the attachments of an entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
