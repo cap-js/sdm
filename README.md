@@ -18,6 +18,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Link as attachments: Provides the capability to support link or URL as attachments.
 - Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
 - Non-Draft Attachments: Provides the capability to work with attachments in non-draft (active) entities.
+- Dynamic SDM Folder Paths: Provides the capability to organize attachments in custom nested folder structures within the SDM repository.
 
 ### Table of Contents
 
@@ -28,6 +29,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
+- [Support for Dynamic SDM Folder Paths](#support-for-dynamic-sdm-folder-paths)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -628,6 +630,66 @@ service ProcessorService {
   entity Projects as projection on my.Projects; // Non-draft entity
   entity Projects.attachments as projection on my.Projects.attachments;
 }
+```
+
+## Support for Dynamic SDM Folder Paths
+
+This plugin provides advanced folder management capabilities, allowing you to organize attachments in custom nested folder structures within the SDM repository. Instead of using the default entity-based folder structure, you can specify dynamic paths to organize attachments hierarchically based on your business logic.
+
+### Usage Examples
+
+#### 1. Basic Nested Folder Structure
+
+Organize attachments by project and document type:
+
+```javascript
+// Create attachment with custom path
+await POST('/Incidents(ID=<incident-id>)/attachments', {
+  filename: 'incident-report.pdf',
+  sdmPath: 'incidents/2024/reports'
+});
+```
+
+This creates the folder structure:
+```
+SDM Repository Root
+└── incidents/
+    └── 2024/
+        └── reports/
+            └── incident-report.pdf
+```
+
+#### 2. Dynamic Path Based on Business Data
+
+Generate paths dynamically based on entity properties:
+
+```javascript
+// In a custom handler
+srv.before('CREATE', 'Attachments', async (req) => {
+  const incident = await SELECT.one.from(Incidents, req.data.up__ID);
+  
+  // Build path from incident properties
+  const year = new Date(incident.createdAt).getFullYear();
+  const priority = incident.priority || 'normal';
+  
+  req.data.sdmPath = `incidents/${year}/${priority}/${incident.customer.name}`;
+});
+```
+
+Resulting structure:
+```
+incidents/
+├── 2024/
+│   ├── high/
+│   │   └── CustomerA/
+│   │       └── attachment.pdf
+│   └── normal/
+│       └── CustomerB/
+│           └── attachment.pdf
+└── 2025/
+    └── high/
+        └── CustomerC/
+            └── attachment.pdf
 ```
 
 ## Support for Multitenancy
