@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ### Fixed
 - Updated cap-js/attachments version to 3.12.1 and fixed the underlying rename issues for attachments.
-- Fixed a bug where incorrect warning message thrown when file  was updated/deleted from sdm backend.
-- Fixed namespace issue to include sap.attachments.Attachments check.
+- Fixed a bug where incorrect warning message is thrown when file was updated/deleted from sdm backend.
+- Fixed namespace issue to include Attachments along with sap.attachments.Attachments.
 
 ### Added
 - Added support for technical user flow.
