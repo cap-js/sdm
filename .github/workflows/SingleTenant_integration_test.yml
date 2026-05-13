@@ -113,8 +113,8 @@ jobs:
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
-            "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
+            "cmisClientID": "${CMIS_CLIENT_ID}",
+            "cmisClientSecret": "${CMIS_CLIENT_SECRET}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
