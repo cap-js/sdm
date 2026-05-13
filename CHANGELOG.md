@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+
+# Version 1.10.0
+
+### Fixed
+- Updated cap-js/attachments version to 3.12.1 and fixed the underlying rename issues for attachments.
+- Fixed a bug where incorrect warning message is thrown when file was updated/deleted from sdm backend.
+- Fixed namespace issue to include Attachments along with sap.attachments.Attachments.
+
+### Added
+- Added support for technical user flow.
+
 # Version 1.9.1
 
 ### Fixed
