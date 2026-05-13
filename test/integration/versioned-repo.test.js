@@ -1,16 +1,11 @@
 'use strict';
 
-const path = require('path');
 const axios = require('axios');
 const credentials = require('./credentials.json');
 const Api = require('./api');
-const { run } = require('./utills/shell-script-runner');
 
-const SCRIPTS_DIR = path.join(__dirname, 'utills');
-const UPDATE_ENV_SCRIPT = path.join(SCRIPTS_DIR, 'cf-update-env.sh');
-
-const versionedRepositoryID = credentials.versionedRepositoryID;
-const defaultRepositoryID = credentials.defaultRepositoryID;
+const tenancyModel = process.env.TENANCY_MODEL || 'single';
+const tenant = process.env.TENANT;
 
 let token;
 let api;
@@ -21,27 +16,30 @@ const srvpath = 'ProcessorService';
 
 let entityID;
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function switchRepo(repoId) {
-  const exitCode = await run(UPDATE_ENV_SCRIPT, '--value', repoId);
-  if (exitCode !== 0) {
-    throw new Error(`cf-update-env.sh failed with exit code ${exitCode} for repo ${repoId}`);
-  }
-  await sleep(5000);
-}
-
 beforeAll(async () => {
-  expect(versionedRepositoryID).toBeTruthy();
-  expect(defaultRepositoryID).toBeTruthy();
+  let clientId;
+  let clientSecret;
+  let authUrl;
 
-  console.log('Running versioned repository integration tests | Single tenant');
-  appUrl = credentials.appUrl;
-  const clientId = credentials.clientID;
-  const clientSecret = credentials.clientSecret;
-  const authUrl = credentials.authUrl;
+  if (tenancyModel === 'multi') {
+    appUrl = credentials.appUrlMT;
+    clientId = credentials.clientIDMT;
+    clientSecret = credentials.clientSecretMT;
+
+    if (tenant === 'SDM-DEV-CONSUMER-EU12') {
+      console.log('Running versioned repository integration tests | SDM-DEV-CONSUMER-EU12 tenant');
+      authUrl = credentials.authUrlMTSDC;
+    } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
+      console.log('Running versioned repository integration tests | SDMGoogleWorkspaceConsumer tenant');
+      authUrl = credentials.authUrlMTGWC;
+    }
+  } else {
+    console.log('Running versioned repository integration tests | Single tenant');
+    appUrl = credentials.appUrl;
+    clientId = credentials.clientID;
+    clientSecret = credentials.clientSecret;
+    authUrl = credentials.authUrl;
+  }
 
   const authRes = await axios.get(
     `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
@@ -54,21 +52,16 @@ beforeAll(async () => {
 }, 60000);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 1 – Switch to versioned repository
+// Test 1 – Create entity and upload attachment — should fail on versioned repo
 // ─────────────────────────────────────────────────────────────────────────────
-test('(1) Change REPOSITORY_ID to versioned repository', async () => {
-  console.log(`Test (1): Change REPOSITORY_ID to versioned repository: ${versionedRepositoryID}`);
-  await switchRepo(versionedRepositoryID);
-}, 120000);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 2 – Create entity and upload attachment — should fail on versioned repo
-// ─────────────────────────────────────────────────────────────────────────────
-test('(2) Upload attachment on versioned repository — expect error', async () => {
-  console.log('Test (2): Create entity and upload attachment on versioned repository — expect error');
+test('(1) Upload attachment on versioned repository — expect error', async () => {
+  console.log('Test (1): Create entity and upload attachment on versioned repository — expect error');
 
   // Create entity
   let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+  if (response.status !== 'OK') {
+    console.log(`  Create entity failed: ${response.message}`);
+  }
   expect(response.status).toBe('OK');
   entityID = response.incidentID;
 
@@ -95,11 +88,3 @@ test('(2) Upload attachment on versioned repository — expect error', async () 
     expect(response.message.toLowerCase()).toMatch(/error|fail|version/);
   }
 }, 180000);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 3 – Revert REPOSITORY_ID back to default
-// ─────────────────────────────────────────────────────────────────────────────
-test('(3) Revert REPOSITORY_ID to default repository', async () => {
-  console.log(`Test (3): Revert REPOSITORY_ID to default repository: ${defaultRepositoryID}`);
-  await switchRepo(defaultRepositoryID);
-}, 120000);

@@ -28,17 +28,30 @@ fi
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CMIS_URL=$(json_val CMIS_URL)
-CMIS_REPOSITORY_ID=$(json_val CMIS_REPOSITORY_ID)
-CMIS_TOKEN_URL=$(json_val CMIS_TOKEN_URL)
-CMIS_CLIENT_ID=$(json_val CMIS_CLIENT_ID)
-CMIS_CLIENT_SECRET=$(json_val CMIS_CLIENT_SECRET)
-CMIS_USERNAME=$(json_val CMIS_USERNAME)
-CMIS_PASSWORD=$(json_val CMIS_PASSWORD)
+CMIS_REPOSITORY_ID=$(json_val defaultRepositoryID)
+CMIS_TOKEN_URL=$(json_val authUrlMTSDC)
+CMIS_CLIENT_ID=$(json_val cmisClientID)
+CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
+CMIS_CLIENT_ID_MT=$(json_val cmisClientIDMT)
+CMIS_CLIENT_SECRET_MT=$(json_val cmisClientSecretMT)
+CMIS_USERNAME=$(json_val username)
+CMIS_PASSWORD=$(json_val password)
 CMIS_FOLDER_ID=$(json_val CMIS_FOLDER_ID)
+
+# --- Parse named options (--subdomain) before positional args ---
+SUBDOMAIN=""
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --subdomain) SUBDOMAIN="$2"; shift 2 ;;
+    *) POSITIONAL_ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
 
 # --- Validate positional parameters ---
 if [[ $# -lt 2 || $# -gt 3 ]]; then
-  echo "Usage: $0 <cmisName> <file> [parentFolderID]"
+  echo "Usage: $0 <cmisName> <file> [parentFolderID] [--subdomain <subdomain>]"
   exit 1
 fi
 
@@ -46,6 +59,14 @@ CMIS_NAME="$1"
 FILE_PATH="$2"
 ARG_FOLDER_ID="${3:-}"
 EFFECTIVE_FOLDER_ID="${ARG_FOLDER_ID:-}"
+
+# Use MT CMIS credentials when --subdomain is provided
+if [[ -n "$SUBDOMAIN" ]]; then
+  CMIS_CLIENT_ID="$CMIS_CLIENT_ID_MT"
+  CMIS_CLIENT_SECRET="$CMIS_CLIENT_SECRET_MT"
+  PROVIDER_SUBDOMAIN=$(echo "$CMIS_TOKEN_URL" | sed -n 's|.*://\([^.]*\)\..*|\1|p')
+  CMIS_TOKEN_URL="${CMIS_TOKEN_URL/$PROVIDER_SUBDOMAIN/$SUBDOMAIN}"
+fi
 
 if [[ ! -f "$FILE_PATH" ]]; then
   echo "ERROR: File not found: $FILE_PATH"
@@ -60,14 +81,21 @@ for var in CMIS_URL CMIS_REPOSITORY_ID CMIS_TOKEN_URL CMIS_CLIENT_ID CMIS_CLIENT
   fi
 done
 
-# --- Obtain OAuth2 access token (password grant) ---
+# --- Obtain OAuth2 access token ---
 echo "Fetching OAuth2 token..."
-TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
-  --data-urlencode "grant_type=password" \
-  --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-  --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-  --data-urlencode "username=${CMIS_USERNAME}" \
-  --data-urlencode "password=${CMIS_PASSWORD}")
+if [[ -n "$SUBDOMAIN" ]]; then
+  TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
+    --data-urlencode "grant_type=client_credentials" \
+    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
+else
+  TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
+    --data-urlencode "grant_type=password" \
+    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
+    --data-urlencode "username=${CMIS_USERNAME}" \
+    --data-urlencode "password=${CMIS_PASSWORD}")
+fi
 
 ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
   | grep -o '"access_token":"[^"]*"' \

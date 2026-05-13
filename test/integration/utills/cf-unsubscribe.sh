@@ -12,19 +12,15 @@ fi
 # Load values from JSON credentials file using jq
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
-CF_USERNAME=$(json_val CF_USERNAME)
-CF_PASSWORD=$(json_val CF_PASSWORD)
-CONSUMER_CF_USERNAME=$(json_val CONSUMER_CF_USERNAME)
-CONSUMER_CF_PASSWORD=$(json_val CONSUMER_CF_PASSWORD)
-CONSUMER_SUBACCOUNT_ID=$(json_val CONSUMER_SUBACCOUNT_ID)
+CF_USERNAME=$(json_val username)
+CF_PASSWORD=$(json_val password)
+CONSUMER_SUBACCOUNT_ID=$(json_val consumerSubaccountIdMT1)
 SAAS_APP_NAME=$(json_val SAAS_APP_NAME)
-SAAS_APP_PLAN=$(json_val SAAS_APP_PLAN)
 BTP_CLI_URL=$(json_val BTP_CLI_URL)
 BTP_GLOBAL_ACCOUNT_SUBDOMAIN=$(json_val BTP_GLOBAL_ACCOUNT_SUBDOMAIN)
 
-# --- Resolve consumer credentials (fall back to provider credentials) ---
-CONSUMER_USER="${CONSUMER_CF_USERNAME:-$CF_USERNAME}"
-CONSUMER_PASS="${CONSUMER_CF_PASSWORD:-$CF_PASSWORD}"
+CONSUMER_USER="$CF_USERNAME"
+CONSUMER_PASS="$CF_PASSWORD"
 BTP_URL="${BTP_CLI_URL:-https://cli.btp.cloud.sap}"
 
 # --- Validate required variables ---

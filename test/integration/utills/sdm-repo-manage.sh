@@ -33,11 +33,13 @@ fi
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CMIS_URL=$(json_val CMIS_URL)
-CMIS_TOKEN_URL=$(json_val CMIS_TOKEN_URL)
-CMIS_CLIENT_ID=$(json_val CMIS_CLIENT_ID)
-CMIS_CLIENT_SECRET=$(json_val CMIS_CLIENT_SECRET)
-CMIS_USERNAME=$(json_val CMIS_USERNAME)
-CMIS_PASSWORD=$(json_val CMIS_PASSWORD)
+CMIS_TOKEN_URL=$(json_val authUrlMTSDC)
+CMIS_CLIENT_ID=$(json_val cmisClientID)
+CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
+CMIS_CLIENT_ID_MT=$(json_val cmisClientIDMT)
+CMIS_CLIENT_SECRET_MT=$(json_val cmisClientSecretMT)
+CMIS_USERNAME=$(json_val username)
+CMIS_PASSWORD=$(json_val password)
 
 # --- Parse command ---
 if [[ $# -lt 1 ]]; then
@@ -85,13 +87,13 @@ fi
 get_token() {
   local TOKEN_RESPONSE
   if [[ -n "$SUBDOMAIN" ]]; then
-    # Use client_credentials grant for consumer-scoped access
+    # Use client_credentials grant with MT CMIS credentials for consumer-scoped access
     TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
       --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
+      --data-urlencode "client_id=${CMIS_CLIENT_ID_MT}" \
+      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET_MT}")
   else
-    # Use password grant for provider-scoped access
+    # Use password grant with ST CMIS credentials for provider-scoped access
     TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
       --data-urlencode "grant_type=password" \
       --data-urlencode "client_id=${CMIS_CLIENT_ID}" \

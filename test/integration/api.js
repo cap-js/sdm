@@ -130,8 +130,8 @@ class Api {
     async checkEntity(appUrl, serviceName, entityName, incidentID){
         //Checking to see if the entity exists
         try{
-            response = await axios.get(`
-                https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)`,
+            let response = await axios.get(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)`,
                 this.config
             );
             incidentID = response.data.ID
@@ -315,6 +315,34 @@ class Api {
             return {
                 status: "FAILED",
                 message: "Fetch metadata API call failed: " + error.message
+            };
+        }
+    }
+
+    async fetchMetadataDraft(appUrl, serviceName, entityName, incidentID, attachment) {
+        let response;
+
+        try {
+            response = await axios.get(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=false)`,
+                this.config
+            );
+
+            if (response.status === 200 && response.data) {
+                return {
+                    status: "OK",
+                    data: response.data
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Fetch metadata draft did not return 200 status code. Actual code: " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Fetch metadata draft API call failed: " + error.message
             };
         }
     }

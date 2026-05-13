@@ -1,4 +1,4 @@
-name: Multi Tenancy Integration Test 🚀
+name: Multi Tenancy Integration Test
 
 on:
   workflow_dispatch:
@@ -21,119 +21,636 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository ✅
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
-      - name: Setup Node.js environment ⚙️
-        uses: actions/setup-node@v2.1.5
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Cloud Foundry CLI and jq 📦
+      - name: Install Cloud Foundry CLI and jq
         run: |
-          echo "🔧 Installing Cloud Foundry CLI and jq..."
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
           echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt-get update
-          sudo apt-get install cf8-cli jq
-      - name: Determine Cloud Foundry Space 🌌
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
         id: determine_space
         run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            space="${{ secrets.CF_SPACE }}"
-          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
             space="${{ secrets.CF_SPACE }}"
           else
             space="${{ github.event.inputs.cf_space }}"
           fi
-          echo "🌍 Space determined for use"
-          echo "space=$space" >> $GITHUB_ENV
-      - name: Login to Cloud Foundry 🔑
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login to Cloud Foundry
         run: |
-          echo "🔄 Logging in to Cloud Foundry..."
-          cf login -a ${{ secrets.CF_API }} \
-            -u ${{ secrets.CF_USER }} \
-            -p ${{ secrets.CF_PASSWORD }} \
-            -o ${{ secrets.CF_ORG }} \
-            -s ${{ env.space }}
-      - name: Fetch Multi Tenant Credentials 🔍
+          cf login -a "${{ secrets.CF_API }}" \
+            -u "${{ secrets.CF_USER }}" \
+            -p "${{ secrets.CF_PASSWORD }}" \
+            -o "${{ secrets.CF_ORG }}" \
+            -s "${{ env.space }}"
+
+      - name: Install SAP BTP CLI
+        run: |
+          wget -q -O btp-cli.tar.gz "https://tools.hana.ondemand.com/additional/btp-cli-linux-amd64-latest.tar.gz" || \
+          wget -q -O btp-cli.tar.gz "https://github.com/SAP/btp-cli/releases/latest/download/btp-cli-linux-amd64.tar.gz"
+          tar -xzf btp-cli.tar.gz
+          sudo mv btp /usr/local/bin/ 2>/dev/null || sudo mv */btp /usr/local/bin/ 2>/dev/null || true
+          btp --version || echo "BTP CLI installed"
+
+      - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
         run: |
           echo "Fetching client details for multi tenant..."
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
-          
+
           if [ -z "$service_instance_guid_mt" ]; then
             echo "Warning: incidents-mtx-auth service not found, trying alternative service names..."
             service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
           fi
-          
+
           if [ -z "$service_instance_guid_mt" ]; then
-            echo "❌ Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+            echo "Error: Unable to retrieve multitenant service instance GUID"; exit 1;
           fi
-          
+
           bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
-          binding_guid_mt=$(echo $bindings_response_mt | jq -r '.resources[0].guid')
-          
+          binding_guid_mt=$(echo "$bindings_response_mt" | jq -r '.resources[0].guid')
+
           if [ -z "$binding_guid_mt" ] || [ "$binding_guid_mt" == "null" ]; then
-            echo "❌ Error: Unable to retrieve multitenant binding GUID"; exit 1;
+            echo "Error: Unable to retrieve multitenant binding GUID"; exit 1;
           fi
-          
+
           binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
-          
+
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
-          
+
           if [ -z "$clientSecretMT" ] || [ "$clientSecretMT" == "null" ] || [ -z "$clientIDMT" ] || [ "$clientIDMT" == "null" ]; then
-            echo "❌ Error: Invalid MT credentials from service"; exit 1;
+            echo "Error: Invalid MT credentials from service"; exit 1;
           fi
-          
+
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
-          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
-          echo "✅ Multi-tenant client details fetched successfully!"
-      - name: Run Integration Tests 🎯
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
+
+      - name: Generate credentials.json and run integration tests
         run: |
-          echo "🚀 Starting multi-tenant integration tests..."
-          
+          set -e
           JSON_FILE="test/integration/credentials.json"
-          
           appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
-          
-          cat > "$JSON_FILE" <<EOL
+
+          (
+            set +x
+            cat > "$JSON_FILE" <<EOL
           {
+            "appUrlMT": "$appUrlMT",
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
+            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
+            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
             "username": "${{ secrets.CF_USER }}",
             "password": "${{ secrets.CF_PASSWORD }}",
             "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
             "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
-            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
-            "appUrlMT": "$appUrlMT",
-            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
-            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}"
+            "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
+            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
+            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
+            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
+            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "consumerSubaccountIdMT1": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT1 }}",
+            "consumerSubdomainMT1": "${{ secrets.CONSUMER_SUBDOMAIN_MT1 }}",
+            "consumerSubaccountIdMT2": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT2 }}",
+            "consumerSubdomainMT2": "${{ secrets.CONSUMER_SUBDOMAIN_MT2 }}",
+            "SAAS_APP_NAME": "${{ secrets.SAAS_APP_NAME }}",
+            "ROLE_COLLECTION_NAME": "${{ secrets.ROLE_COLLECTION_NAME }}",
+            "APP_ROLE_FILTER": "${{ secrets.APP_ROLE_FILTER }}",
+            "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
+            "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",
+            "APP_NAME": "incidents-srv",
+            "MT_APP_NAME": "incidents-mtx-srv"
           }
           EOL
-          
-          echo "Generated credentials.json (with masked secrets):"
-          cat "$JSON_FILE" | jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword)'
-          
+          )
+
+          echo "Generated credentials.json:"
+          jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword, .cmisClientSecret)' "$JSON_FILE"
+
           npm install
-          
+
           echo ""
-          echo "📋 Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 1)..."
+          echo "Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
 
           echo ""
-          echo "📋 Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 1)..."
+          echo "Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test-non-draft
-          
+
           echo ""
-          echo "📋 Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 2)..."
+          echo "Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 2)..."
           TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
 
           echo ""
-          echo "📋 Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 2)..."
+          echo "Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 2)..."
           TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test-non-draft
-          
-          echo "✅ All integration tests completed!"
+
+  subscription-test:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: "!cancelled() && needs.integration-test.result == 'success'"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Install SAP BTP CLI
+        run: |
+          wget -q -O btp-cli.tar.gz "https://tools.hana.ondemand.com/additional/btp-cli-linux-amd64-latest.tar.gz" || \
+          wget -q -O btp-cli.tar.gz "https://github.com/SAP/btp-cli/releases/latest/download/btp-cli-linux-amd64.tar.gz"
+          tar -xzf btp-cli.tar.gz
+          sudo mv btp /usr/local/bin/ 2>/dev/null || sudo mv */btp /usr/local/bin/ 2>/dev/null || true
+          btp --version || echo "BTP CLI installed"
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a "${{ secrets.CF_API }}" \
+            -u "${{ secrets.CF_USER }}" \
+            -p "${{ secrets.CF_PASSWORD }}" \
+            -o "${{ secrets.CF_ORG }}" \
+            -s "${{ env.space }}"
+
+      - name: Fetch Multi Tenant Credentials
+        run: |
+          service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
+          if [ -z "$service_instance_guid_mt" ]; then
+            service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
+          fi
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+          fi
+          bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
+          binding_guid_mt=$(echo "$bindings_response_mt" | jq -r '.resources[0].guid')
+          binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
+          clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
+          clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
+          escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
+
+      - name: Generate credentials.json and run subscription tests
+        run: |
+          set -e
+          JSON_FILE="test/integration/credentials.json"
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+
+          (
+            set +x
+            cat > "$JSON_FILE" <<EOL
+          {
+            "appUrlMT": "$appUrlMT",
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
+            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
+            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
+            "username": "${{ secrets.CF_USER }}",
+            "password": "${{ secrets.CF_PASSWORD }}",
+            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+            "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
+            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
+            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
+            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
+            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "consumerSubaccountIdMT1": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT1 }}",
+            "consumerSubdomainMT1": "${{ secrets.CONSUMER_SUBDOMAIN_MT1 }}",
+            "consumerSubaccountIdMT2": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT2 }}",
+            "consumerSubdomainMT2": "${{ secrets.CONSUMER_SUBDOMAIN_MT2 }}",
+            "SAAS_APP_NAME": "${{ secrets.SAAS_APP_NAME }}",
+            "ROLE_COLLECTION_NAME": "${{ secrets.ROLE_COLLECTION_NAME }}",
+            "APP_ROLE_FILTER": "${{ secrets.APP_ROLE_FILTER }}",
+            "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
+            "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",
+            "APP_NAME": "incidents-srv",
+            "MT_APP_NAME": "incidents-mtx-srv"
+          }
+          EOL
+          )
+
+          npm install
+
+          echo "Running Subscription Integration Tests..."
+          TENANCY_MODEL=multi npx jest --config jest-integration-subscription.config.js --testTimeout=600000
+
+  versioned-repo-setup:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: "!cancelled()"
+    steps:
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login and Switch to Versioned Repository
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+          cf set-env incidents-mtx-srv REPOSITORY_ID "${{ secrets.VERSIONEDREPOSITORYID }}"
+          cf restage incidents-mtx-srv > /dev/null 2>&1
+
+  versioned-integration-test:
+    runs-on: ubuntu-latest
+    needs: versioned-repo-setup
+    if: "!cancelled() && needs.versioned-repo-setup.result == 'success'"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+
+      - name: Fetch Multi Tenant Credentials
+        run: |
+          service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
+          if [ -z "$service_instance_guid_mt" ]; then
+            service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
+          fi
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+          fi
+          bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
+          binding_guid_mt=$(echo "$bindings_response_mt" | jq -r '.resources[0].guid')
+          binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
+          clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
+          clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
+          escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
+
+      - name: Generate credentials.json and run versioned integration tests
+        run: |
+          set -e
+          JSON_FILE="test/integration/credentials.json"
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+
+          (
+            set +x
+            cat > "$JSON_FILE" <<EOL
+          {
+            "appUrlMT": "$appUrlMT",
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
+            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
+            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
+            "username": "${{ secrets.CF_USER }}",
+            "password": "${{ secrets.CF_PASSWORD }}",
+            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+            "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
+            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
+            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
+            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
+            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "APP_NAME": "incidents-srv",
+            "MT_APP_NAME": "incidents-mtx-srv"
+          }
+          EOL
+          )
+
+          npm install
+
+          echo "Running Versioned Repository Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-versioned.config.js
+
+  virusscan-repo-setup:
+    runs-on: ubuntu-latest
+    needs: versioned-integration-test
+    if: "!cancelled()"
+    steps:
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login and Switch to Virus Scan Repository
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+          cf set-env incidents-mtx-srv REPOSITORY_ID "${{ secrets.VIRUSSCANREPOSITORYID }}"
+          cf restage incidents-mtx-srv > /dev/null 2>&1
+
+  virusscan-integration-test:
+    runs-on: ubuntu-latest
+    needs: virusscan-repo-setup
+    if: "!cancelled() && needs.virusscan-repo-setup.result == 'success'"
+    env:
+      FILE_URL: ${{ 'http://www.eicar.org/download/eicar.com.txt' }}
+      DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+
+      - name: Fetch Multi Tenant Credentials
+        run: |
+          service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
+          if [ -z "$service_instance_guid_mt" ]; then
+            service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
+          fi
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+          fi
+          bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
+          binding_guid_mt=$(echo "$bindings_response_mt" | jq -r '.resources[0].guid')
+          binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
+          clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
+          clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
+          escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
+
+      - name: Download virus test file
+        run: |
+          curl -fSL "$FILE_URL" -o "test/integration/$DOWNLOAD_PATH"
+          if [ -f "test/integration/$DOWNLOAD_PATH" ]; then
+            echo "EICAR file downloaded: $(wc -c < "test/integration/$DOWNLOAD_PATH") bytes"
+          else
+            echo "Error: EICAR file not found"; exit 1
+          fi
+
+      - name: Generate credentials.json and run virus scan integration tests
+        run: |
+          set -e
+          JSON_FILE="test/integration/credentials.json"
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+
+          (
+            set +x
+            cat > "$JSON_FILE" <<EOL
+          {
+            "appUrlMT": "$appUrlMT",
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
+            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
+            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
+            "username": "${{ secrets.CF_USER }}",
+            "password": "${{ secrets.CF_PASSWORD }}",
+            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+            "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
+            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
+            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
+            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
+            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "APP_NAME": "incidents-srv",
+            "MT_APP_NAME": "incidents-mtx-srv"
+          }
+          EOL
+          )
+
+          npm install
+
+          echo "Running Virus Scan Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 EICAR_FILE_PATH=test/integration/eicar.com.txt npm run integration-test-virus-scan
+
+  virusscan-repo-cleanup:
+    runs-on: ubuntu-latest
+    needs: virusscan-integration-test
+    if: always()
+    steps:
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login and Revert to Default Repository
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+          cf set-env incidents-mtx-srv REPOSITORY_ID "${{ secrets.DEFAULTREPOSITORYIDMT }}"
+          cf restage incidents-mtx-srv > /dev/null 2>&1
+
+  repospecific-integration-test:
+    runs-on: ubuntu-latest
+    needs: virusscan-repo-cleanup
+    if: "!cancelled()"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_name }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Cloud Foundry CLI and jq
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli jq
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+
+      - name: Fetch Multi Tenant Credentials
+        run: |
+          service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
+          if [ -z "$service_instance_guid_mt" ]; then
+            service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
+          fi
+          if [ -z "$service_instance_guid_mt" ]; then
+            echo "Error: Unable to retrieve multitenant service instance GUID"; exit 1;
+          fi
+          bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
+          binding_guid_mt=$(echo "$bindings_response_mt" | jq -r '.resources[0].guid')
+          binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
+          clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
+          clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
+          escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
+
+      - name: Generate credentials.json and run repo-specific integration tests
+        run: |
+          set -e
+          JSON_FILE="test/integration/credentials.json"
+          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+
+          (
+            set +x
+            cat > "$JSON_FILE" <<EOL
+          {
+            "appUrlMT": "$appUrlMT",
+            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
+            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
+            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
+            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
+            "username": "${{ secrets.CF_USER }}",
+            "password": "${{ secrets.CF_PASSWORD }}",
+            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+            "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
+            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
+            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
+            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
+            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "APP_NAME": "incidents-srv",
+            "MT_APP_NAME": "incidents-mtx-srv"
+          }
+          EOL
+          )
+
+          npm install
+
+          echo "Running Repo-Specific Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-repo-specific.config.js
