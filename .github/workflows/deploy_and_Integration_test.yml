@@ -162,3 +162,11 @@ jobs:
           echo ""
           echo "📋 Running Single-Tenant Non-draft Entity(Projects) Integration Tests..."
           TENANCY_MODEL=single npm run integration-test-non-draft
+
+          echo ""
+          echo "📋 Running Technical user Single-Tenant Non-draft Entity(Projects) Integration Tests..."
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test-non-draft
+          
+          echo ""
+          echo "📋 Running Technical user Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test
