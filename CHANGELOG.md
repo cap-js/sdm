@@ -9,11 +9,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ### Fixed
 - Updated cap-js/attachments version to 3.12.1 and fixed the underlying rename issues for attachments.
-- Fixed a bug Incorrect Warning message if a user without SDM Roles updates custom properties or renames attachments
+- Fixed a bug where incorrect warning message thrown when file  was updated/deleted from sdm backend.
 - Fixed namespace issue to include sap.attachments.Attachments check.
 
 ### Added
-- Added support for technical user flow via 'system-user' role
+- Added support for technical user flow.
 
 # Version 1.9.1
 
