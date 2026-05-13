@@ -283,6 +283,10 @@ jobs:
           echo "Running Versioned Repository Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-versioned.config.js
 
+          echo ""
+          echo "Running Versioned Repository Integration Tests (Tenant 2)..."
+          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-versioned.config.js
+
   repospecific-integration-test:
     runs-on: ubuntu-latest
     needs: versioned-integration-test
@@ -380,6 +384,10 @@ jobs:
 
           echo "Running Repo-Specific Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-repo-specific.config.js
+
+          echo ""
+          echo "Running Repo-Specific Integration Tests (Tenant 2)..."
+          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-repo-specific.config.js
 
   subscription-test:
     runs-on: ubuntu-latest
