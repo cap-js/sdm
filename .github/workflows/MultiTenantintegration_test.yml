@@ -88,12 +88,17 @@ jobs:
           fi
 
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
-          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run integration tests
+        env:
+          CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
+          CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
+          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -117,10 +122,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
-            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
-            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
-            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "consumerSubaccountIdMT1": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT1 }}",
             "consumerSubdomainMT1": "${{ secrets.CONSUMER_SUBDOMAIN_MT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT2 }}",
@@ -210,6 +213,7 @@ jobs:
             -s "${{ env.space }}"
 
       - name: Fetch Multi Tenant Credentials
+        id: fetch_credentials_mt
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -224,12 +228,17 @@ jobs:
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
-          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run subscription tests
+        env:
+          CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
+          CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
+          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -253,10 +262,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
-            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
-            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
-            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "consumerSubaccountIdMT1": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT1 }}",
             "consumerSubdomainMT1": "${{ secrets.CONSUMER_SUBDOMAIN_MT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMER_SUBACCOUNT_ID_MT2 }}",
@@ -340,6 +347,7 @@ jobs:
           cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
 
       - name: Fetch Multi Tenant Credentials
+        id: fetch_credentials_mt
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -354,12 +362,17 @@ jobs:
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
-          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
+        env:
+          CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
+          CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
+          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -383,10 +396,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
-            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
-            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
-            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
@@ -464,6 +475,7 @@ jobs:
           cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
 
       - name: Fetch Multi Tenant Credentials
+        id: fetch_credentials_mt
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -478,10 +490,10 @@ jobs:
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
-          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -493,6 +505,11 @@ jobs:
           fi
 
       - name: Generate credentials.json and run virus scan integration tests
+        env:
+          CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
+          CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
+          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -516,10 +533,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
-            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
-            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
-            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
@@ -594,6 +609,7 @@ jobs:
           cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
 
       - name: Fetch Multi Tenant Credentials
+        id: fetch_credentials_mt
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -608,12 +624,17 @@ jobs:
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
-          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> "$GITHUB_ENV"
-          echo "CLIENT_ID_MT=${clientIDMT}" >> "$GITHUB_ENV"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
+          echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
+        env:
+          CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
+          CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
+          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -637,10 +658,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${{ secrets.CMISCLIENTID }}",
-            "cmisClientSecret": "${{ secrets.CMISCLIENTSECRET }}",
-            "cmisClientIDMT": "${{ secrets.CMISCLIENTIDMT }}",
-            "cmisClientSecretMT": "${{ secrets.CMISCLIENTSECRETMT }}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
