@@ -28,6 +28,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
+- [Support for Technical User Flow ](#support-for-non-draft-attachments)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -627,6 +628,15 @@ extend my.Projects with { attachments: Composition of many Attachments }
 service ProcessorService {
   entity Projects as projection on my.Projects; // Non-draft entity
   entity Projects.attachments as projection on my.Projects.attachments;
+}
+```
+## Support for Technical User Flow
+This plugin provides support for technical user flow(grant_type=client_credentials) for both draft and non draft entities.
+To use technical user flow 'system-user' or 'system-internal' should be added to the service.
+
+```cds
+service ProcessorService @(requires:['support','system-user']) {
+entity Incidents as projection on my.Incidents;
 }
 ```
 
