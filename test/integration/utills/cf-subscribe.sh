@@ -14,7 +14,11 @@ json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CF_USERNAME=$(json_val username)
 CF_PASSWORD=$(json_val password)
-CONSUMER_SUBACCOUNT_ID=$(json_val consumerSubaccountIdMT1)
+if [[ "${TENANT:-}" == "SDMGoogleWorkspaceConsumer" ]]; then
+  CONSUMER_SUBACCOUNT_ID=$(json_val consumerSubaccountIdMT2)
+else
+  CONSUMER_SUBACCOUNT_ID=$(json_val consumerSubaccountIdMT1)
+fi
 SAAS_APP_NAME=$(json_val SAAS_APP_NAME)
 BTP_CLI_URL=$(json_val BTP_CLI_URL)
 BTP_GLOBAL_ACCOUNT_SUBDOMAIN=$(json_val BTP_GLOBAL_ACCOUNT_SUBDOMAIN)

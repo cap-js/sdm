@@ -12,7 +12,10 @@ const CF_LOGS_SCRIPT = path.join(SCRIPTS_DIR, 'cf-logs.sh');
 
 const SUBSCRIPTION_REPO_EXTERNAL_ID = credentials.defaultRepositoryIDMT || 'MULTITENANT-TEST-REPO';
 const MT_APP_NAME = credentials.MT_APP_NAME;
-const consumerSubdomain = credentials.consumerSubdomainMT1;
+const tenant = process.env.TENANT;
+const consumerSubdomain = (tenant === 'SDMGoogleWorkspaceConsumer')
+  ? credentials.consumerSubdomainMT2
+  : credentials.consumerSubdomainMT1;
 
 // Helper: check if a repo exists in consumer scope
 async function repoCheck(externalId) {
@@ -44,6 +47,12 @@ function sleep(ms) {
 }
 
 beforeAll(async () => {
+  const requiredFields = ['consumerSubdomainMT1', 'SAAS_APP_NAME', 'BTP_CLI_URL', 'defaultRepositoryIDMT', 'MT_APP_NAME'];
+  const missing = requiredFields.filter(f => !credentials[f]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required credentials: ${missing.join(', ')}. Configure these GitHub secrets.`);
+  }
+
   expect(consumerSubdomain).toBeTruthy();
 
   // Ensure subscription is active before tests run

@@ -127,9 +127,9 @@ jobs:
             "consumerSubdomainMT1": "${{ secrets.CONSUMERSUBDOMAINMT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
             "consumerSubdomainMT2": "${{ secrets.CONSUMERSUBDOMAINMT2 }}",
-            "SAAS_APP_NAME": "${{ secrets.SAAS_APP_NAME }}",
-            "ROLE_COLLECTION_NAME": "${{ secrets.ROLE_COLLECTION_NAME }}",
-            "APP_ROLE_FILTER": "${{ secrets.APP_ROLE_FILTER }}",
+            "SAAS_APP_NAME": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest",
+            "ROLE_COLLECTION_NAME": "ak-test",
+            "APP_ROLE_FILTER": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest!t5256",
             "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
             "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",
             "APP_NAME": "incidents-srv",
@@ -496,9 +496,9 @@ jobs:
             "consumerSubdomainMT1": "${{ secrets.CONSUMERSUBDOMAINMT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
             "consumerSubdomainMT2": "${{ secrets.CONSUMERSUBDOMAINMT2 }}",
-            "SAAS_APP_NAME": "${{ secrets.SAAS_APP_NAME }}",
-            "ROLE_COLLECTION_NAME": "${{ secrets.ROLE_COLLECTION_NAME }}",
-            "APP_ROLE_FILTER": "${{ secrets.APP_ROLE_FILTER }}",
+            "SAAS_APP_NAME": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest",
+            "ROLE_COLLECTION_NAME": "ak-test",
+            "APP_ROLE_FILTER": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest!t5256",
             "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
             "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",
             "APP_NAME": "incidents-srv",
@@ -509,5 +509,9 @@ jobs:
 
           npm install
 
-          echo "Running Subscription Integration Tests..."
-          TENANCY_MODEL=multi npx jest --config jest-integration-subscription.config.js --testTimeout=600000
+          echo "Running Subscription Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-subscription.config.js --testTimeout=600000
+
+          echo ""
+          echo "Running Subscription Integration Tests (Tenant 2)..."
+          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-subscription.config.js --testTimeout=600000
