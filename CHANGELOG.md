@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 ### Fixed
 - Updated cap-js/attachments version to 3.12.1 and fixed the underlying rename issues for attachments.
 - Support for technical user flow via 'system-user' role
+- Fixed a bug Incorrect Warning message if a user without SDM Roles updates custom properties or renames attachments
 
 
 # Version 1.9.1

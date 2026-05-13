@@ -18,7 +18,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Link as attachments: Provides the capability to support link or URL as attachments.
 - Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
 - Non-Draft Attachments: Provides the capability to work with attachments in non-draft (active) entities.
-
+- Technical user flow: Provides the capability to use technical user flow.
 ### Table of Contents
 
 - [Pre-Requisites](#pre-requisites)
