@@ -1285,6 +1285,51 @@ describe("SDMAttachmentsService", () => {
         'references'
       );
     });
+
+    it('should include cmis:description in updateAttachment call when note is present', async () => {
+      const attachmentWithNote = { ID: 'attachment1', filename: 'file1.txt', note: 'A user note' };
+      const result = await service.updateNonDraftAttachments(
+        req,
+        attachmentWithNote,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+
+      expect(updateAttachment).toHaveBeenCalledWith(
+        req,
+        attachmentWithNote,
+        service.creds,
+        expect.objectContaining({ url: expect.any(String) }),
+        expect.objectContaining({ 'cmis:description': 'A user note' }),
+        secondaryPropertiesWithInvalidDefinitions
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should not include cmis:description when note is a baseline URL sentinel', async () => {
+      const attachmentWithSentinel = {
+        ID: 'attachment1',
+        filename: 'file1.txt',
+        note: '__BASELINE_URL__:http://old.example.com'
+      };
+      const result = await service.updateNonDraftAttachments(
+        req,
+        attachmentWithSentinel,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+
+      const callArgs = updateAttachment.mock.calls[0];
+      if (callArgs) {
+        const updatedProps = callArgs[4];
+        expect(updatedProps).not.toHaveProperty('cmis:description');
+      }
+      expect(result).toEqual([]);
+    });
   });
 
   describe('updateDraftAttachments', () => {
@@ -1590,8 +1635,56 @@ describe("SDMAttachmentsService", () => {
           message: sdmRolesErrorMessage
         }
       ]);
-      
+
       expect(service.replacePropertiesInAttachment).toHaveBeenCalled();
+    });
+
+    it('should include cmis:description when note is present and not a sentinel', async () => {
+      const attachmentWithNote = { ID: 'attachment1', filename: 'file1.txt', url: 'mockUrl', note: 'My note' };
+
+      const result = await service.updateDraftAttachments(
+        req,
+        attachmentWithNote,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+
+      expect(updateAttachment).toHaveBeenCalledWith(
+        req,
+        attachmentWithNote,
+        service.creds,
+        expect.objectContaining({ url: expect.any(String) }),
+        expect.objectContaining({ 'cmis:description': 'My note' }),
+        secondaryPropertiesWithInvalidDefinitions
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should not include cmis:description when note is a baseline URL sentinel', async () => {
+      const attachmentWithSentinel = {
+        ID: 'attachment1',
+        filename: 'file1.txt',
+        url: 'mockUrl',
+        note: '__BASELINE_URL__:http://old.example.com'
+      };
+
+      updateAttachment.mockResolvedValue(200);
+      const result = await service.updateDraftAttachments(
+        req,
+        attachmentWithSentinel,
+        attachmentsEntity,
+        secondaryPropertiesWithInvalidDefinitions,
+        secondaryTypeProperties,
+        'attachments'
+      );
+
+      if (updateAttachment.mock.calls.length > 0) {
+        const updatedProps = updateAttachment.mock.calls[0][4];
+        expect(updatedProps).not.toHaveProperty('cmis:description');
+      }
+      expect(result).toEqual([]);
     });
   });
 

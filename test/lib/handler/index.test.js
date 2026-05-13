@@ -449,6 +449,98 @@ describe("handlers", () => {
       expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[4]", "sap:linkExternalURL");
       expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[4]", data.linkUrl);
     });
+
+    it("should append cmis:description when note is present and not a baseline URL", async () => {
+      const response = { data: "response" };
+      executeHttpRequest.mockResolvedValue(response);
+      mockFormDataInstances = [];
+
+      const data = {
+        filename: "doc.pdf",
+        mimeType: "application/pdf",
+        content: Buffer.from("content"),
+        note: "This is a user note"
+      };
+      const credentials = { uri: "http://test.com/" };
+      const destination = { url: "http://test.com" };
+      const parentId = "parentId";
+
+      await createAttachment(data, credentials, parentId, destination);
+
+      const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[2]", "cmis:description");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[2]", data.note);
+    });
+
+    it("should not append cmis:description when note is a baseline URL sentinel", async () => {
+      const response = { data: "response" };
+      executeHttpRequest.mockResolvedValue(response);
+      mockFormDataInstances = [];
+
+      const data = {
+        filename: "link.url",
+        mimeType: "application/internet-shortcut",
+        linkUrl: "http://example.com",
+        note: "__BASELINE_URL__:http://old.example.com"
+      };
+      const credentials = { uri: "http://test.com/" };
+      const destination = { url: "http://test.com" };
+      const parentId = "parentId";
+
+      await createAttachment(data, credentials, parentId, destination);
+
+      const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
+      const descCalls = formDataInstance.append.mock.calls.filter(([, val]) => val === "cmis:description");
+      expect(descCalls).toHaveLength(0);
+    });
+
+    it("should not append cmis:description when note is absent", async () => {
+      const response = { data: "response" };
+      executeHttpRequest.mockResolvedValue(response);
+      mockFormDataInstances = [];
+
+      const data = {
+        filename: "doc.pdf",
+        mimeType: "application/pdf",
+        content: Buffer.from("content")
+      };
+      const credentials = { uri: "http://test.com/" };
+      const destination = { url: "http://test.com" };
+      const parentId = "parentId";
+
+      await createAttachment(data, credentials, parentId, destination);
+
+      const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
+      const descCalls = formDataInstance.append.mock.calls.filter(([, val]) => val === "cmis:description");
+      expect(descCalls).toHaveLength(0);
+    });
+
+    it("should use correct property indices when note is present alongside internet-shortcut mimeType", async () => {
+      const response = { data: "response" };
+      executeHttpRequest.mockResolvedValue(response);
+      mockFormDataInstances = [];
+
+      const data = {
+        filename: "link.url",
+        mimeType: "application/internet-shortcut",
+        linkUrl: "http://example.com",
+        note: "A note for this link"
+      };
+      const credentials = { uri: "http://test.com/" };
+      const destination = { url: "http://test.com" };
+      const parentId = "parentId";
+
+      await createAttachment(data, credentials, parentId, destination);
+
+      const formDataInstance = mockFormDataInstances[mockFormDataInstances.length - 1];
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[2]", "cmis:description");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[2]", data.note);
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[3]", "cmis:secondaryObjectTypeIds");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[3]", "sap:createLink");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[4]", "sap:linkRepositoryId");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyId[5]", "sap:linkExternalURL");
+      expect(formDataInstance.append).toHaveBeenCalledWith("propertyValue[5]", data.linkUrl);
+    });
   });
 
   describe("editLink", () => {
