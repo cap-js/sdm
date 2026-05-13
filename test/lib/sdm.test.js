@@ -252,6 +252,48 @@ cds.model.definitions['ProcessorService.Orders.references.drafts'] = {
   }
 };
 
+// Entity with 'attachments' composition for nonDraftEntityRenameHandler tests
+cds.model.definitions['ProcessorService.Invoices'] = {
+  elements: {
+    attachments: {
+      type: 'cds.Composition',
+      target: 'ProcessorService.Invoices.attachments'
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Invoices.attachments'] = {
+  name: 'ProcessorService.Invoices.attachments',
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
+
+// Entity with both attachments and references compositions for multi-composition tests
+cds.model.definitions['ProcessorService.Orders'] = {
+  elements: {
+    references: {
+      type: 'cds.Composition',
+      target: 'ProcessorService.Orders.references'
+    },
+    attachments: {
+      type: 'cds.Composition',
+      target: 'ProcessorService.Orders.attachments'
+    }
+  }
+};
+cds.model.definitions['ProcessorService.Orders.attachments'] = {
+  name: 'ProcessorService.Orders.attachments',
+  includes: ['sap.attachments.Attachments'],
+  keys: {
+    up_: {
+      keys: [{ $generatedFieldName: 'up__ID' }]
+    }
+  }
+};
+
 describe("SDMAttachmentsService", () => {
   // Ensure attachmentIDRegex is available globally
   global.attachmentIDRegex = /ID=([0-9a-fA-F-]{36})/;
@@ -865,7 +907,7 @@ describe("SDMAttachmentsService", () => {
     it('should work with references composition instead of attachments', async () => {
       req.target.name = 'ProcessorService.Orders';
       const referencesEntity = cds.model.definitions['ProcessorService.Orders.references'];
-      
+
       const draftReferences = [
         { HasActiveEntity: false, ID: 'draft1' }
       ];
@@ -873,21 +915,25 @@ describe("SDMAttachmentsService", () => {
         { HasActiveEntity: true, ID: 'nonDraft1' }
       ];
       const allReferences = [...draftReferences, ...nonDraftReferences];
-  
+
       service.isFileNameDuplicateInDrafts = jest.fn().mockResolvedValue();
       service.updateDraftAttachments = jest.fn().mockResolvedValue([]);
       service.updateNonDraftAttachments = jest.fn().mockResolvedValue([]);
       service.clearSecondaryPropertiesCache = jest.fn();
       service.handleWarning = jest.fn().mockReturnValue("");
-  
+
       setupDestinationMocks();
-      getDraftAttachments.mockResolvedValue(allReferences);
+      // Return allReferences only for references entity, empty for attachments entity
+      getDraftAttachments.mockImplementation((entity) => {
+        if (entity === referencesEntity) return Promise.resolve(allReferences);
+        return Promise.resolve([]);
+      });
       getPropertyTitles.mockReturnValue(["Title1", "Title2"]);
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
       getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
-  
+
       await service.draftEntityRenameHandler(req);
-  
+
       expect(getDraftAttachments).toHaveBeenCalledWith(referencesEntity, req, 'repo123');
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allReferences, req);
       expect(service.updateDraftAttachments).toHaveBeenCalledTimes(1);
@@ -3417,6 +3463,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -4349,6 +4396,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -4364,16 +4412,17 @@ describe("SDMAttachmentsService", () => {
       const upId = "mocked_up_id";
 
       await service.getParentId(attachments, mockReq, upId)
- 
+
       expect(getFolderIdByPath).toHaveBeenCalledWith(
         mockReq,
         service.creds,
         cds.model.definitions[mockReq.target.name + ".references"],
         upId,
-        mockDestination
+        mockDestination,
+        "references"
       );
     });
-  
+
     it("getParentId should call createFolder if getFolderIdForEntity and getFolderIdByPath return empty", async () => {
       let attachments = cds.model.definitions[mockReq.target.name + ".references"]
       getFolderIdForEntity.mockResolvedValueOnce([]);
@@ -4390,13 +4439,14 @@ describe("SDMAttachmentsService", () => {
       );
 
       await service.getParentId(attachments, mockReq, upId);
- 
+
       expect(createFolder).toHaveBeenCalledWith(
         mockReq,
         service.creds,
         cds.model.definitions[mockReq.target.name + ".references"],
         upId,
-        mockDestination
+        mockDestination,
+        "references"
       );
     });
   
@@ -6194,6 +6244,7 @@ describe("SDMAttachmentsService", () => {
 
     describe("nonDraftEntityRenameHandler", () => {
       beforeEach(() => {
+        SELECT.one.from.mockReset();
         getConfigurations.mockReturnValue({ repositoryId: 'test-repo-id' });
         getPropertyTitles.mockReturnValue({});
         getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
@@ -6201,6 +6252,23 @@ describe("SDMAttachmentsService", () => {
         getPropertiesForID.mockResolvedValue({});
         getUpdatedSecondaryProperties.mockReturnValue({});
         service._updateAttachments = jest.fn().mockResolvedValue([]);
+        // Restore definitions that may have been overwritten by earlier describe blocks
+        cds.model.definitions['ProcessorService.Orders'] = {
+          elements: {
+            references: { type: 'cds.Composition', target: 'ProcessorService.Orders.references' },
+            attachments: { type: 'cds.Composition', target: 'ProcessorService.Orders.attachments' }
+          }
+        };
+        cds.model.definitions['ProcessorService.Orders.references'] = {
+          name: 'ProcessorService.Orders.references',
+          includes: ['sap.attachments.Attachments'],
+          keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+        };
+        cds.model.definitions['ProcessorService.Orders.attachments'] = {
+          name: 'ProcessorService.Orders.attachments',
+          includes: ['sap.attachments.Attachments'],
+          keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+        };
       });
 
       it("should skip if no attachments entity defined", async () => {
