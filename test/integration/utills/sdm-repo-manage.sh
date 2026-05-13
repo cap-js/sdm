@@ -39,10 +39,13 @@ if [[ "${TENANCY_MODEL:-}" == "multi" && "${TENANT:-}" == "SDMGoogleWorkspaceCon
 elif [[ "${TENANCY_MODEL:-}" != "multi" ]]; then
   CMIS_TOKEN_URL=$(json_val authUrl)
 fi
-CMIS_CLIENT_ID=$(json_val cmisClientID)
-CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
-CMIS_CLIENT_ID_MT=$(json_val cmisClientIDMT)
-CMIS_CLIENT_SECRET_MT=$(json_val cmisClientSecretMT)
+if [[ "${TENANCY_MODEL:-}" == "multi" ]]; then
+  CMIS_CLIENT_ID=$(json_val cmisClientIDMT)
+  CMIS_CLIENT_SECRET=$(json_val cmisClientSecretMT)
+else
+  CMIS_CLIENT_ID=$(json_val cmisClientID)
+  CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
+fi
 CMIS_USERNAME=$(json_val username)
 CMIS_PASSWORD=$(json_val password)
 
@@ -92,11 +95,10 @@ fi
 get_token() {
   local TOKEN_RESPONSE
   if [[ -n "$SUBDOMAIN" ]]; then
-    # Use client_credentials grant with MT CMIS credentials for consumer-scoped access
     TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
       --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID_MT}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET_MT}")
+      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
   else
     # Use password grant with ST CMIS credentials for provider-scoped access
     TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \

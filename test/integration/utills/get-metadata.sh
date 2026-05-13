@@ -35,10 +35,13 @@ if [[ "${TENANCY_MODEL:-}" == "multi" && "${TENANT:-}" == "SDMGoogleWorkspaceCon
 elif [[ "${TENANCY_MODEL:-}" != "multi" ]]; then
   CMIS_TOKEN_URL=$(json_val authUrl)
 fi
-CMIS_CLIENT_ID=$(json_val cmisClientID)
-CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
-CMIS_CLIENT_ID_MT=$(json_val cmisClientIDMT)
-CMIS_CLIENT_SECRET_MT=$(json_val cmisClientSecretMT)
+if [[ "${TENANCY_MODEL:-}" == "multi" ]]; then
+  CMIS_CLIENT_ID=$(json_val cmisClientIDMT)
+  CMIS_CLIENT_SECRET=$(json_val cmisClientSecretMT)
+else
+  CMIS_CLIENT_ID=$(json_val cmisClientID)
+  CMIS_CLIENT_SECRET=$(json_val cmisClientSecret)
+fi
 CMIS_USERNAME=$(json_val username)
 CMIS_PASSWORD=$(json_val password)
 
@@ -61,10 +64,8 @@ fi
 
 OBJECT_ID="$1"
 
-# Use MT CMIS credentials when --subdomain is provided
+# Replace provider subdomain in token URL when --subdomain is provided
 if [[ -n "$SUBDOMAIN" ]]; then
-  CMIS_CLIENT_ID="$CMIS_CLIENT_ID_MT"
-  CMIS_CLIENT_SECRET="$CMIS_CLIENT_SECRET_MT"
   PROVIDER_SUBDOMAIN=$(echo "$CMIS_TOKEN_URL" | sed -n 's|.*://\([^.]*\)\..*|\1|p')
   CMIS_TOKEN_URL="${CMIS_TOKEN_URL/$PROVIDER_SUBDOMAIN/$SUBDOMAIN}"
 fi
