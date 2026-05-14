@@ -94,20 +94,12 @@ fi
 # --- Obtain OAuth2 access token ---
 get_token() {
   local TOKEN_RESPONSE
-  if [[ -n "$SUBDOMAIN" ]]; then
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
-  else
-    # Use password grant with ST CMIS credentials for provider-scoped access
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=password" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-      --data-urlencode "username=${CMIS_USERNAME}" \
-      --data-urlencode "password=${CMIS_PASSWORD}")
-  fi
+  TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
+    --data-urlencode "grant_type=password" \
+    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
+    --data-urlencode "username=${CMIS_USERNAME}" \
+    --data-urlencode "password=${CMIS_PASSWORD}")
 
   ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
     | grep -o '"access_token":"[^"]*"' \

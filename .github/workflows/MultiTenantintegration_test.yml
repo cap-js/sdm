@@ -121,8 +121,8 @@ jobs:
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
-            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
+            "cmisClientIDMT": "${CMIS_CLIENT_ID_MT}",
+            "cmisClientSecretMT": "${CMIS_CLIENT_SECRET_MT}",
             "consumerSubaccountIdMT1": "${{ secrets.CONSUMERSUBACCOUNTIDMT1 }}",
             "consumerSubdomainMT1": "${{ secrets.CONSUMERSUBDOMAINMT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
@@ -270,8 +270,8 @@ jobs:
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
-            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
+            "cmisClientIDMT": "${CMIS_CLIENT_ID_MT}",
+            "cmisClientSecretMT": "${CMIS_CLIENT_SECRET_MT}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
@@ -372,8 +372,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
-            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
+            "cmisClientIDMT": "${CMIS_CLIENT_ID_MT}",
+            "cmisClientSecretMT": "${CMIS_CLIENT_SECRET_MT}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
@@ -490,8 +490,8 @@ jobs:
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
-            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
+            "cmisClientIDMT": "${CMIS_CLIENT_ID_MT}",
+            "cmisClientSecretMT": "${CMIS_CLIENT_SECRET_MT}",
             "consumerSubaccountIdMT1": "${{ secrets.CONSUMERSUBACCOUNTIDMT1 }}",
             "consumerSubdomainMT1": "${{ secrets.CONSUMERSUBDOMAINMT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
