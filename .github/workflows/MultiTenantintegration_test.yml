@@ -391,7 +391,7 @@ jobs:
 
   subscription-test:
     runs-on: ubuntu-latest
-    needs: repospecific-integration-test
+    needs: integration-test
     if: "!cancelled() && needs.repospecific-integration-test.result == 'success'"
     steps:
       - name: Checkout repository
