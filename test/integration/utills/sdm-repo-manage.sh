@@ -33,12 +33,7 @@ fi
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CMIS_URL=$(json_val CMIS_URL)
-CMIS_TOKEN_URL=$(json_val authUrlMTSDC)
-if [[ "${TENANCY_MODEL:-}" == "multi" && "${TENANT:-}" == "SDMGoogleWorkspaceConsumer" ]]; then
-  CMIS_TOKEN_URL=$(json_val authUrlMTGWC)
-elif [[ "${TENANCY_MODEL:-}" != "multi" ]]; then
-  CMIS_TOKEN_URL=$(json_val authUrl)
-fi
+CMIS_TOKEN_URL=$(json_val authUrl)
 if [[ "${TENANCY_MODEL:-}" == "multi" ]]; then
   CMIS_CLIENT_ID=$(json_val cmisClientIDMT)
   CMIS_CLIENT_SECRET=$(json_val cmisClientSecretMT)
@@ -94,12 +89,19 @@ fi
 # --- Obtain OAuth2 access token ---
 get_token() {
   local TOKEN_RESPONSE
-  TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-    --data-urlencode "grant_type=password" \
-    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-    --data-urlencode "username=${CMIS_USERNAME}" \
-    --data-urlencode "password=${CMIS_PASSWORD}")
+  if [[ -n "$SUBDOMAIN" ]]; then
+    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
+      --data-urlencode "grant_type=client_credentials" \
+      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
+  else
+    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
+      --data-urlencode "grant_type=password" \
+      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
+      --data-urlencode "username=${CMIS_USERNAME}" \
+      --data-urlencode "password=${CMIS_PASSWORD}")
+  fi
 
   ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
     | grep -o '"access_token":"[^"]*"' \
