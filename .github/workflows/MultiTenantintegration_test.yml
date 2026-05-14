@@ -109,6 +109,7 @@ jobs:
             cat > "$JSON_FILE" <<EOL
           {
             "appUrlMT": "$appUrlMT",
+            "authUrl": "${{ secrets.CAPAUTH_URL }}",
             "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
             "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
             "clientIDMT": "${{ env.CLIENT_ID_MT }}",
@@ -478,6 +479,7 @@ jobs:
             cat > "$JSON_FILE" <<EOL
           {
             "appUrlMT": "$appUrlMT",
+            "authUrl": "${{ secrets.CAPAUTH_URL }}",
             "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
             "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}",
             "clientIDMT": "${{ env.CLIENT_ID_MT }}",

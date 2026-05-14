@@ -48,7 +48,7 @@ fi
 if [[ -n "${BTP_GLOBAL_ACCOUNT_SUBDOMAIN:-}" ]]; then
   LOGIN_ARGS+=(--subdomain "$BTP_GLOBAL_ACCOUNT_SUBDOMAIN")
 fi
-btp login "${LOGIN_ARGS[@]}" > /dev/null 2>&1
+btp login "${LOGIN_ARGS[@]}"
 
 # --- Unsubscribe from SaaS application at subaccount level ---
 echo ""
@@ -57,7 +57,7 @@ UNSUBSCRIBE_ARGS=(--subaccount "$CONSUMER_SUBACCOUNT_ID" --from-app "$SAAS_APP_N
 if [[ -n "${SAAS_APP_PLAN:-}" ]]; then
   UNSUBSCRIBE_ARGS+=(--plan "$SAAS_APP_PLAN")
 fi
-btp unsubscribe accounts/subaccount "${UNSUBSCRIBE_ARGS[@]}" --confirm > /dev/null 2>&1
+btp unsubscribe accounts/subaccount "${UNSUBSCRIBE_ARGS[@]}" --confirm
 
 # --- Wait for unsubscription to complete ---
 echo ""
