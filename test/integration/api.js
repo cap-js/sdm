@@ -496,6 +496,32 @@ class Api {
         }
     }
 
+    async getActiveAttachmentsList(appUrl, serviceName, entityName, incidentID) {
+        let response;
+        try {
+            response = await axios.get(
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references`,
+                this.config
+            );
+            if (response.status === 200 && response.data && response.data.value) {
+                return {
+                    status: "OK",
+                    attachments: response.data.value
+                };
+            } else {
+                return {
+                    status: "FAILED",
+                    message: "Get active attachments list did not return 200 status code : " + response.status
+                };
+            }
+        } catch (error) {
+            return {
+                status: "FAILED",
+                message: "Get active attachments list API call failed : " + error.message
+            };
+        }
+    }
+
     async openAttachment(appUrl, serviceName, entityName, incidentID, srvpath, attachment) {
         let response;
         try {

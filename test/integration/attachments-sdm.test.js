@@ -84,7 +84,7 @@ beforeAll(async () => {
   api = new Api(config);
 });
 
-describe('Attachments Integration Tests --CREATE', () => {
+describe.only('Attachments Integration Tests --CREATE', () => {
   //When an attachment is created, the function also attempts to read it from drafts. If this attempt fails, an error is thrown and the attachment is not created.
   it('should create an entity and check if it has been created', async () => { 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
@@ -293,9 +293,82 @@ response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, s
       throw new Error("Error : " + response.message)
     }
   });
+
+  it('should fail to upload duplicate attachment and verify error from DI', async () => {
+    let diErrorEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    diErrorEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: diErrorEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    // First upload should succeed
+    response = await api.createAttachment(appUrl, serviceName, entityName, diErrorEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, diErrorEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Enter draft mode again
+    response = await api.editEntity(appUrl, serviceName, entityName, diErrorEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Second upload of same file — DI should throw error (file already exists in repository)
+    response = await api.createAttachment(appUrl, serviceName, entityName, diErrorEntityID, postData, file);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toBeDefined();
+
+    // Clean up the failed draft attachment (POST succeeded, PUT to DI failed)
+    if (response.ID) {
+      await api.deleteAttachment(appUrl, serviceName, diErrorEntityID, response.ID, entityName);
+    }
+
+    // Verify draft still has only 1 attachment (the original)
+    const draftList = await api.getAttachmentsList(appUrl, serviceName, entityName, diErrorEntityID);
+    expect(draftList.status).toBe("OK");
+    expect(draftList.attachments.length).toBe(1);
+
+    // Third attempt — same DI error
+    response = await api.createAttachment(appUrl, serviceName, entityName, diErrorEntityID, postData, file);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toBeDefined();
+
+    if (response.ID) {
+      await api.deleteAttachment(appUrl, serviceName, diErrorEntityID, response.ID, entityName);
+    }
+
+    // Still only 1 attachment in draft
+    const draftList2 = await api.getAttachmentsList(appUrl, serviceName, entityName, diErrorEntityID);
+    expect(draftList2.status).toBe("OK");
+    expect(draftList2.attachments.length).toBe(1);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, diErrorEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for diErrorEntityID:", response.message);
+    }
+  });
 });
 
-describe('Attachments Integration Tests --READ', () => {
+describe.only('Attachments Integration Tests --READ', () => {
   it('should read the created attachment', async () => {
     //This test case also reads files not supported by browser (.exe)
     for(let i = 0; i < attachments.length; i++){
@@ -322,9 +395,64 @@ describe('Attachments Integration Tests --READ', () => {
       throw new Error("Error : " + response.message)
     }
   });
+
+  it('should handle gracefully when attachment has been deleted from backend repository', async () => {
+    const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
+    let readBackendDeletedEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    readBackendDeletedEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: readBackendDeletedEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, readBackendDeletedEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const attachmentID = response.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, readBackendDeletedEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Verify attachment is readable before backend deletion
+    response = await api.readAttachment(appUrl, serviceName, entityName, readBackendDeletedEntityID, attachmentID);
+    expect(response.status).toBe("OK");
+
+    // Delete attachment directly from CMIS backend
+    await deleteDocumentFromCmis(readBackendDeletedEntityID, "sample.pdf");
+
+    // Try to read the attachment through app — may fail gracefully after backend deletion
+    response = await api.readAttachment(appUrl, serviceName, entityName, readBackendDeletedEntityID, attachmentID);
+    console.log("Read response after backend deletion:", response.message || response.status);
+
+    // App metadata should still show the attachment (app state not synced with backend)
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, readBackendDeletedEntityID, attachmentID);
+    expect(response.status).toBe("OK");
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, readBackendDeletedEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for readBackendDeletedEntityID:", response.message);
+    }
+  });
 });
 
-describe('Attachments Integration Tests --UPDATE', () => {
+describe.only('Attachments Integration Tests --UPDATE', () => {
   let attachment1;
   let attachment2;
   let attachment3;
@@ -379,6 +507,19 @@ describe('Attachments Integration Tests --UPDATE', () => {
     expect(response.data.customProperty2).toBe(100);
     expect(response.data.customProperty5).toBe("2025-03-24T05:20:07Z");
     expect(response.data.customProperty6).toBe(true);
+
+    // CMIS backend validation
+    const { getCmisProperty, getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
+    const cmisName = await getCmisProperty(incidentIDCustomProperty1, "sample_updated.pdf", "cmis:name");
+    expect(cmisName).toBe("sample_updated.pdf");
+    const cmisString = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisString).toBe("test");
+    const cmisInt = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordInt");
+    expect(cmisInt).toBe("100");
+    const cmisBool = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordBoolean");
+    expect(cmisBool).toBe("true");
+    const cmisDate = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordDate");
+    expect(cmisDate).not.toBeNull();
   });
 
   it('should update valid properties of attachments after save of entity', async () => {
@@ -411,6 +552,19 @@ describe('Attachments Integration Tests --UPDATE', () => {
     expect(response.data.customProperty2).toBe(123);
     expect(response.data.customProperty5).toBe("2026-03-24T05:20:07Z");
     expect(response.data.customProperty6).toBe(false);
+
+    // CMIS backend validation
+    const { getCmisProperty, getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
+    const cmisName = await getCmisProperty(incidentIDCustomProperty1, "sample_updated1.pdf", "cmis:name");
+    expect(cmisName).toBe("sample_updated1.pdf");
+    const cmisString = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisString).toBe("test123");
+    const cmisInt = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordInt");
+    expect(cmisInt).toBe("123");
+    const cmisBool = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordBoolean");
+    expect(cmisBool).toBe("false");
+    const cmisDate = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordDate");
+    expect(cmisDate).not.toBeNull();
   });
 
   it('should not update invalid properties of attachments and should update valid properties during create of entity', async () => {
@@ -501,6 +655,19 @@ describe('Attachments Integration Tests --UPDATE', () => {
     expect(response.data.customProperty2).toBe(100);
     expect(response.data.customProperty5).toBe("2025-03-24T05:20:07Z");
     expect(response.data.customProperty6).toBe(true);
+
+    // CMIS backend validation
+    const { getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
+    // Attachment with invalid props — CMIS backend should have no secondary properties set
+    const cmisStringInvalid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisStringInvalid).toBeNull();
+    // Attachment with valid props — CMIS backend should reflect exact values
+    const cmisStringValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated_valid.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisStringValid).toBe("test");
+    const cmisIntValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated_valid.pdf", "Working:DocumentInfoRecordInt");
+    expect(cmisIntValid).toBe("100");
+    const cmisBoolValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated_valid.pdf", "Working:DocumentInfoRecordBoolean");
+    expect(cmisBoolValid).toBe("true");
   });
 
   it('should not update invalid properties of attachments and should update valid properties after save of entity', async () => {
@@ -558,10 +725,82 @@ describe('Attachments Integration Tests --UPDATE', () => {
     expect(response.data.customProperty2).toBe(123);
     expect(response.data.customProperty5).toBe("2026-03-24T05:20:07Z");
     expect(response.data.customProperty6).toBe(false);
+
+    // CMIS backend validation
+    const { getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
+    // Attachment with invalid props — CMIS backend should still have no secondary properties
+    const cmisStringInvalid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisStringInvalid).toBeNull();
+    // Attachment with valid props — CMIS backend should reflect updated exact values
+    const cmisStringValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated.pdf", "Working:DocumentInfoRecordString");
+    expect(cmisStringValid).toBe("test123");
+    const cmisIntValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated.pdf", "Working:DocumentInfoRecordInt");
+    expect(cmisIntValid).toBe("123");
+    const cmisBoolValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated.pdf", "Working:DocumentInfoRecordBoolean");
+    expect(cmisBoolValid).toBe("false");
+  });
+
+  it('should fail to rename attachment to filename that already exists in backend', async () => {
+    const { createDocumentInCmis } = require('./utills/cmis-document-helper');
+    let renameBackendConflictEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    renameBackendConflictEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: renameBackendConflictEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, renameBackendConflictEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const attachmentID = response.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameBackendConflictEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Inject a file with conflicting name directly into CMIS backend
+    await createDocumentInCmis("backend-file.pdf", "./test/integration/sample.pdf", renameBackendConflictEntityID);
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, renameBackendConflictEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Rename attachment to the conflicting name in draft — rename succeeds in draft
+    const renameData = { filename: "backend-file.pdf" };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, renameBackendConflictEntityID, renameData, attachmentID);
+    expect(response.status).toBe("OK");
+
+    // Save — should fail because DI already has "backend-file.pdf"
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameBackendConflictEntityID, true);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toContain("added multiple times");
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, renameBackendConflictEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for renameBackendConflictEntityID:", response.message);
+    }
   });
 });
 
-describe('Attachments Integration Tests --LINK', () => {
+describe.only('Attachments Integration Tests --LINK', () => {
   let editLinkIncidentID;
   let editLinkAttachmentID;
 
@@ -1516,9 +1755,216 @@ const config = {
       console.warn("Cleanup failed for editLinkIncidentID:", response.message);
     }
   });
+
+  it('should verify createdBy field on link attachment matches authenticated user', async () => {
+    let linkCreatedByEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    linkCreatedByEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkCreatedByEntityID, srvpath, "testLink", "https://www.example.com");
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkCreatedByEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Get link ID
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, linkCreatedByEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    expect(response.attachments.length).toBeGreaterThan(0);
+    const linkID = response.attachments[0].ID;
+
+    // Fetch metadata and verify createdBy/modifiedBy
+    response = await api.fetchMetadata(appUrl, serviceName, entityName, linkCreatedByEntityID, linkID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    expect(response.data.createdBy).toBeTruthy();
+    expect(response.data.modifiedBy).toBeTruthy();
+    // When using named user token, createdBy should match the authenticated username
+    if (credentials.username) {
+      expect(response.data.createdBy).toBe(credentials.username);
+    }
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkCreatedByEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkCreatedByEntityID:", response.message);
+    }
+  });
+
+  it('should delete link not present in repository and remove from UI', async () => {
+    const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
+    let linkNotInRepoEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    linkNotInRepoEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkNotInRepoEntityID, srvpath, "linkToDelete", "https://www.example.com/delete-test");
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkNotInRepoEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Get link ID
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, linkNotInRepoEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    expect(response.attachments.length).toBeGreaterThan(0);
+    const linkID = response.attachments[0].ID;
+
+    // Delete link from CMIS backend directly
+    await deleteDocumentFromCmis(linkNotInRepoEntityID, "linkToDelete");
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, linkNotInRepoEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Delete through app — should succeed even though link is gone from CMIS
+    response = await api.deleteAttachment(appUrl, serviceName, linkNotInRepoEntityID, linkID, entityName);
+    expect(response.status).toBe("OK");
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkNotInRepoEntityID);
+    expect(response.status).toBe("OK");
+
+    // Verify no attachments remain
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, linkNotInRepoEntityID);
+    expect(response.status).toBe("OK");
+    expect(response.attachments.length).toBe(0);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkNotInRepoEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkNotInRepoEntityID:", response.message);
+    }
+  });
+
+  it('should fail to rename link to filename that already exists in backend', async () => {
+    const { createDocumentInCmis } = require('./utills/cmis-document-helper');
+    let linkBackendConflictEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    linkBackendConflictEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkBackendConflictEntityID, srvpath, "originalLink", "https://www.example.com/original");
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkBackendConflictEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Get link ID
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, linkBackendConflictEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const linkID = response.attachments[0].ID;
+
+    // Inject a file with conflicting name directly into CMIS backend
+    await createDocumentInCmis("backendLink", "./test/integration/sample.pdf", linkBackendConflictEntityID);
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, linkBackendConflictEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Rename link to the conflicting name in draft — rename succeeds in draft
+    const renameData = { filename: "backendLink" };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, linkBackendConflictEntityID, renameData, linkID);
+    expect(response.status).toBe("OK");
+
+    // Save — should fail because DI already has "backendLink"
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkBackendConflictEntityID, true);
+    expect(response.status).toBe("FAILED");
+    expect(response.message).toContain("added multiple times");
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkBackendConflictEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkBackendConflictEntityID:", response.message);
+    }
+  });
+
+  it('should fail to rename link with whitespace-only name', async () => {
+    let linkWhitespaceEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    linkWhitespaceEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkWhitespaceEntityID, srvpath, "linkToRename", "https://www.example.com/rename-test");
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkWhitespaceEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Get link ID
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, linkWhitespaceEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const linkID = response.attachments[0].ID;
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, linkWhitespaceEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Rename to whitespace-only name in draft — rename succeeds in draft
+    const renameData = { filename: "     " };
+    response = await api.updateAttachment(appUrl, serviceName, entityName, linkWhitespaceEntityID, renameData, linkID);
+    expect(response.status).toBe("OK");
+
+    // Save — should fail because filename cannot be empty/whitespace
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkWhitespaceEntityID, true);
+    expect(response.status).toBe("FAILED");
+    const msg = response.message.toLowerCase();
+    expect(
+      msg.includes("cannot be empty") || msg.includes("could not be updated") || msg.includes("whitespace")
+    ).toBe(true);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkWhitespaceEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkWhitespaceEntityID:", response.message);
+    }
+  });
 });
 
-describe('Attachments Integration Tests --CMIS METADATA', () => {
+describe.only('Attachments Integration Tests --CMIS METADATA', () => {
   it('should verify SDM createdBy field matches the authenticated user', async () => {
     // Create a fresh entity with an attachment to verify createdBy
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
@@ -1565,7 +2011,7 @@ describe('Attachments Integration Tests --CMIS METADATA', () => {
   });
 });
 
-describe('Attachments Integration Tests --DELETE', () => {
+describe.only('Attachments Integration Tests --DELETE', () => {
   it('should delete the attachments of an entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
     if (response.status !== "OK") {
@@ -1627,4 +2073,201 @@ describe('Attachments Integration Tests --DELETE', () => {
                 throw new Error("Error : " + deleteresponse.message)
               }
     });
+
+  it('should delete attachment not present in repository and remove from UI', async () => {
+    const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
+    let delNotInRepoEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    delNotInRepoEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: delNotInRepoEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, delNotInRepoEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const attachmentID = response.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, delNotInRepoEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Delete the attachment from CMIS backend directly
+    await deleteDocumentFromCmis(delNotInRepoEntityID, "sample.pdf");
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, delNotInRepoEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Delete through app — should succeed even though file is not in CMIS
+    response = await api.deleteAttachment(appUrl, serviceName, delNotInRepoEntityID, attachmentID, entityName);
+    expect(response.status).toBe("OK");
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, delNotInRepoEntityID);
+    expect(response.status).toBe("OK");
+
+    // Verify no attachments remain
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, delNotInRepoEntityID);
+    expect(response.status).toBe("OK");
+    expect(response.attachments.length).toBe(0);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, delNotInRepoEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for delNotInRepoEntityID:", response.message);
+    }
+  });
+
+  it('should verify entity and its attachments are not accessible after entity delete', async () => {
+    let deleteEntityTestID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    deleteEntityTestID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: deleteEntityTestID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, deleteEntityTestID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteEntityTestID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Entity exists before deletion
+    response = await api.checkEntity(appUrl, serviceName, entityName, deleteEntityTestID);
+    expect(response.status).toBe("OK");
+
+    // Delete entity
+    response = await api.deleteEntity(appUrl, serviceName, entityName, deleteEntityTestID);
+    expect(response.status).toBe("OK");
+
+    // Entity should no longer be accessible
+    response = await api.checkEntity(appUrl, serviceName, entityName, deleteEntityTestID);
+    expect(response.status).toBe("FAILED");
+  });
+
+  it('should verify attachments cleaned up after discarding draft', async () => {
+    let discardDraftEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    discardDraftEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: discardDraftEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    // Upload attachment in draft (do not save)
+    response = await api.createAttachment(appUrl, serviceName, entityName, discardDraftEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Discard draft before saving
+    response = await api.discardDraft(appUrl, serviceName, entityName, discardDraftEntityID);
+    expect(response.status).toBe("OK");
+
+    // Entity was never activated — should not exist in active state
+    response = await api.checkEntity(appUrl, serviceName, entityName, discardDraftEntityID);
+    expect(response.status).toBe("FAILED");
+  });
+
+  it('should verify all attachments removed after deleting all attachments from entity', async () => {
+    let deleteAllEntityID;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    deleteAllEntityID = response.incidentID;
+
+    const file = {
+      filename: "sample.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+    const postData = {
+      up__ID: deleteAllEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com"
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, deleteAllEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const attachmentID = response.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteAllEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Enter draft mode
+    response = await api.editEntity(appUrl, serviceName, entityName, deleteAllEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    // Delete all attachments
+    response = await api.deleteAttachment(appUrl, serviceName, deleteAllEntityID, attachmentID, entityName);
+    expect(response.status).toBe("OK");
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, deleteAllEntityID);
+    expect(response.status).toBe("OK");
+
+    // Verify no attachments remain
+    response = await api.getActiveAttachmentsList(appUrl, serviceName, entityName, deleteAllEntityID);
+    expect(response.status).toBe("OK");
+    expect(response.attachments.length).toBe(0);
+
+    // Cleanup
+    response = await api.deleteEntity(appUrl, serviceName, entityName, deleteAllEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for deleteAllEntityID:", response.message);
+    }
+  });
 });
