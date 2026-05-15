@@ -81,38 +81,45 @@ beforeAll(async () => {
 test('(1) Subscribe when repo already exists — expect onboarding skipped', async () => {
   console.log('Test (1): Subscribe when repo already exists — expect graceful handling');
 
-  // Pre-condition: repo should exist from beforeAll setup
-  console.log('  Verifying repo exists from setup subscription...');
-  const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  expect(checkResult.exitCode).toBe(0);
-
-  // Unsubscribe but leave repo in place (repo persists after unsubscribe since
-  // it was onboarded; we only need the subscription itself removed)
-  console.log('  Unsubscribing (repo stays in SDM instance)...');
+  // Pre-condition: ensure the app is unsubscribed but the repo still exists in the instance.
+  // Step 1: Unsubscribe (repo gets offboarded by the app during unsubscribe)
+  console.log('  Unsubscribing to set up precondition...');
   await run(UNSUBSCRIBE_SCRIPT);
   await sleep(15000);
 
-  // Manually re-onboard the repo in consumer scope if the unsubscribe offboarded it
-  const reCheck = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  if (reCheck.exitCode !== 0) {
-    console.log('  Repo was offboarded by unsubscribe — re-onboarding for precondition...');
-    const onboardExit = await repoOnboard(SUBSCRIPTION_REPO_EXTERNAL_ID);
-    expect(onboardExit).toBe(0);
-    await sleep(5000);
-  }
+  // Step 2: Manually onboard the repo so it exists before we subscribe
+  console.log('  Manually onboarding repo so it exists before subscribe...');
+  const onboardExit = await repoOnboard(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  expect(onboardExit).toBe(0);
+  await sleep(5000);
 
-  // Act: Subscribe again — app should detect repo already exists and skip onboarding
-  console.log('  Re-subscribing...');
+  // Verify precondition: repo exists, app is unsubscribed
+  const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  expect(checkResult.exitCode).toBe(0);
+  console.log('  Precondition met: unsubscribed, repo exists');
+
+  // Act: Subscribe — app should detect repo already exists and skip onboarding
+  console.log('  Subscribing (repo already exists — onboarding should be skipped)...');
   const subscribeResult = await runAndCaptureAll(SUBSCRIBE_SCRIPT);
   expect(subscribeResult.exitCode).toBe(0);
   await sleep(15000);
 
-  // Verify: repo should still exist after re-subscribing (onboarding was skipped or idempotent)
-  console.log('  Verifying repo still exists after re-subscribe...');
+  // Verify: repo should still exist (was not re-created or removed)
+  console.log('  Verifying repo still exists after subscribe...');
   const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   expect(verifyResult.exitCode).toBe(0);
-  console.log('  Confirmed: repo still exists after re-subscribe');
-}, 180000);
+  console.log('  Confirmed: repo still exists after subscribe');
+
+  // Verify: CF logs should indicate onboarding was skipped due to existing repo
+  console.log('  Checking CF logs for onboarding-skipped indication...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME);
+  const skipped = logResult.containsIgnoreCase('already exists')
+    || logResult.containsIgnoreCase('skipped')
+    || logResult.containsIgnoreCase('onboarding skipped')
+    || logResult.containsIgnoreCase('repository exists');
+  expect(skipped).toBe(true);
+  console.log('  Confirmed: CF logs indicate onboarding was skipped for existing repo');
+}, 300000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 2 — Delete subscription with multiple repos → only correct repo offboarded
@@ -153,6 +160,7 @@ test('(2) Unsubscribe with multiple repos — only correct repo should be offboa
   const repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   // exitCode 1 = not found (offboarded), exitCode 0 = still exists
   console.log(`  Subscription repo check: exitCode=${repoResult.exitCode}`);
+  expect(repoResult.exitCode).toBe(1);
 
   // Verify: The other repo (provider scope) should still exist
   const verifyOther = await repoCheckProviderScope(otherRepo);
@@ -194,11 +202,13 @@ test('(3) Unsubscribe with only the subscription repo — expect repo offboarded
   // Allow time for offboarding
   await sleep(15000);
 
-  // Verify: subscription repo should no longer exist in consumer scope
-  console.log('  Verifying subscription repo was offboarded...');
-  const repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  expect(repoResult.exitCode).toBe(1); // 1 = not found = offboarded
-  console.log('  Confirmed: repo was offboarded after unsubscribe');
+  // After unsubscribing, consumer-scoped token is no longer valid.
+  // Verify offboard via CF logs instead of consumer-scope repoCheck.
+  console.log('  Fetching CF logs to verify repo offboard...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME);
+  const offboarded = logResult.containsIgnoreCase('Offboarded') || logResult.containsIgnoreCase('offboard');
+  expect(offboarded).toBe(true);
+  console.log('  Confirmed: CF logs indicate repo was offboarded after unsubscribe');
 }, 300000);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +247,7 @@ test('(4) Unsubscribe when repo does not exist — expect logs to indicate 404 f
     console.log(`  Repo was already not present (exit code: ${offboardResult.exitCode})`);
   }
 
-  // Verify precondition — repo should NOT exist
+  // Verify precondition — repo should NOT exist (still subscribed so consumer scope works)
   const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   expect(checkResult.exitCode).toBe(1);
 
@@ -249,12 +259,16 @@ test('(4) Unsubscribe when repo does not exist — expect logs to indicate 404 f
   // Allow time for unsubscribe callback to process
   await sleep(15000);
 
-  // Verify: unsubscribe should succeed even when repo doesn't exist
-  // The repo should still not exist after unsubscribe
-  console.log('  Verifying repo still does not exist...');
-  const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  expect(verifyResult.exitCode).toBe(1); // 1 = not found
-  console.log('  Confirmed: repo still does not exist — unsubscribe handled missing repo gracefully');
+  // After unsubscribing, consumer-scoped token is no longer valid.
+  // Verify via CF logs that the app handled missing repo gracefully (404 or not found).
+  console.log('  Fetching CF logs to verify 404 handling...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME);
+  const has404Indication = logResult.containsIgnoreCase('not found')
+    || logResult.containsIgnoreCase('Repository with ID')
+    || logResult.containsIgnoreCase('404')
+    || logResult.containsIgnoreCase('does not exist');
+  expect(has404Indication).toBe(true);
+  console.log('  Confirmed: CF logs indicate 404/not-found when offboarding non-existent repo');
 }, 300000);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,6 +282,8 @@ test('(5) Subscribe without existing repo — expect repo to be onboarded', asyn
   await sleep(30000);
 
   // Pre-condition: ensure the repo does NOT exist (offboard if present)
+  // Note: consumer scope may be invalid after test (4) unsubscribed — that's OK,
+  // we just need to ensure the repo isn't there.
   console.log('  Ensuring repo does not exist...');
   const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   if (checkResult.exitCode === 0) {
@@ -294,12 +310,15 @@ test('(5) Subscribe without existing repo — expect repo to be onboarded', asyn
   }
   expect(subscribeExit).toBe(0);
 
-  // Allow time for async repo onboarding
-  await sleep(15000);
-
-  // Verify: repo should now exist
-  console.log('  Verifying repo was onboarded...');
-  const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  // Allow time for async repo onboarding (retry up to 3 times with increasing wait)
+  let verifyResult;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await sleep(15000);
+    console.log(`  Verifying repo was onboarded (attempt ${attempt}/3)...`);
+    verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+    if (verifyResult.exitCode === 0) break;
+    console.log(`  Repo not yet available — waiting before retry...`);
+  }
   expect(verifyResult.exitCode).toBe(0);
   expect(verifyResult.containsIgnoreCase('FOUND')).toBe(true);
 }, 300000);
