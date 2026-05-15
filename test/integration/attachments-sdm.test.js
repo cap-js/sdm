@@ -519,7 +519,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     const cmisBool = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordBoolean");
     expect(cmisBool).toBe("true");
     const cmisDate = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated.pdf", "Working:DocumentInfoRecordDate");
-    expect(cmisDate).not.toBeNull();
+    expect(cmisDate).not.toBe(null);
   });
 
   it('should update valid properties of attachments after save of entity', async () => {
@@ -564,7 +564,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     const cmisBool = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordBoolean");
     expect(cmisBool).toBe("false");
     const cmisDate = await getCmisPropertyOrNull(incidentIDCustomProperty1, "sample_updated1.pdf", "Working:DocumentInfoRecordDate");
-    expect(cmisDate).not.toBeNull();
+    expect(cmisDate).not.toBe(null);
   });
 
   it('should not update invalid properties of attachments and should update valid properties during create of entity', async () => {
@@ -660,7 +660,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     const { getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
     // Attachment with invalid props — CMIS backend should have no secondary properties set
     const cmisStringInvalid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample.pdf", "Working:DocumentInfoRecordString");
-    expect(cmisStringInvalid).toBeNull();
+    expect(cmisStringInvalid).toBe(null);
     // Attachment with valid props — CMIS backend should reflect exact values
     const cmisStringValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated_valid.pdf", "Working:DocumentInfoRecordString");
     expect(cmisStringValid).toBe("test");
@@ -730,7 +730,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     const { getCmisPropertyOrNull } = require('./utills/cmis-document-helper');
     // Attachment with invalid props — CMIS backend should still have no secondary properties
     const cmisStringInvalid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample.pdf", "Working:DocumentInfoRecordString");
-    expect(cmisStringInvalid).toBeNull();
+    expect(cmisStringInvalid).toBe(null);
     // Attachment with valid props — CMIS backend should reflect updated exact values
     const cmisStringValid = await getCmisPropertyOrNull(incidentIDCustomProperty2, "sample_updated.pdf", "Working:DocumentInfoRecordString");
     expect(cmisStringValid).toBe("test123");

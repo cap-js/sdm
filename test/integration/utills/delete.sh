@@ -95,9 +95,7 @@ else
     --data-urlencode "password=${CMIS_PASSWORD}")
 fi
 
-ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
-  | grep -o '"access_token":"[^"]*"' \
-  | sed 's/"access_token":"//;s/"$//')
+ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
 
 if [[ -z "$ACCESS_TOKEN" ]]; then
   echo "ERROR: Failed to obtain access token."
