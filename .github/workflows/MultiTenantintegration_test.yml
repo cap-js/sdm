@@ -119,6 +119,7 @@ jobs:
             "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
@@ -268,6 +269,7 @@ jobs:
             "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
@@ -283,10 +285,40 @@ jobs:
           echo "Running Versioned Repository Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-versioned.config.js
 
-  repospecific-integration-test:
+  virusscan-repo-setup:
     runs-on: ubuntu-latest
     needs: versioned-integration-test
-    if: "!cancelled() && needs.versioned-integration-test.result == 'success'"
+    if: "!cancelled()"
+    steps:
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login and Switch to Virus Scan Repository
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+          cf set-env incidents-mtx-srv REPOSITORY_ID "${{ secrets.VIRUSSCANREPOSITORYID }}"
+          cf restage incidents-mtx-srv > /dev/null 2>&1
+
+  virusscan-integration-test:
+    runs-on: ubuntu-latest
+    needs: virusscan-repo-setup
+    if: "!cancelled() && needs.virusscan-repo-setup.result == 'success'"
+    env:
+      FILE_URL: ${{ 'http://www.eicar.org/download/eicar.com.txt' }}
+      DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -339,7 +371,16 @@ jobs:
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
-      - name: Generate credentials.json and run repo-specific integration tests
+      - name: Download virus test file
+        run: |
+          curl -fSL "$FILE_URL" -o "test/integration/$DOWNLOAD_PATH"
+          if [ -f "test/integration/$DOWNLOAD_PATH" ]; then
+            echo "EICAR file downloaded: $(wc -c < "test/integration/$DOWNLOAD_PATH") bytes"
+          else
+            echo "Error: EICAR file not found"; exit 1
+          fi
+
+      - name: Generate credentials.json and run virus scan integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
@@ -378,8 +419,35 @@ jobs:
 
           npm install
 
-          echo "Running Repo-Specific Integration Tests (Tenant 1)..."
-          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-repo-specific.config.js
+          echo "Running Virus Scan Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 EICAR_FILE_PATH=test/integration/eicar.com.txt npm run integration-test-virus-scan
+
+  virusscan-repo-cleanup:
+    runs-on: ubuntu-latest
+    needs: virusscan-integration-test
+    if: always()
+    steps:
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+
+      - name: Determine Cloud Foundry Space
+        run: |
+          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="${{ secrets.CF_SPACE }}"
+          else
+            space="${{ github.event.inputs.cf_space }}"
+          fi
+          echo "space=$space" >> "$GITHUB_ENV"
+
+      - name: Login and Revert to Default Repository
+        run: |
+          cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+          cf set-env incidents-mtx-srv REPOSITORY_ID "${{ secrets.DEFAULTREPOSITORYIDMT }}"
+          cf restage incidents-mtx-srv > /dev/null 2>&1
 
   subscription-test:
     runs-on: ubuntu-latest
@@ -437,7 +505,7 @@ jobs:
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
-      - name: Generate credentials.json and run versioned integration tests
+      - name: Generate credentials.json and run subscription tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
@@ -484,17 +552,17 @@ jobs:
 
           npm install
 
-          echo "Running Versioned Repository Integration Tests (Tenant 1)..."
-          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-versioned.config.js
+          echo "Running Subscription Integration Tests (Tenant 1)..."
+          TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-subscription.config.js
 
           echo ""
-          echo "Running Versioned Repository Integration Tests (Tenant 2)..."
-          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-versioned.config.js
+          echo "Running Subscription Integration Tests (Tenant 2)..."
+          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-subscription.config.js
 
   repospecific-integration-test:
     runs-on: ubuntu-latest
-    needs: versioned-integration-test
-    if: "!cancelled() && needs.versioned-integration-test.result == 'success'"
+    needs: virusscan-repo-cleanup
+    if: "!cancelled()"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -576,8 +644,8 @@ jobs:
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
             "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientIDMT": "${CMIS_CLIENT_ID_MT}",
-            "cmisClientSecretMT": "${CMIS_CLIENT_SECRET_MT}",
+            "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
+            "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
             "MT_APP_NAME": "incidents-mtx-srv"
           }
