@@ -84,21 +84,12 @@ for var in CMIS_URL CMIS_REPOSITORY_ID CMIS_TOKEN_URL CMIS_CLIENT_ID CMIS_CLIENT
   fi
 done
 
-# --- Obtain OAuth2 access token ---
+# --- Obtain OAuth2 access token (client_credentials grant) ---
 echo "Fetching OAuth2 token..."
-if [[ -n "$SUBDOMAIN" ]]; then
-  TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
-    --data-urlencode "grant_type=client_credentials" \
-    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
-else
-  TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
-    --data-urlencode "grant_type=password" \
-    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-    --data-urlencode "username=${CMIS_USERNAME}" \
-    --data-urlencode "password=${CMIS_PASSWORD}")
-fi
+TOKEN_RESPONSE=$(curl -s -X POST "${CMIS_TOKEN_URL}/oauth/token" \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+  --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
 
 ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
 

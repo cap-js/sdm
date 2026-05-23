@@ -91,27 +91,15 @@ if [[ -n "$SUBDOMAIN" ]]; then
   echo "Using consumer subdomain: $SUBDOMAIN (token URL: $RESOLVED_TOKEN_URL)"
 fi
 
-# --- Obtain OAuth2 access token ---
+# --- Obtain OAuth2 access token (client_credentials grant) ---
 get_token() {
   local TOKEN_RESPONSE
-  if [[ -n "$SUBDOMAIN" ]]; then
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
-  else
-    # Use password grant with ST CMIS credentials for provider-scoped access
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=password" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-      --data-urlencode "username=${CMIS_USERNAME}" \
-      --data-urlencode "password=${CMIS_PASSWORD}")
-  fi
+  TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
+    --data-urlencode "grant_type=client_credentials" \
+    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
 
-  ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
-    | grep -o '"access_token":"[^"]*"' \
-    | sed 's/"access_token":"//;s/"$//' || true)
+  ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
 
   if [[ -z "$ACCESS_TOKEN" ]]; then
     echo "ERROR: Failed to obtain access token."
