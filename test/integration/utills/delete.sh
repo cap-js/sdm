@@ -28,7 +28,11 @@ fi
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CMIS_URL=$(json_val CMIS_URL)
-CMIS_REPOSITORY_ID=$(json_val defaultRepositoryID)
+if [[ "${TENANCY_MODEL:-}" == "multi" ]]; then
+  CMIS_REPOSITORY_ID=$(json_val defaultRepositoryIDMT)
+else
+  CMIS_REPOSITORY_ID=$(json_val defaultRepositoryID)
+fi
 CMIS_TOKEN_URL=$(json_val authUrlMTSDC)
 if [[ "${TENANCY_MODEL:-}" == "multi" && "${TENANT:-}" == "SDMGoogleWorkspaceConsumer" ]]; then
   CMIS_TOKEN_URL=$(json_val authUrlMTGWC)

@@ -790,7 +790,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     // Save — should fail because DI already has "backend-file.pdf"
     response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, renameBackendConflictEntityID, true);
     expect(response.status).toBe("FAILED");
-    expect(response.message).toContain("added multiple times");
+    expect(response.message).toContain("already exists");
 
     // Cleanup
     response = await api.deleteEntity(appUrl, serviceName, entityName, renameBackendConflictEntityID);
@@ -1902,7 +1902,7 @@ const config = {
     // Save — should fail because DI already has "backendLink"
     response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkBackendConflictEntityID, true);
     expect(response.status).toBe("FAILED");
-    expect(response.message).toContain("added multiple times");
+    expect(response.message).toContain("already exists");
 
     // Cleanup
     response = await api.deleteEntity(appUrl, serviceName, entityName, linkBackendConflictEntityID);
