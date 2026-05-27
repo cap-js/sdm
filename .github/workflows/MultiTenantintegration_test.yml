@@ -58,6 +58,8 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
+        env:
+          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           echo "Fetching client details for multi tenant..."
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
@@ -93,12 +95,16 @@ jobs:
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
+          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecretMT}"
+          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+
       - name: Generate credentials.json and run integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
           CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
-          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -224,6 +230,8 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
+        env:
+          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -242,13 +250,16 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecretMT}"
+          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
           CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
-          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -352,6 +363,8 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
+        env:
+          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -370,6 +383,9 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecretMT}"
+          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -385,7 +401,7 @@ jobs:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
           CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
-          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -486,6 +502,8 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
+        env:
+          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -504,13 +522,16 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecretMT}"
+          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run subscription tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
           CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
-          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -596,6 +617,8 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
+        env:
+          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -614,13 +637,16 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecretMT}"
+          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
           CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
-          CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
+          CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
