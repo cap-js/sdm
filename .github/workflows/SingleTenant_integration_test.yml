@@ -50,6 +50,8 @@ jobs:
 
       - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
+        env:
+          RAW_CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
         run: |
           MAX_RETRIES=3
           RETRY_DELAY=10
@@ -86,13 +88,16 @@ jobs:
           echo "::add-mask::${clientID}"
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecret=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecret}"
+          echo "CMIS_CLIENT_SECRET=${escapedCmisClientSecret}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run integration tests
         env:
           CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
           CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
           CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
-          CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -197,6 +202,8 @@ jobs:
 
       - name: Fetch Client Credentials
         id: fetch_secret
+        env:
+          RAW_CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
         run: |
           service_instance_guid=$(cf service sdm-incidents-auth --guid)
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
@@ -209,13 +216,16 @@ jobs:
           echo "::add-mask::${clientID}"
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecret=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecret}"
+          echo "CMIS_CLIENT_SECRET=${escapedCmisClientSecret}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
         env:
           CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
           CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
           CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
-          CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -315,6 +325,8 @@ jobs:
 
       - name: Fetch Client Credentials
         id: fetch_secret
+        env:
+          RAW_CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
         run: |
           service_instance_guid=$(cf service sdm-incidents-auth --guid)
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
@@ -327,6 +339,9 @@ jobs:
           echo "::add-mask::${clientID}"
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecret=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecret}"
+          echo "CMIS_CLIENT_SECRET=${escapedCmisClientSecret}" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -342,7 +357,7 @@ jobs:
           CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
           CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
           CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
-          CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -439,6 +454,8 @@ jobs:
 
       - name: Fetch Client Credentials
         id: fetch_secret
+        env:
+          RAW_CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
         run: |
           service_instance_guid=$(cf service sdm-incidents-auth --guid)
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
@@ -451,13 +468,16 @@ jobs:
           echo "::add-mask::${clientID}"
           echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          escapedCmisClientSecret=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET" | sed 's/\$/\\$/g')
+          echo "::add-mask::${escapedCmisClientSecret}"
+          echo "CMIS_CLIENT_SECRET=${escapedCmisClientSecret}" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
         env:
           CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
           CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
           CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
-          CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
