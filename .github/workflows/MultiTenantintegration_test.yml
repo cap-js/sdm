@@ -580,6 +580,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cf8-cli jq
 
+      - name: Install BTP CLI 🔧
+        run: |
+          echo "🔄 Installing SAP BTP CLI..."
+          curl -fsSL https://cli.btp.cloud.sap/btpcli-install.sh | bash
+          BTP_BIN=$(find "$HOME/bin" /usr/local/bin -maxdepth 1 -name 'btp' -type f 2>/dev/null | head -1)
+          if [ -z "$BTP_BIN" ]; then
+            echo "❌ btp binary not found after install script."
+            exit 1
+          fi
+          if [ "$BTP_BIN" != "/usr/local/bin/btp" ]; then
+            sudo install -m 755 "$BTP_BIN" /usr/local/bin/btp
+          fi
+          btp --version
+          echo "✅ BTP CLI installed successfully!"
+
       - name: Determine Cloud Foundry Space
         run: |
           if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
