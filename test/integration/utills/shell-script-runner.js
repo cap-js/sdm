@@ -76,20 +76,31 @@ function runAndCaptureOutput(scriptPath, ...args) {
  * Runs a shell script and returns all stdout lines along with the exit code.
  * Does NOT throw on non-zero exit code.
  *
+ * If the last argument is a plain object, it's treated as options:
+ *   { silent: true } — do not mirror stdout to console (useful for cf-logs which
+ *   can dump megabytes of binary cert data and JWT tokens).
+ *
  * @param {string} scriptPath - path to the .sh file
- * @param {...string} args - additional arguments forwarded to the script
+ * @param {...(string|object)} args - additional arguments forwarded to the script,
+ *   optionally followed by an options object
  * @returns {Promise<{exitCode: number, lines: string[], output: string, containsIgnoreCase: function}>}
  */
 function runAndCaptureAll(scriptPath, ...args) {
+  let opts = {};
+  if (args.length && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null && !Array.isArray(args[args.length - 1])) {
+    opts = args.pop();
+  }
+  const silent = opts.silent === true;
+
   return new Promise((resolve, reject) => {
     const stdoutLines = [];
 
-    const child = execFile('bash', [scriptPath, ...args], { maxBuffer: 10 * 1024 * 1024 });
+    const child = execFile('bash', [scriptPath, ...args], { maxBuffer: 50 * 1024 * 1024 });
 
     child.stdout.on('data', data => {
       for (const line of data.toString().split('\n')) {
         if (line !== '') {
-          console.log(`[script] ${line}`);
+          if (!silent) console.log(`[script] ${line}`);
           stdoutLines.push(line);
         }
       }
@@ -97,7 +108,7 @@ function runAndCaptureAll(scriptPath, ...args) {
 
     child.stderr.on('data', data => {
       for (const line of data.toString().split('\n').filter(l => l)) {
-        console.error(`[script-err] ${line}`);
+        if (!silent) console.error(`[script-err] ${line}`);
       }
     });
 
