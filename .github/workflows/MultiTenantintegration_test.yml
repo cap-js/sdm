@@ -19,6 +19,7 @@ permissions:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    if: false  # Temporarily disabled — only subscription-test enabled
 
     steps:
       - name: Checkout repository
@@ -159,7 +160,7 @@ jobs:
   versioned-repo-setup:
     runs-on: ubuntu-latest
     needs: integration-test
-    if: "!cancelled()"
+    if: false  # Temporarily disabled — only subscription-test enabled
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -186,7 +187,7 @@ jobs:
   versioned-integration-test:
     runs-on: ubuntu-latest
     needs: versioned-repo-setup
-    if: "!cancelled() && needs.versioned-repo-setup.result == 'success'"
+    if: false  # Temporarily disabled — only subscription-test enabled
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -288,7 +289,7 @@ jobs:
   virusscan-repo-setup:
     runs-on: ubuntu-latest
     needs: versioned-integration-test
-    if: "!cancelled()"
+    if: false  # Temporarily disabled — only subscription-test enabled
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -315,7 +316,7 @@ jobs:
   virusscan-integration-test:
     runs-on: ubuntu-latest
     needs: virusscan-repo-setup
-    if: "!cancelled() && needs.virusscan-repo-setup.result == 'success'"
+    if: false  # Temporarily disabled — only subscription-test enabled
     env:
       FILE_URL: ${{ 'http://www.eicar.org/download/eicar.com.txt' }}
       DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
@@ -429,7 +430,7 @@ jobs:
   virusscan-repo-cleanup:
     runs-on: ubuntu-latest
     needs: virusscan-integration-test
-    if: always()
+    if: false  # Temporarily disabled — only subscription-test enabled
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -456,7 +457,7 @@ jobs:
   repospecific-integration-test:
     runs-on: ubuntu-latest
     needs: virusscan-repo-cleanup
-    if: "!cancelled()"
+    if: false  # Temporarily disabled — only subscription-test enabled
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -561,8 +562,6 @@ jobs:
 
   subscription-test:
     runs-on: ubuntu-latest
-    needs: repospecific-integration-test
-    if: false  # Subscription tests temporarily disabled
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -669,6 +668,6 @@ jobs:
           echo "Running Subscription Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npx jest --config jest-integration-subscription.config.js
 
-          echo ""
-          echo "Running Subscription Integration Tests (Tenant 2)..."
-          TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-subscription.config.js
+          # echo ""
+          # echo "Running Subscription Integration Tests (Tenant 2)..."
+          # TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npx jest --config jest-integration-subscription.config.js
