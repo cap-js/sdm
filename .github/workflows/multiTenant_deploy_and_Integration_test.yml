@@ -164,5 +164,21 @@ jobs:
           echo ""
           echo "📋 Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 2)..."
           TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test-non-draft
+
+          echo ""
+          echo "📋 Running Technical user Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 1)..."
+            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
+  
+          echo ""
+          echo "📋 Running Technical user Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 1)..."
+            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test-non-draft
+
+          echo ""
+          echo "📋 Running Technical user Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 2)..."
+            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
+
+          echo ""
+          echo "📋 Running Technical user Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 2)..."
+            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test-non-draft
           
           echo "✅ All integration tests completed!"

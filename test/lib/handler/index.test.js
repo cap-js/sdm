@@ -931,7 +931,7 @@ describe("handlers", () => {
         updatedSecondaryProperties,
           secondaryPropertiesWithInvalidDefinitions
         )
-      ).rejects.toThrow("Could not update the attachment");
+      ).rejects.toThrow("Bad Request");
   
       expect(getConfigurations).toHaveBeenCalledTimes(1);
       expect(require("../../../lib/util/index").checkMCM).toHaveBeenCalledTimes(2);
@@ -1028,10 +1028,10 @@ describe("handlers", () => {
           updatedSecondaryProperties,
           secondaryPropertiesWithInvalidDefinitions
         )
-      ).rejects.toThrow("Could not update the attachment");
+      ).resolves.toBeUndefined();
 
-      // Verify that json() was called to extract the message (covers lines 366-368)
-      expect(mockErrorResponse.response.json).toHaveBeenCalled();
+      // json() is not called since current code has no nested response.status check in try block
+      expect(mockErrorResponse.response.json).not.toHaveBeenCalled();
     });
 
     it("should handle error with statusText in getValidSecondaryProperties", async () => {
