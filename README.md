@@ -18,6 +18,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - Link as attachments: Provides the capability to support link or URL as attachments.
 - Edit Link-type attachments: Provides the capability to update URL of link-type attachments.
 - Non-Draft Attachments: Provides the capability to work with attachments in non-draft (active) entities.
+- Technical user flow: Provides the capability to use technical user flow.
 
 ### Table of Contents
 
@@ -28,6 +29,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
+- [Support for Technical User](#support-for-technical-user)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -627,6 +629,15 @@ extend my.Projects with { attachments: Composition of many Attachments }
 service ProcessorService {
   entity Projects as projection on my.Projects; // Non-draft entity
   entity Projects.attachments as projection on my.Projects.attachments;
+}
+```
+## Support for Technical User
+The CAP OData operations can be performed on attachments using a technical user. This flow can be used for machine-to-machine (M2M) interactions, where user involvement is not necessary.
+
+A leading CAP application's service should add the requires with annotation "system-user". For more detailed information on "system-user" within the SAP CAP framework, [Capire documentation](https://cap.cloud.sap/docs/guides/security/authorization#pseudo-roles). Here is an [example](https://github.com/cap-js/incidents-app/blob/sdmIncidents/srv/service.cds) from a sample Incident app demonstrating the implementation.
+```cds
+service ProcessorService @(requires:['support','system-user']) {
+entity Incidents as projection on my.Incidents;
 }
 ```
 

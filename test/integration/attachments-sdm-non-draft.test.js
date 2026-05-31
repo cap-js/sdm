@@ -8,6 +8,7 @@ const FormData = require('form-data');
 
 const tenancyModel = process.env.TENANCY_MODEL || 'single';
 const tenant = process.env.TENANT;
+const tokenFlow = process.env.TOKEN_FLOW || 'namedUser';
 
 let token;
 let noSDMRoleToken;
@@ -35,50 +36,73 @@ beforeAll(async () => {
     clientSecret = credentials.clientSecretMT;
 
     if (tenant === 'SDM-DEV-CONSUMER-EU12') {
-      console.log('Running non-draft integration tests | SDM-DEV-CONSUMER-EU12 tenant');
+      console.log('Running integration tests | SDM-DEV-CONSUMER-EU12 tenant');
       authUrl = credentials.authUrlMTSDC;
     } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
-      console.log('Running non-draft integration tests | SDMGoogleWorkspaceConsumer tenant');
+      console.log('Running integration tests | SDMGoogleWorkspaceConsumer tenant');
       authUrl = credentials.authUrlMTGWC;
     }
   } else {
-    console.log('Running non-draft integration tests | Single tenant Scenario');
+    console.log('Running integration tests | Single tenant Scenario');
     appUrl = credentials.appUrl;
     clientId = credentials.clientID;
     clientSecret = credentials.clientSecret;
     authUrl = credentials.authUrl;
   }
 
-  try {
-    const authRes = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    token = authRes.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate Token:", error.message);
-    throw error;
-  }
+  if (tokenFlow === 'technicalUser') {
+    console.log('Technical user token flow');
+    try {
+      const authRes = await axios.post(
+          `${authUrl}/oauth/token?grant_type=client_credentials`,
+          null,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate technical user Token:", error.message);
+      throw error;
+    }
+  } else if (tokenFlow === 'namedUser') {
+    console.log('Named user token flow');
+    try {
+      const authRes = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate Token:", error.message);
+      throw error;
+    }
 
-  try {
-    const authResNoSDMRole = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    noSDMRoleToken = authResNoSDMRole.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate No-SDM-Role Token:", error.message);
-    throw error;
+    try {
+      const authResNoSDMRole = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      noSDMRoleToken = authResNoSDMRole.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate No-SDM-Role Token:", error.message);
+      throw error;
+    }
+  } else {
+    throw new Error(`Invalid TOKEN_FLOW specified: ${tokenFlow}. Expected 'namedUser' or 'technicalUser'.`);
   }
 
   const config = {
@@ -1242,59 +1266,61 @@ describe('Non-Draft Attachments Integration Tests --DELETE', () => {
 describe('Non-Draft Attachments Integration Tests --ERROR HANDLING', () => {
   
   it('should reject upload without SDM roles', async () => {
-    const config = {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    };
+    if(tokenFlow !== 'technicalUser') {
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      };
 
-    const response = await axios.post(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}`,
-      {
-        name: 'Project for No SDM Role Test'
-      },
-      config
-    );
-
-    const docID = trackProject(response.data.ID);
-
-    const noRoleConfig = {
-      headers: {
-        'Authorization': `Bearer ${noSDMRoleToken}`,
-        'Content-Type': 'application/json'
-      }
-    };
-
-    const metadataResponse = await axios.post(
-      `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}`,
-      {
-        filename: 'no-role-test.pdf'
-      },
-      noRoleConfig
-    );
-
-    const attachmentID = metadataResponse.data.ID;
-
-    const filePath = path.join(__dirname, 'sample.pdf');
-    const fileBuffer = fs.readFileSync(filePath);
-
-    const uploadConfig = {
-      headers: {
-        'Authorization': `Bearer ${noSDMRoleToken}`,
-        'Content-Type': 'application/pdf'
-      }
-    };
-
-    try {
-      await axios.put(
-        `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}(ID=${attachmentID})/content`,
-        fileBuffer,
-        uploadConfig
+      const response = await axios.post(
+          `https://${appUrl}/odata/v4/${serviceName}/${entityName}`,
+          {
+            name: 'Project for No SDM Role Test'
+          },
+          config
       );
-      fail('Should have thrown an error for no SDM roles');
-    } catch (error) {
-      expect(error.response.status).toBe(403);
+
+      const docID = trackProject(response.data.ID);
+
+      const noRoleConfig = {
+        headers: {
+          'Authorization': `Bearer ${noSDMRoleToken}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      const metadataResponse = await axios.post(
+          `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}`,
+          {
+            filename: 'no-role-test.pdf'
+          },
+          noRoleConfig
+      );
+
+      const attachmentID = metadataResponse.data.ID;
+
+      const filePath = path.join(__dirname, 'sample.pdf');
+      const fileBuffer = fs.readFileSync(filePath);
+
+      const uploadConfig = {
+        headers: {
+          'Authorization': `Bearer ${noSDMRoleToken}`,
+          'Content-Type': 'application/pdf'
+        }
+      };
+
+      try {
+        await axios.put(
+            `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${docID})/${attachmentNavigation}(ID=${attachmentID})/content`,
+            fileBuffer,
+            uploadConfig
+        );
+        fail('Should have thrown an error for no SDM roles');
+      } catch (error) {
+        expect(error.response.status).toBe(403);
+      }
     }
   });
 

@@ -4,6 +4,7 @@ const Api = require('./api');
 const expect = require('@sap/cds/lib/test/expect');
 const tenancyModel = process.env.TENANCY_MODEL || 'single';
 const tenant = process.env.TENANT;
+const tokenFlow = process.env.TOKEN_FLOW || 'namedUser';
 
 const { userNotAuthorisedErrorEditLink } = require("../../lib/util/messageConsts");
 
@@ -27,7 +28,7 @@ beforeAll(async () => {
   let authUrl;
 
   if (tenancyModel === 'multi') {
-    appUrl = credentials.appUrlMT; 
+    appUrl = credentials.appUrlMT;
     clientId = credentials.clientIDMT;
     clientSecret = credentials.clientSecretMT;
 
@@ -37,7 +38,7 @@ beforeAll(async () => {
     } else if (tenant === 'SDMGoogleWorkspaceConsumer') {
       console.log('Running integration tests | SDMGoogleWorkspaceConsumer tenant');
       authUrl = credentials.authUrlMTGWC;
-    } 
+    }
   } else {
     console.log('Running integration tests | Single tenant Scenario');
     appUrl = credentials.appUrl;
@@ -46,36 +47,59 @@ beforeAll(async () => {
     authUrl = credentials.authUrl;
   }
 
-  try {
-    const authRes = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    token = authRes.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate Token:", error.message);
-    throw error;
-  }
+  if (tokenFlow === 'technicalUser') {
+    console.log('Technical user token flow');
+    try {
+      const authRes = await axios.post(
+          `${authUrl}/oauth/token?grant_type=client_credentials`,
+          null,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate technical user Token:", error.message);
+      throw error;
+    }
+  } else if (tokenFlow === 'namedUser') {
+    console.log('Named user token flow');
+    try {
+      const authRes = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.username}&password=${credentials.password}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      token = authRes.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate Token:", error.message);
+      throw error;
+    }
 
-  try {
-    const authResNoSDMRole = await axios.get(
-      `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
-      {
-        auth: {
-          username: clientId,
-          password: clientSecret
-        }
-      }
-    );
-    noSDMRoleToken = authResNoSDMRole.data.access_token;
-  } catch (error) {
-    console.error("Failed to generate No-SDM-Role Token:", error.message);
-    throw error;
+    try {
+      const authResNoSDMRole = await axios.get(
+          `${authUrl}/oauth/token?grant_type=password&username=${credentials.noSDMRoleUsername}&password=${credentials.noSDMRoleUserPassword}`,
+          {
+            auth: {
+              username: clientId,
+              password: clientSecret
+            }
+          }
+      );
+      noSDMRoleToken = authResNoSDMRole.data.access_token;
+    } catch (error) {
+      console.error("Failed to generate No-SDM-Role Token:", error.message);
+      throw error;
+    }
+  } else {
+    throw new Error(`Invalid TOKEN_FLOW specified: ${tokenFlow}. Expected 'namedUser' or 'technicalUser'.`);
   }
 
   const config = {
@@ -158,12 +182,14 @@ describe('Attachments Integration Tests --CREATE', () => {
       throw new Error("Error : " + response.message)
     }
   });
+
   it('should not upload an attachment when user does not have SDM role', async () => {
+    if (tokenFlow !== 'technicalUser') {
       const file =
-      {
-        filename: "sample3.pdf",
-        filepath: "./test/integration/sample3.pdf"
-      }
+          {
+            filename: "sample3.pdf",
+            filepath: "./test/integration/sample3.pdf"
+          }
 
       const postData = {
         up__ID: incidentID,
@@ -172,8 +198,8 @@ describe('Attachments Integration Tests --CREATE', () => {
         createdBy: "test@test.com",
         modifiedBy: "test@test.com"
       };
- const config = {
-        headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+      const config = {
+        headers: {'Authorization': "Bearer " + noSDMRoleToken}
       };
       apiNoSDMRole = new Api(config);
       let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
@@ -181,10 +207,11 @@ describe('Attachments Integration Tests --CREATE', () => {
         throw new Error("Error : " + response.message)
       }
       response = await apiNoSDMRole.createAttachment(appUrl, serviceName, entityName, incidentID, postData, file);
-     expect(response.message).toBe("Create attachment API call (put) failed : Request failed with status code 403");
-response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
+      expect(response.message).toBe("Create attachment API call (put) failed : Request failed with status code 403");
+      response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
     }
 });
 
@@ -297,21 +324,22 @@ response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, s
 
 describe('Attachments Integration Tests --READ', () => {
   it('should read the created attachment', async () => {
-    //This test case also reads files not supported by browser (.exe)
-    for(let i = 0; i < attachments.length; i++){
-      const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[i]);
-      if (response.status !== "OK") {
-        throw new Error("Error : " + response.message)
+    if (tokenFlow !== 'technicalUser') {
+      //This test case also reads files not supported by browser (.exe)
+      for (let i = 0; i < attachments.length; i++) {
+        const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[i]);
+        if (response.status !== "OK") {
+          throw new Error("Error : " + response.message)
+        }
       }
-    }
-    const config = {
-        headers: { 'Authorization': "Bearer " + noSDMRoleToken }
+      const config = {
+        headers: {'Authorization': "Bearer " + noSDMRoleToken}
       };
       apiNoSDMRole = new Api(config);
       const response = await apiNoSDMRole.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[0]);
       console.log(response.message);
       expect(response.message).toBe("Read attachment API call failed : Request failed with status code 403");
-
+    }
 
   });
 
@@ -576,6 +604,7 @@ describe('Attachments Integration Tests --LINK', () => {
     const secondLinkUrl = 'https://stackoverflow.com';
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    console.log("Response in Link "+response.status);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
@@ -680,10 +709,11 @@ describe('Attachments Integration Tests --LINK', () => {
 const config = {
     headers: { 'Authorization': "Bearer " + noSDMRoleToken }
   };
-  apiNoSDMRole = new Api(config);
-    response = await apiNoSDMRole.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
-     expect(response.message).toBe("Open attachment saved API call failed : Request failed with status code 403");
-
+    if (tokenFlow !== 'technicalUser') {
+      apiNoSDMRole = new Api(config);
+      response = await apiNoSDMRole.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
+      expect(response.message).toBe("Open attachment saved API call failed : Request failed with status code 403");
+    }
     // Verify metadata for both links after multiple edits
     response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
     if (response.status !== "OK") {
@@ -1488,34 +1518,37 @@ const config = {
   });
 
   it('should not allow editing a link without SDM role', async () => {
-    // Enter draft mode with no-SDM-role user (reusing editLinkIncidentID from previous test)
-    const config = {
-      headers: { 'Authorization': "Bearer " + noSDMRoleToken }
-    };
-    apiNoSDMRole = new Api(config);
-    let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, editLinkIncidentID, srvpath);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
+    if (tokenFlow !== 'technicalUser') {
+      // Enter draft mode with no-SDM-role user (reusing editLinkIncidentID from previous test)
+      const config = {
+        headers: {'Authorization': "Bearer " + noSDMRoleToken}
+      };
+      apiNoSDMRole = new Api(config);
+      let response = await apiNoSDMRole.editEntity(appUrl, serviceName, entityName, editLinkIncidentID, srvpath);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
 
-    // Try to edit the link with valid URL using no-SDM-role user
-    const updatedUrl = 'https://updated-norole.com';
-    response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
-    expect(response.status).toBe("FAILED");
-    expect(response.message).toBe(userNotAuthorisedErrorEditLink);
+      // Try to edit the link with valid URL using no-SDM-role user
+      const updatedUrl = 'https://updated-norole.com';
+      response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
+      expect(response.status).toBe("FAILED");
+      expect(response.message).toBe(userNotAuthorisedErrorEditLink);
 
-    // Save entity draft with no-SDM-role user to exit draft mode
-    response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
-    if (response.status !== "OK") {
-      throw new Error("Error : " + response.message)
-    }
+      // Save entity draft with no-SDM-role user to exit draft mode
+      response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
+      if (response.status !== "OK") {
+        throw new Error("Error : " + response.message)
+      }
 
-    // Cleanup - delete entity with authorized user
-    response = await api.deleteEntity(appUrl, serviceName, entityName, editLinkIncidentID);
-    if (response.status !== "OK") {
-      console.warn("Cleanup failed for editLinkIncidentID:", response.message);
+      // Cleanup - delete entity with authorized user
+      response = await api.deleteEntity(appUrl, serviceName, entityName, editLinkIncidentID);
+      if (response.status !== "OK") {
+        console.warn("Cleanup failed for editLinkIncidentID:", response.message);
+      }
     }
   });
+
 });
 
 describe('Attachments Integration Tests --CMIS METADATA', () => {
