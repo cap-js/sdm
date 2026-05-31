@@ -561,6 +561,8 @@ jobs:
 
   subscription-test:
     runs-on: ubuntu-latest
+    needs: repospecific-integration-test
+    if: "!cancelled()"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
