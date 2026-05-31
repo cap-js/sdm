@@ -643,7 +643,7 @@ jobs:
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
-          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          appUrlMT="sdmgoogleworkspacedev-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
 
           (
             set +x
@@ -667,9 +667,9 @@ jobs:
             "consumerSubdomainMT1": "${{ secrets.CONSUMERSUBDOMAINMT1 }}",
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
             "consumerSubdomainMT2": "${{ secrets.CONSUMERSUBDOMAINMT2 }}",
-            "SAAS_APP_NAME": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest",
+            "SAAS_APP_NAME": "incidents-mtx-sdmgoogleworkspacedev-${{ env.space }}-multitenancytest",
             "ROLE_COLLECTION_NAME": "ak-test",
-            "APP_ROLE_FILTER": "incidents-mtx-${{ secrets.CF_ORG }}-${{ env.space }}-multitenancytest!t5256",
+            "APP_ROLE_FILTER": "incidents-mtx-sdmgoogleworkspacedev-${{ env.space }}-multitenancytest!t5256",
             "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
             "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",
             "APP_NAME": "incidents-srv",
