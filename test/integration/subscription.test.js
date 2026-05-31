@@ -12,7 +12,9 @@ const CF_LOGS_SCRIPT = path.join(SCRIPTS_DIR, 'cf-logs.sh');
 
 const SUBSCRIPTION_REPO_EXTERNAL_ID = credentials.defaultRepositoryIDMT || 'MULTITENANT-TEST-REPO';
 const MT_APP_NAME = credentials.MT_APP_NAME;
-const consumerSubdomain = credentials.consumerSubdomainMT1;
+const consumerSubdomain = process.env.TENANT === 'SDMGoogleWorkspaceConsumer'
+  ? credentials.consumerSubdomainMT2
+  : credentials.consumerSubdomainMT1;
 
 // Helper: check if a repo exists in consumer scope
 async function repoCheck(externalId) {
