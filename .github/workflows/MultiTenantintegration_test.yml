@@ -557,7 +557,7 @@ jobs:
 
   subscription-test:
     runs-on: ubuntu-latest
-    needs: repospecific-integration-test
+    needs: virusscan-repo-cleanup
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
