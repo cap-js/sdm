@@ -142,7 +142,6 @@ jobs:
   versioned-repo-setup:
     runs-on: ubuntu-latest
     needs: integration-test
-    if: "!cancelled()"
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -169,7 +168,6 @@ jobs:
   versioned-integration-test:
     runs-on: ubuntu-latest
     needs: versioned-repo-setup
-    if: "!cancelled() && needs.versioned-repo-setup.result == 'success'"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -261,7 +259,6 @@ jobs:
   virusscan-repo-setup:
     runs-on: ubuntu-latest
     needs: versioned-integration-test
-    if: "!cancelled()"
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -288,7 +285,6 @@ jobs:
   virusscan-integration-test:
     runs-on: ubuntu-latest
     needs: virusscan-repo-setup
-    if: "!cancelled() && needs.virusscan-repo-setup.result == 'success'"
     env:
       FILE_URL: ${{ 'http://www.eicar.org/download/eicar.com.txt' }}
       DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
@@ -391,8 +387,8 @@ jobs:
 
   virusscan-repo-cleanup:
     runs-on: ubuntu-latest
-    needs: virusscan-integration-test
-    if: always()
+    needs: [versioned-integration-test, virusscan-integration-test]
+    if: always() && (needs.versioned-integration-test.result != 'skipped' || needs.virusscan-integration-test.result != 'skipped')
     steps:
       - name: Install Cloud Foundry CLI
         run: |
@@ -418,8 +414,7 @@ jobs:
 
   repospecific-integration-test:
     runs-on: ubuntu-latest
-    needs: virusscan-repo-cleanup
-    if: "!cancelled()"
+    needs: [virusscan-integration-test, virusscan-repo-cleanup]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
