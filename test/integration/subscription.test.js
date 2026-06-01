@@ -8,7 +8,6 @@ const SCRIPTS_DIR = path.join(__dirname, 'utills');
 const SUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-subscribe.sh');
 const UNSUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-unsubscribe.sh');
 const REPO_MANAGE_SCRIPT = path.join(SCRIPTS_DIR, 'sdm-repo-manage.sh');
-const CF_LOGS_SCRIPT = path.join(SCRIPTS_DIR, 'cf-logs.sh');
 
 const SUBSCRIPTION_REPO_EXTERNAL_ID = credentials.defaultRepositoryIDMT || 'MULTITENANT-TEST-REPO';
 const MT_APP_NAME = credentials.MT_APP_NAME;
