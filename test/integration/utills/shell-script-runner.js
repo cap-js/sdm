@@ -1,7 +1,6 @@
 'use strict';
 
 const { execFile } = require('child_process');
-const path = require('path');
 
 /**
  * Runs a shell script and returns its exit code.
