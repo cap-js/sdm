@@ -9,10 +9,13 @@ on:
 
 permissions:
   pull-requests: read
+  id-token: write
+  contents: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    environment: dev
 
     steps:
       - name: Checkout repository

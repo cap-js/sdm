@@ -12,11 +12,14 @@ on:
 
 permissions:
   pull-requests: read
+  id-token: write  # Required for OIDC (future enhancement)
+  contents: read   # Required for OIDC
 
 jobs:
   deploy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    environment: dev
     steps:        
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -60,6 +63,7 @@ jobs:
   integration-test:
     needs: deploy
     runs-on: ubuntu-latest
+    environment: dev
 
     steps:
       - name: Checkout repository

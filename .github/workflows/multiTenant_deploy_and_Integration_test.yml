@@ -9,11 +9,14 @@ on:
 
 permissions:
   pull-requests: read
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    environment: dev
     steps:        
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -60,6 +63,7 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     needs: deploy
+    environment: dev
     steps:
       - name: Checkout repository ✅
         uses: actions/checkout@v2

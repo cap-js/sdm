@@ -26,10 +26,13 @@ on:
 
 permissions:
   pull-requests: read
+  id-token: write  # For future OIDC enhancement
+  contents: read
 
 jobs:
   Deploy:
     runs-on: ubuntu-latest
+    environment: dev  # Using dev environment with protected secrets
 
     steps:
       - name: Use Node.js 20.x

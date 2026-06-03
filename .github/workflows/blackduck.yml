@@ -12,10 +12,13 @@ on:
   
 permissions:
   pull-requests: read # allows SonarQube to decorate PRs with analysis results
+  id-token: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
