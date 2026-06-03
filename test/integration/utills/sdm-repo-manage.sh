@@ -92,7 +92,15 @@ if [[ -n "$SUBDOMAIN" ]]; then
 fi
 
 # --- Obtain OAuth2 access token (client_credentials grant) ---
+# If CMIS_ACCESS_TOKEN env var is already set (passed by the JS test harness),
+# skip the HTTP call and reuse it. This avoids one round-trip per script invocation
+# when tests pre-fetch the token once and pass it through execFile env option.
 get_token() {
+  if [[ -n "${CMIS_ACCESS_TOKEN:-}" ]]; then
+    ACCESS_TOKEN="$CMIS_ACCESS_TOKEN"
+    return
+  fi
+
   local TOKEN_RESPONSE
   TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
     --data-urlencode "grant_type=client_credentials" \
@@ -293,16 +301,28 @@ for r in repos:
 }
 
 # ===========================================================================
+# ACTION: get-token — Fetch an access token and print it to stdout.
+# Used by the JS test harness to obtain the token once and cache it,
+# then pass it back via CMIS_ACCESS_TOKEN env var on all subsequent
+# invocations to skip repeated HTTP round-trips.
+# ===========================================================================
+action_get_token() {
+  get_token
+  echo "$ACCESS_TOKEN"
+}
+
+# ===========================================================================
 # Dispatch action
 # ===========================================================================
 case "$ACTION" in
-  check)    action_check    ;;
-  onboard)  action_onboard  ;;
-  offboard) action_offboard ;;
-  list)     action_list     ;;
+  check)      action_check     ;;
+  onboard)    action_onboard   ;;
+  offboard)   action_offboard  ;;
+  list)       action_list      ;;
+  get-token)  action_get_token ;;
   *)
     echo "Unknown action: $ACTION"
-    echo "Usage: $0 {check|onboard|offboard|list} [options]"
+    echo "Usage: $0 {check|onboard|offboard|list|get-token} [options]"
     exit 2
     ;;
 esac
