@@ -7,10 +7,7 @@ on:
         description: 'CF Space to deploy'
         required: true
       sdm_branch:
-        description: 'Branch to clone sdm'
-        required: true
-      incidents_app_branch:
-        description: 'Branch to clone cap-js-incidents-app'
+        description: 'Branch to use for deployment'
         required: true
 
 permissions:
@@ -19,12 +16,17 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    steps:        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.sdm_branch }}
+
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x  
-          
+          node-version: 20.x
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -34,26 +36,25 @@ jobs:
           sudo apt update
           sudo apt install cf8-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.space }}
-       
-      - name: Clone and prepare projects & Build and deploy
-        env:
-          USERNAME: ${{ secrets.GH_USER_CAP_JS_INCIDENT_APP_MULTITENANCY }} # Add this secret with your GitHub username if needed
-          TOKEN: ${{ secrets.GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
+
+      - name: Prepare app & Build and deploy
         run: |
-          git clone --single-branch --branch ${{ github.event.inputs.sdm_branch }} https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch ${{ github.event.inputs.incidents_app_branch }} https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
-          cd sdm
           npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../cap-js-incidents-app
-          cd ../cap-js-incidents-app
+          mv *.tgz app/multi-tenant/personal-space/cap-js-incidents-app/
+          cd app/multi-tenant/personal-space/cap-js-incidents-app
           npm i *.tgz
-      
-      - name: Build and deploy
+
+      - name: Inject REPOSITORY_ID into mta.yaml
+        working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
         run: |
-          cd cap-js-incidents-app
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}"' mta.yaml
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}")' mta.yaml
+
+      - name: Build and deploy
+        working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
+        run: |
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/

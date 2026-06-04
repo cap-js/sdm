@@ -14,12 +14,15 @@ jobs:
   deploy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    steps:        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x  
-          
+          node-version: 20.x
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -29,26 +32,25 @@ jobs:
           sudo apt update
           sudo apt install cf8-cli
           cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
-       
-      - name: Clone and prepare projects & Build and deploy
-        env:
-          USERNAME: ${{ secrets.GH_USER_CAP_JS_INCIDENT_APP_MULTITENANCY }} # Add this secret with your GitHub username if needed
-          TOKEN: ${{ secrets.GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
+
+      - name: Prepare app & Build and deploy
         run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdm-mtx-develop https://$USERNAME:$TOKEN@github.tools.sap/I324829/cap-js-incidents-app.git
-          cd sdm
           npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../cap-js-incidents-app
-          cd ../cap-js-incidents-app
+          mv *.tgz app/multi-tenant/central-space/cap-js-incidents-app/
+          cd app/multi-tenant/central-space/cap-js-incidents-app
           npm i *.tgz
-      
-      - name: Build and deploy
+
+      - name: Inject REPOSITORY_ID into mta.yaml
+        working-directory: app/multi-tenant/central-space/cap-js-incidents-app
         run: |
-          cd cap-js-incidents-app
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}"' mta.yaml
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}")' mta.yaml
+
+      - name: Build and deploy
+        working-directory: app/multi-tenant/central-space/cap-js-incidents-app
+        run: |
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
@@ -61,15 +63,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     steps:
-      - name: Checkout repository ✅
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js environment ⚙️
-        uses: actions/setup-node@v2.1.5
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Cloud Foundry CLI and jq 📦
+      - name: Install Cloud Foundry CLI and jq
         run: |
           echo "🔧 Installing Cloud Foundry CLI and jq..."
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
@@ -77,7 +79,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install cf8-cli jq
 
-      - name: Login to Cloud Foundry 🔑
+      - name: Login to Cloud Foundry
         run: |
           echo "🔄 Logging in to Cloud Foundry..."
           cf login -a ${{ secrets.CF_API }} \
@@ -86,69 +88,83 @@ jobs:
             -o ${{ secrets.CF_ORG }} \
             -s ${{ secrets.CF_SPACE }}
 
-      - name: Fetch Multi Tenant Credentials 🔍
+      - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
         run: |
           echo "Fetching client details for multi tenant..."
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
-          
+
           if [ -z "$service_instance_guid_mt" ]; then
             echo "Warning: incidents-mtx-auth service not found, trying alternative service names..."
             service_instance_guid_mt=$(cf service sdm-incidents-mtx-auth --guid 2>/dev/null || echo "")
           fi
-          
+
           if [ -z "$service_instance_guid_mt" ]; then
             echo "❌ Error: Unable to retrieve multitenant service instance GUID"; exit 1;
           fi
-          
+
           bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid_mt}")
           binding_guid_mt=$(echo $bindings_response_mt | jq -r '.resources[0].guid')
-          
+
           if [ -z "$binding_guid_mt" ] || [ "$binding_guid_mt" == "null" ]; then
             echo "❌ Error: Unable to retrieve multitenant binding GUID"; exit 1;
           fi
-          
+
           binding_details_mt=$(cf curl "/v3/service_credential_bindings/${binding_guid_mt}/details")
-          
+
           clientSecretMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientsecret')
           clientIDMT=$(echo "$binding_details_mt" | jq -r '.credentials.clientid')
-          
+
           if [ -z "$clientSecretMT" ] || [ "$clientSecretMT" == "null" ] || [ -z "$clientIDMT" ] || [ "$clientIDMT" == "null" ]; then
             echo "❌ Error: Invalid MT credentials from service"; exit 1;
           fi
-          
+
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_ENV
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_ENV
+          echo "::add-mask::${escapedClientSecretMT}"
+          echo "::add-mask::${clientIDMT}"
           echo "✅ Multi-tenant client details fetched successfully!"
 
-      - name: Run Integration Tests 🎯
+      - name: Run Integration Tests
         run: |
           echo "🚀 Starting multi-tenant integration tests..."
-          
+
           JSON_FILE="test/integration/credentials.json"
-          
+
           appUrlMT="${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
-          
-          cat > "$JSON_FILE" <<EOL
-          {
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "clientIDMT": "${{ env.CLIENT_ID_MT }}",
-            "clientSecretMT": "${{ env.CLIENT_SECRET_MT }}",
-            "appUrlMT": "$appUrlMT",
-            "authUrlMTSDC": "${{ secrets.AUTHURLMT1 }}",
-            "authUrlMTGWC": "${{ secrets.AUTHURLMT2 }}"
-          }
-          EOL
-          
+
+          (
+            set +x
+            jq \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg clientIDMT "${{ env.CLIENT_ID_MT }}" \
+              --arg clientSecretMT "${{ env.CLIENT_SECRET_MT }}" \
+              --arg appUrlMT "$appUrlMT" \
+              --arg authUrlMTSDC "${{ secrets.AUTHURLMT1 }}" \
+              --arg authUrlMTGWC "${{ secrets.AUTHURLMT2 }}" \
+              '
+              .username = $username
+              | .password = $password
+              | .noSDMRoleUsername = $noSDMRoleUsername
+              | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+              | .clientIDMT = $clientIDMT
+              | .clientSecretMT = $clientSecretMT
+              | .appUrlMT = $appUrlMT
+              | .authUrlMTSDC = $authUrlMTSDC
+              | .authUrlMTGWC = $authUrlMTGWC
+              ' "$JSON_FILE" > "temp.json"
+          )
+          mv "temp.json" "$JSON_FILE"
+
           echo "Generated credentials.json (with masked secrets):"
           cat "$JSON_FILE" | jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword)'
-          
+
           npm install
-          
+
           echo ""
           echo "📋 Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
@@ -156,7 +172,7 @@ jobs:
           echo ""
           echo "📋 Running Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 1)..."
           TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test-non-draft
-          
+
           echo ""
           echo "📋 Running Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 2)..."
           TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
@@ -167,18 +183,18 @@ jobs:
 
           echo ""
           echo "📋 Running Technical user Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 1)..."
-            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
-  
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test
+
           echo ""
           echo "📋 Running Technical user Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 1)..."
-            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test-non-draft
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDM-DEV-CONSUMER-EU12 npm run integration-test-non-draft
 
           echo ""
           echo "📋 Running Technical user Multi-Tenant Draft-enabled Entity(Books) Integration Tests (Tenant 2)..."
-            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test
 
           echo ""
           echo "📋 Running Technical user Multi-Tenant Non-draft Entity(Projects) Integration Tests (Tenant 2)..."
-            TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test-non-draft
-          
+          TOKEN_FLOW=technicalUser TENANCY_MODEL=multi TENANT=SDMGoogleWorkspaceConsumer npm run integration-test-non-draft
+
           echo "✅ All integration tests completed!"
