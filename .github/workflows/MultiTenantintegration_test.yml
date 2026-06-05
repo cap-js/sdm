@@ -58,8 +58,6 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
-        env:
-          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           echo "Fetching client details for multi tenant..."
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
@@ -95,16 +93,46 @@ jobs:
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
 
-          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
-          echo "::add-mask::${escapedCmisClientSecretMT}"
-          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+          # Fetch SDM CMIS credentials from the 'incidents-mtx-sdm' service binding for incidents-mtx-srv
+          cmis_service_guid_mt=$(cf service incidents-mtx-sdm --guid)
+          if [ -z "$cmis_service_guid_mt" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm service instance GUID"; exit 1;
+          fi
+          cmis_bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${cmis_service_guid_mt}")
+          mtx_app_guid=$(cf app incidents-mtx-srv --guid)
+          cmis_binding_guid_mt=$(echo "$cmis_bindings_response_mt" | jq -r \
+            --arg app_guid "$mtx_app_guid" \
+            '.resources[] | select(.relationships.app.data.guid == $app_guid) | .guid' | head -1)
+          if [ -z "$cmis_binding_guid_mt" ] || [ "$cmis_binding_guid_mt" = "null" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm binding GUID for incidents-mtx-srv"; exit 1;
+          fi
+          cmis_binding_details_mt=$(cf curl "/v3/service_credential_bindings/${cmis_binding_guid_mt}/details")
+          cmis_client_secret_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientsecret // .credentials.clientsecret // empty')
+          if [ -z "$cmis_client_secret_mt" ] || [ "$cmis_client_secret_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientsecret is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_secret_mt}"
+          cmis_client_id_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientid // .credentials.clientid // empty')
+          if [ -z "$cmis_client_id_mt" ] || [ "$cmis_client_id_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientid is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_id_mt}"
+          cmis_url_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uri // .credentials.endpoints.ecm_service // .credentials.url // empty')
+          if [ -z "$cmis_url_mt" ] || [ "$cmis_url_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
+          fi
+          echo "::add-mask::${cmis_url_mt}"
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
-          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_ID_MT }}
           CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
+          CMIS_URL: ${{ steps.fetch_credentials_mt.outputs.CMIS_URL_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -126,7 +154,7 @@ jobs:
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "CMIS_URL": "${{ env.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
             "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
@@ -136,7 +164,7 @@ jobs:
           )
 
           echo "Generated credentials.json:"
-          jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword, .cmisClientSecret)' "$JSON_FILE"
+          jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword, .cmisClientSecretMT)' "$JSON_FILE"
 
           npm install
 
@@ -218,8 +246,6 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
-        env:
-          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -238,16 +264,46 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
-          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
-          echo "::add-mask::${escapedCmisClientSecretMT}"
-          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+          # Fetch SDM CMIS credentials from the 'incidents-mtx-sdm' service binding for incidents-mtx-srv
+          cmis_service_guid_mt=$(cf service incidents-mtx-sdm --guid)
+          if [ -z "$cmis_service_guid_mt" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm service instance GUID"; exit 1;
+          fi
+          cmis_bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${cmis_service_guid_mt}")
+          mtx_app_guid=$(cf app incidents-mtx-srv --guid)
+          cmis_binding_guid_mt=$(echo "$cmis_bindings_response_mt" | jq -r \
+            --arg app_guid "$mtx_app_guid" \
+            '.resources[] | select(.relationships.app.data.guid == $app_guid) | .guid' | head -1)
+          if [ -z "$cmis_binding_guid_mt" ] || [ "$cmis_binding_guid_mt" = "null" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm binding GUID for incidents-mtx-srv"; exit 1;
+          fi
+          cmis_binding_details_mt=$(cf curl "/v3/service_credential_bindings/${cmis_binding_guid_mt}/details")
+          cmis_client_secret_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientsecret // .credentials.clientsecret // empty')
+          if [ -z "$cmis_client_secret_mt" ] || [ "$cmis_client_secret_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientsecret is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_secret_mt}"
+          cmis_client_id_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientid // .credentials.clientid // empty')
+          if [ -z "$cmis_client_id_mt" ] || [ "$cmis_client_id_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientid is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_id_mt}"
+          cmis_url_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uri // .credentials.endpoints.ecm_service // .credentials.url // empty')
+          if [ -z "$cmis_url_mt" ] || [ "$cmis_url_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
+          fi
+          echo "::add-mask::${cmis_url_mt}"
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
-          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_ID_MT }}
           CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
+          CMIS_URL: ${{ steps.fetch_credentials_mt.outputs.CMIS_URL_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -269,7 +325,7 @@ jobs:
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "CMIS_URL": "${{ env.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
             "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
@@ -348,8 +404,6 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
-        env:
-          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -368,9 +422,38 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
-          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
-          echo "::add-mask::${escapedCmisClientSecretMT}"
-          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+          # Fetch SDM CMIS credentials from the 'incidents-mtx-sdm' service binding for incidents-mtx-srv
+          cmis_service_guid_mt=$(cf service incidents-mtx-sdm --guid)
+          if [ -z "$cmis_service_guid_mt" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm service instance GUID"; exit 1;
+          fi
+          cmis_bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${cmis_service_guid_mt}")
+          mtx_app_guid=$(cf app incidents-mtx-srv --guid)
+          cmis_binding_guid_mt=$(echo "$cmis_bindings_response_mt" | jq -r \
+            --arg app_guid "$mtx_app_guid" \
+            '.resources[] | select(.relationships.app.data.guid == $app_guid) | .guid' | head -1)
+          if [ -z "$cmis_binding_guid_mt" ] || [ "$cmis_binding_guid_mt" = "null" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm binding GUID for incidents-mtx-srv"; exit 1;
+          fi
+          cmis_binding_details_mt=$(cf curl "/v3/service_credential_bindings/${cmis_binding_guid_mt}/details")
+          cmis_client_secret_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientsecret // .credentials.clientsecret // empty')
+          if [ -z "$cmis_client_secret_mt" ] || [ "$cmis_client_secret_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientsecret is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_secret_mt}"
+          cmis_client_id_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientid // .credentials.clientid // empty')
+          if [ -z "$cmis_client_id_mt" ] || [ "$cmis_client_id_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientid is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_id_mt}"
+          cmis_url_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uri // .credentials.endpoints.ecm_service // .credentials.url // empty')
+          if [ -z "$cmis_url_mt" ] || [ "$cmis_url_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
+          fi
+          echo "::add-mask::${cmis_url_mt}"
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -385,8 +468,9 @@ jobs:
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
-          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_ID_MT }}
           CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
+          CMIS_URL: ${{ steps.fetch_credentials_mt.outputs.CMIS_URL_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -408,7 +492,7 @@ jobs:
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "CMIS_URL": "${{ env.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
             "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
@@ -486,8 +570,6 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
-        env:
-          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -506,16 +588,46 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
-          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
-          echo "::add-mask::${escapedCmisClientSecretMT}"
-          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+          # Fetch SDM CMIS credentials from the 'incidents-mtx-sdm' service binding for incidents-mtx-srv
+          cmis_service_guid_mt=$(cf service incidents-mtx-sdm --guid)
+          if [ -z "$cmis_service_guid_mt" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm service instance GUID"; exit 1;
+          fi
+          cmis_bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${cmis_service_guid_mt}")
+          mtx_app_guid=$(cf app incidents-mtx-srv --guid)
+          cmis_binding_guid_mt=$(echo "$cmis_bindings_response_mt" | jq -r \
+            --arg app_guid "$mtx_app_guid" \
+            '.resources[] | select(.relationships.app.data.guid == $app_guid) | .guid' | head -1)
+          if [ -z "$cmis_binding_guid_mt" ] || [ "$cmis_binding_guid_mt" = "null" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm binding GUID for incidents-mtx-srv"; exit 1;
+          fi
+          cmis_binding_details_mt=$(cf curl "/v3/service_credential_bindings/${cmis_binding_guid_mt}/details")
+          cmis_client_secret_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientsecret // .credentials.clientsecret // empty')
+          if [ -z "$cmis_client_secret_mt" ] || [ "$cmis_client_secret_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientsecret is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_secret_mt}"
+          cmis_client_id_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientid // .credentials.clientid // empty')
+          if [ -z "$cmis_client_id_mt" ] || [ "$cmis_client_id_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientid is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_id_mt}"
+          cmis_url_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uri // .credentials.endpoints.ecm_service // .credentials.url // empty')
+          if [ -z "$cmis_url_mt" ] || [ "$cmis_url_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
+          fi
+          echo "::add-mask::${cmis_url_mt}"
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
-          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_ID_MT }}
           CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
+          CMIS_URL: ${{ steps.fetch_credentials_mt.outputs.CMIS_URL_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -537,7 +649,7 @@ jobs:
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "CMIS_URL": "${{ env.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
             "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "APP_NAME": "incidents-srv",
@@ -606,8 +718,6 @@ jobs:
 
       - name: Fetch Multi Tenant Credentials
         id: fetch_credentials_mt
-        env:
-          RAW_CMIS_CLIENT_SECRET_MT: ${{ secrets.CMISCLIENTSECRETMT }}
         run: |
           service_instance_guid_mt=$(cf service incidents-mtx-auth --guid 2>/dev/null || echo "")
           if [ -z "$service_instance_guid_mt" ]; then
@@ -626,16 +736,46 @@ jobs:
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
           echo "CLIENT_ID_MT=${clientIDMT}" >> $GITHUB_OUTPUT
-          escapedCmisClientSecretMT=$(printf '%s' "$RAW_CMIS_CLIENT_SECRET_MT" | sed 's/\$/\\$/g')
-          echo "::add-mask::${escapedCmisClientSecretMT}"
-          echo "CMIS_CLIENT_SECRET_MT=${escapedCmisClientSecretMT}" >> $GITHUB_OUTPUT
+          # Fetch SDM CMIS credentials from the 'incidents-mtx-sdm' service binding for incidents-mtx-srv
+          cmis_service_guid_mt=$(cf service incidents-mtx-sdm --guid)
+          if [ -z "$cmis_service_guid_mt" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm service instance GUID"; exit 1;
+          fi
+          cmis_bindings_response_mt=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${cmis_service_guid_mt}")
+          mtx_app_guid=$(cf app incidents-mtx-srv --guid)
+          cmis_binding_guid_mt=$(echo "$cmis_bindings_response_mt" | jq -r \
+            --arg app_guid "$mtx_app_guid" \
+            '.resources[] | select(.relationships.app.data.guid == $app_guid) | .guid' | head -1)
+          if [ -z "$cmis_binding_guid_mt" ] || [ "$cmis_binding_guid_mt" = "null" ]; then
+            echo "Error: Unable to retrieve incidents-mtx-sdm binding GUID for incidents-mtx-srv"; exit 1;
+          fi
+          cmis_binding_details_mt=$(cf curl "/v3/service_credential_bindings/${cmis_binding_guid_mt}/details")
+          cmis_client_secret_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientsecret // .credentials.clientsecret // empty')
+          if [ -z "$cmis_client_secret_mt" ] || [ "$cmis_client_secret_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientsecret is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_secret_mt}"
+          cmis_client_id_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uaa.clientid // .credentials.clientid // empty')
+          if [ -z "$cmis_client_id_mt" ] || [ "$cmis_client_id_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm clientid is not set or is null"; exit 1;
+          fi
+          echo "::add-mask::${cmis_client_id_mt}"
+          cmis_url_mt=$(echo "$cmis_binding_details_mt" | jq -r '.credentials.uri // .credentials.endpoints.ecm_service // .credentials.url // empty')
+          if [ -z "$cmis_url_mt" ] || [ "$cmis_url_mt" = "null" ]; then
+            echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
+          fi
+          echo "::add-mask::${cmis_url_mt}"
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run subscription tests
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
-          CMIS_CLIENT_ID_MT: ${{ secrets.CMISCLIENTIDMT }}
+          CMIS_CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_ID_MT }}
           CMIS_CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CMIS_CLIENT_SECRET_MT }}
+          CMIS_URL: ${{ steps.fetch_credentials_mt.outputs.CMIS_URL_MT }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -656,7 +796,7 @@ jobs:
             "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
             "defaultRepositoryIDMT": "${{ secrets.DEFAULTREPOSITORYIDMT }}",
             "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
+            "CMIS_URL": "${{ env.CMIS_URL }}",
             "cmisClientIDMT": "${{ env.CMIS_CLIENT_ID_MT }}",
             "cmisClientSecretMT": "${{ env.CMIS_CLIENT_SECRET_MT }}",
             "consumerSubaccountIdMT1": "${{ secrets.CONSUMERSUBACCOUNTIDMT1 }}",
