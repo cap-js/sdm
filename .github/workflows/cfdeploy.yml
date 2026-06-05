@@ -25,14 +25,19 @@ on:
         default: 'abc'
 
 permissions:
-  pull-requests: read
-  id-token: write  # For future OIDC enhancement
   contents: read
+  id-token: write  # For future OIDC enhancement
 
 jobs:
   Deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: dev  # Using dev environment with protected secrets
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
 
     steps:
       - name: Use Node.js 20.x
@@ -48,7 +53,7 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf8-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ github.event.inputs.cfspace }}
+          cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "${{ github.event.inputs.cfspace }}"
       - name: Clone projects & Update manifest/mta files
         run: |
           echo "Cloning repositories and preparing files..."

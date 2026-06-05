@@ -44,7 +44,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: dev
+    timeout-minutes: 30
+    environment: pr-analysis
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -57,7 +58,7 @@ jobs:
           npm run test
           
       - name: Analyze with SonarQube
-        uses: sonarsource/sonarqube-scan-action@master
+        uses: sonarsource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -77,7 +78,7 @@ jobs:
       # following lines. This would typically be used to fail a deployment.
       # We do not recommend to use this in a pull request. Prefer using pull request
       # decoration instead.
-      -  uses: sonarsource/sonarqube-quality-gate-action@master
+      -  uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
          timeout-minutes: 5
          env:
            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
