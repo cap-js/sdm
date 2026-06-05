@@ -1,9 +1,6 @@
 # CODEOWNERS — changes to these paths require approval from the designated owners
 # before a PR can be merged (enforced when branch protection requires CODEOWNER review).
-#
-# Replace @cap-js/devops-team with your actual GitHub org/team or individual usernames.
-# Multiple owners can be listed: @cap-js/devops-team @cap-js/security-team
 
-# Any change to workflow files or GitHub config must be reviewed by the DevOps/security team
-/.github/                    @cap-js/devops-team
-/.github/workflows/          @cap-js/devops-team
+# Any change to workflow files or GitHub config must be reviewed by the designated owner
+/.github/                    @vibhutikumar07
+/.github/workflows/          @vibhutikumar07
