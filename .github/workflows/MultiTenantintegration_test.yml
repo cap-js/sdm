@@ -122,9 +122,11 @@ jobs:
             echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url_mt}"
-          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret_mt=$(echo "$cmis_client_secret_mt" | sed 's/\$/\\$/g')
+          escaped_cmis_url_mt=$(echo "$cmis_url_mt" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run integration tests
         env:
@@ -293,9 +295,11 @@ jobs:
             echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url_mt}"
-          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret_mt=$(echo "$cmis_client_secret_mt" | sed 's/\$/\\$/g')
+          escaped_cmis_url_mt=$(echo "$cmis_url_mt" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
         env:
@@ -451,9 +455,11 @@ jobs:
             echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url_mt}"
-          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret_mt=$(echo "$cmis_client_secret_mt" | sed 's/\$/\\$/g')
+          escaped_cmis_url_mt=$(echo "$cmis_url_mt" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -617,9 +623,11 @@ jobs:
             echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url_mt}"
-          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret_mt=$(echo "$cmis_client_secret_mt" | sed 's/\$/\\$/g')
+          escaped_cmis_url_mt=$(echo "$cmis_url_mt" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
         env:
@@ -765,9 +773,11 @@ jobs:
             echo "Error: incidents-mtx-sdm CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url_mt}"
-          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$cmis_client_secret_mt" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret_mt=$(echo "$cmis_client_secret_mt" | sed 's/\$/\\$/g')
+          escaped_cmis_url_mt=$(echo "$cmis_url_mt" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL_MT=%s\n' "$cmis_url_mt" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run subscription tests
         env:
