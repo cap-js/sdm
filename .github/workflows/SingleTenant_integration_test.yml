@@ -115,9 +115,11 @@ jobs:
             echo "Error: SDM CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url}"
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$cmis_client_secret" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
+          escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run integration tests
         env:
@@ -268,9 +270,11 @@ jobs:
             echo "Error: SDM CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url}"
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$cmis_client_secret" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
+          escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run versioned integration tests
         env:
@@ -416,9 +420,11 @@ jobs:
             echo "Error: SDM CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url}"
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$cmis_client_secret" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
+          escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
 
       - name: Download virus test file
         run: |
@@ -572,9 +578,11 @@ jobs:
             echo "Error: SDM CMIS URL not found in binding details"; exit 1;
           fi
           echo "::add-mask::${cmis_url}"
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$cmis_client_secret" >> $GITHUB_OUTPUT
+          escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
+          escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
 
       - name: Generate credentials.json and run repo-specific integration tests
         env:
