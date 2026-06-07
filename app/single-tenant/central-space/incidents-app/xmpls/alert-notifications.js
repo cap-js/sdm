@@ -15,7 +15,7 @@ module.exports = class ProcessorService extends cds.ApplicationService {
     this.after ('CREATE', Incidents, async incident => {
       let [ customer, supporters ] = await Promise.all ([
         customer4 (incident),
-        supporters4 (incident)
+        supporters4 ()
       ])
       await alert.notify ({
         recipients: supporters,
