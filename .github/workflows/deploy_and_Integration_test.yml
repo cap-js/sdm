@@ -28,6 +28,9 @@ jobs:
       CF_ORG: ${{ secrets.CF_ORG }}
       CF_SPACE: ${{ secrets.CF_SPACE }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:

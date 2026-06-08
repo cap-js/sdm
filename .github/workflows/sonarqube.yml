@@ -48,7 +48,7 @@ jobs:
     environment: pr-analysis
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
           
@@ -78,7 +78,7 @@ jobs:
       # following lines. This would typically be used to fail a deployment.
       # We do not recommend to use this in a pull request. Prefer using pull request
       # decoration instead.
-      -  uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
-         timeout-minutes: 5
-         env:
-           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # - uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+      #   timeout-minutes: 5
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

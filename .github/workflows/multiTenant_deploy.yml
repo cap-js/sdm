@@ -24,6 +24,11 @@ jobs:
       CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
       CF_ORG: ${{ secrets.CF_ORG }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.sdm_branch }}
+
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
@@ -39,10 +44,7 @@ jobs:
           sudo apt install cf8-cli
           cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "${{ github.event.inputs.space }}"
        
-      - name: Clone and prepare projects & Build and deploy
-        env:
-          USERNAME: ${{ secrets.GH_USER_CAP_JS_INCIDENT_APP_MULTITENANCY }} # Add this secret with your GitHub username if needed
-          TOKEN: ${{ secrets.GH_TOKEN_CAP_JS_INCIDENT_APP_MULTITENANCY }}
+      - name: Prepare app & Build and deploy
         run: |
           npm pack
           mv *.tgz app/multi-tenant/personal-space/cap-js-incidents-app/
