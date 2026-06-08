@@ -46,7 +46,9 @@ module.exports = class ProcessorService extends cds.ApplicationService {
     const { Customers } = this.entities
     const customer4 = async incident => {
       let customer = await SELECT.from (Customers, incident.customer_ID, c => {
-        c.firstName, c.lastName, c.email
+        c.firstName
+        c.lastName
+        c.email
       })
       customer.info = `${customer.firstName} ${customer.lastName} (${customer.email})`
       customer.id = cds.context.user.id // Fake customer id for demo purposes only
