@@ -11,11 +11,16 @@ on:
   workflow_dispatch:
   
 permissions:
-  pull-requests: read # allows SonarQube to decorate PRs with analysis results
+  id-token: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: pr-analysis
+    env:
+      BLACKDUCK_TOKEN: ${{ secrets.BLACKDUCK_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -38,9 +43,9 @@ jobs:
       - name: Run BlackDuck Scan - SDM plugin
         run: |
           bash ./detect9.sh \
-          --logging.level.com.synopsys.integration=DEBUG  \
+          --logging.level.com.synopsys.integration=WARN  \
           --blackduck.url="https://sap.blackducksoftware.com" \
-          --blackduck.api.token=""${{ secrets.BLACKDUCK_TOKEN }}""   \
+          --blackduck.api.token="$BLACKDUCK_TOKEN" \
           --detect.blackduck.signature.scanner.arguments="--min-scan-interval=0" \
           --detect.npm.arguments \
           --detect.latest.release.version="9.6.0" \
