@@ -7426,22 +7426,6 @@ describe("SDMAttachmentsService", () => {
           elements: {}
         };
         const attachment = { ID: 'att-005', filename: 'contract.pdf', note: 'New note for non-draft' };
-
-        // _fetchCurrentAttachment result
-        const fetchSelectMock = {
-          where: jest.fn().mockResolvedValue({
-            filename: 'contract.pdf',
-            url: 'obj-005',
-            note: null
-          }),
-          columns: jest.fn().mockReturnThis()
-        };
-        // _getNoteFromDB result
-        const noteSelectMock = {
-          where: jest.fn().mockResolvedValue({ note: null }),
-          columns: jest.fn().mockReturnThis()
-        };
-
         cds.ql.SELECT = {
           one: {
             from: jest.fn().mockImplementation(() => ({
