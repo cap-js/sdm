@@ -54,6 +54,7 @@ jobs:
           --detect.code.location.name="SAP_DOC_MGMT_CAP_NODEJS 1.0/1.0" \
           --detect.source.path="/home/runner/work/sdm/sdm" \
           --detect.excluded.directories="app/single-tenant/personal-space,app/multi-tenant/personal-space" \
+          --detect.detector.search.depth=5 \
           --detect.npm.dependency.types.excluded=DEV
 
 
