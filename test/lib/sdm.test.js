@@ -3014,6 +3014,7 @@ describe("SDMAttachmentsService", () => {
         }
       }
       service = new SDMAttachmentsService();
+      service.creds = { uri: "https://example.local" };
       NodeCache.prototype.get.mockImplementation(() => undefined);
       getConfigurations.mockResolvedValueOnce({repositoryId: "123"});
       getRepositoryInfo.mockResolvedValueOnce(repoInfo);
@@ -3214,6 +3215,26 @@ describe("SDMAttachmentsService", () => {
       getURLsToDeleteFromAttachments.mockResolvedValueOnce([]); // returning empty array
       await service.attachDeletionData(mockReq);
       expect(mockReq.attachmentsToDelete).toBeUndefined();
+    });
+
+    it("should skip deletion data processing when SDM credentials are missing", async () => {
+      service.creds = undefined;
+
+      const mockReq = {
+        target: { name: "myName" },
+        diff: jest.fn().mockResolvedValue({
+          references: [{ _op: "delete", ID: "1" }],
+        }),
+        event: "DELETE",
+      };
+
+      await service.attachDeletionData(mockReq);
+
+      expect(mockReq.diff).not.toHaveBeenCalled();
+      expect(getURLsToDeleteFromAttachments).not.toHaveBeenCalled();
+      expect(getFolderIdByIDAsPath).not.toHaveBeenCalled();
+      expect(mockReq.attachmentsToDelete).toBeUndefined();
+      expect(mockReq.parentId).toBeUndefined();
     });
   });
 
