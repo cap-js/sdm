@@ -8,18 +8,30 @@ on:
         required: true
 
 permissions:
-  pull-requests: read
+  id-token: write
+  contents: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+      CAPAUTH_URL: ${{ secrets.CAPAUTH_URL }}
+      NOSDMROLEUSERNAME: ${{ secrets.NOSDMROLEUSERNAME }}
+      NOSDMROLEUSERPASSWORD: ${{ secrets.NOSDMROLEUSERPASSWORD }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v2.1.5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -34,7 +46,7 @@ jobs:
         id: determine_space
         run: |
           if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
-            space="${{ secrets.CF_SPACE }}"
+            space="$CF_SPACE"
           else
             space="${{ github.event.inputs.cf_space }}"
           fi
@@ -43,12 +55,11 @@ jobs:
 
       - name: Login to Cloud Foundry
         run: |
-          echo "Org Name: ${{ secrets.CF_ORG }}"
-          # Do not log space name to avoid unintended exposure
-          cf login -a "${{ secrets.CF_API }}" \
-            -u "${{ secrets.CF_USER }}" \
-            -p "${{ secrets.CF_PASSWORD }}" \
-            -o "${{ secrets.CF_ORG }}" \
+          # Do not log space name or org to avoid unintended exposure
+          cf login -a "$CF_API" \
+            -u "$CF_USER" \
+            -p "$CF_PASSWORD" \
+            -o "$CF_ORG" \
             -s "${{ env.space }}"
 
       - name: Fetch and Mask Client Secret and ID
@@ -78,32 +89,34 @@ jobs:
             echo "Error: clientID is not set or is null"; exit 1;
           fi
 
+          # Mask both raw and escaped forms — if secret contains '$', they differ
+          echo "::add-mask::${clientSecret}"
+          echo "::add-mask::${escapedClientSecret}"
+          echo "::add-mask::${clientID}"
+
           # Export to env
           echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
           echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
 
-          # Mask secrets in logs to prevent any appearance from being printed
-          echo "::add-mask::${escapedClientSecret}"
-          echo "::add-mask::${clientID}"
-
       - name: Run integration tests
         run: |
-          appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
-          echo "app url: ${appUrl}"
           JSON_FILE="test/integration/credentials.json"
+          trap 'rm -f "$JSON_FILE"' EXIT
+
+          appUrl="$CF_ORG-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
 
           # Avoid echoing command with secrets: run sensitive jq in a subshell with xtrace disabled
           (
             set +x
             jq \
               --arg appUrl "$appUrl" \
-              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg authUrl "$CAPAUTH_URL" \
               --arg clientID "${{ env.CLIENT_ID }}" \
               --arg clientSecret "${{ env.CLIENT_SECRET }}" \
-              --arg username "${{ secrets.CF_USER }}" \
-              --arg password "${{ secrets.CF_PASSWORD }}" \
-              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
-              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg username "$CF_USER" \
+              --arg password "$CF_PASSWORD" \
+              --arg noSDMRoleUsername "$NOSDMROLEUSERNAME" \
+              --arg noSDMRoleUserPassword "$NOSDMROLEUSERPASSWORD" \
               '
               .appUrl = $appUrl
               | .authUrl = $authUrl
@@ -117,8 +130,8 @@ jobs:
           )
           mv "temp.json" "$JSON_FILE"
 
-          # Print only non-sensitive fields
-          jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
+          # Print only non-sensitive fields — never print credential fields
+          jq '{ appUrl, authUrl }' "$JSON_FILE"
 
           npm install
 
