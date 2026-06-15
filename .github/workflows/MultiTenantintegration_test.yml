@@ -14,19 +14,31 @@ on:
         default: develop
 
 permissions:
-  pull-requests: read
+  contents: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+      NOSDMROLEUSERNAME: ${{ secrets.NOSDMROLEUSERNAME }}
+      NOSDMROLEUSERPASSWORD: ${{ secrets.NOSDMROLEUSERPASSWORD }}
+      AUTHURLMT1: ${{ secrets.AUTHURLMT1 }}
+      AUTHURLMT2: ${{ secrets.AUTHURLMT2 }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository ✅
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
-      - name: Setup Node.js environment
+      - name: Setup Node.js environment ⚙️
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -41,8 +53,10 @@ jobs:
       - name: Determine Cloud Foundry Space
         id: determine_space
         run: |
-          if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
-            space="${{ secrets.CF_SPACE }}"
+          if [ "${{ github.event_name }}" == "push" ]; then
+            space="$CF_SPACE"
+          elif [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+            space="$CF_SPACE"
           else
             space="${{ github.event.inputs.cf_space }}"
           fi
@@ -50,13 +64,14 @@ jobs:
 
       - name: Login to Cloud Foundry
         run: |
-          cf login -a "${{ secrets.CF_API }}" \
-            -u "${{ secrets.CF_USER }}" \
-            -p "${{ secrets.CF_PASSWORD }}" \
-            -o "${{ secrets.CF_ORG }}" \
+          echo "🔄 Logging in to Cloud Foundry..."
+          cf login -a "$CF_API" \
+            -u "$CF_USER" \
+            -p "$CF_PASSWORD" \
+            -o "$CF_ORG" \
             -s "${{ env.space }}"
 
-      - name: Fetch Multi Tenant Credentials
+      - name: Fetch Multi Tenant Credentials 🔍
         id: fetch_credentials_mt
         run: |
           echo "Fetching client details for multi tenant..."
@@ -88,6 +103,9 @@ jobs:
           fi
 
           escapedClientSecretMT=$(echo "$clientSecretMT" | sed 's/\$/\\$/g')
+          # Mask both raw and escaped forms — they differ if the secret contains '$',
+          # and GitHub only masks exact string matches
+          echo "::add-mask::${clientSecretMT}"
           echo "::add-mask::${escapedClientSecretMT}"
           echo "::add-mask::${clientIDMT}"
           echo "CLIENT_SECRET_MT=${escapedClientSecretMT}" >> $GITHUB_OUTPUT
@@ -127,8 +145,9 @@ jobs:
           printf 'CMIS_CLIENT_SECRET_MT=%s\n' "$escaped_cmis_client_secret_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_CLIENT_ID_MT=%s\n' "$cmis_client_id_mt" >> $GITHUB_OUTPUT
           printf 'CMIS_URL_MT=%s\n' "$escaped_cmis_url_mt" >> $GITHUB_OUTPUT
+          echo "✅ Multi-tenant client details fetched successfully!"
 
-      - name: Generate credentials.json and run integration tests
+      - name: Run Integration Tests 🎯
         env:
           CLIENT_SECRET_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_SECRET_MT }}
           CLIENT_ID_MT: ${{ steps.fetch_credentials_mt.outputs.CLIENT_ID_MT }}
@@ -138,7 +157,11 @@ jobs:
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
-          appUrlMT="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
+          trap 'rm -f "$JSON_FILE"' EXIT
+
+          echo "🚀 Starting multi-tenant integration tests..."
+
+          appUrlMT="$CF_ORG-${{ env.space }}-incidents-mtx-srv.cfapps.eu12.hana.ondemand.com"
 
           (
             set +x
@@ -165,8 +188,9 @@ jobs:
           EOL
           )
 
-          echo "Generated credentials.json:"
-          jq 'del(.password, .clientSecretMT, .noSDMRoleUserPassword, .cmisClientSecretMT)' "$JSON_FILE"
+          # Print only non-sensitive fields — never print credential fields
+          echo "Generated credentials.json (with masked secrets):"
+          jq '{ appUrlMT }' "$JSON_FILE"
 
           npm install
 

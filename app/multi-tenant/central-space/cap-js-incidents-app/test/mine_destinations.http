@@ -1,0 +1,18 @@
+@access_token={{$dotenv incidents-mtx-destination_TOKEN}}
+
+#######
+# https://help.sap.com/docs/connectivity/sap-btp-connectivity-cf/calling-destination-service-rest-api
+# https://api.sap.com/api/SAP_CP_CF_Connectivity_Destination/path/get_subaccountDestinations
+#######
+
+###
+# Get subaccount destinations
+GET https://destination-configuration.cfapps.eu12.hana.ondemand.com/destination-configuration/v1/subaccountDestinations
+Authorization: Bearer {{access_token}}
+content-type: application/json
+
+###
+# Get service instance destinations
+GET https://destination-configuration.cfapps.eu12.hana.ondemand.com/destination-configuration/v1/instanceDestinations
+Authorization: Bearer {{access_token}}
+content-type: application/json
