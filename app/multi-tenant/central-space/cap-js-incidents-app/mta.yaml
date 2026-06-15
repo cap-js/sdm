@@ -1,0 +1,257 @@
+_schema-version: "3.1"
+ID: capire.incidents.mtx
+description: A simple CAP project.
+version: 0.0.3
+modules:
+  - name: incidents-mtx-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+      readiness-health-check-type: http
+      readiness-health-check-http-endpoint: /health
+    properties:
+      REPOSITORY_ID: REPLACE_WITH_YOUR_REPOSITORY_ID
+    build-parameters:
+      builder: npm
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: incidents-mtx-db
+      - name: incidents-mtx-auth
+      - name: incidents-mtx-destination
+      - name: incidents-mtx-sdm
+
+  - name: incidents-mtx-mtx
+    type: nodejs
+    path: gen/mtx/sidecar
+    build-parameters:
+      builder: npm
+    parameters:
+      memory: 256M
+      disk-quota: 512M
+      # Executed after deployment
+      tasks:
+        - name: upgrade-db
+          # According to cap docu below, this should be a "before-start" hook
+          # but let's give it a try here
+          # https://cap.cloud.sap/docs/guides/multitenancy/#update-database-schema-for-tenants
+          command: cds-mtx upgrade '*'
+    provides:
+      - name: mtx-api
+        properties:
+          mtx-url: ${default-url}
+    requires:
+      - name: incidents-mtx-db
+      - name: incidents-mtx-auth
+      - name: incidents-mtx-registry
+      - name: app-api
+        properties:
+          REPOSITORY_ID: REPLACE_WITH_YOUR_REPOSITORY_ID
+          SUBSCRIPTION_URL: ~{app-protocol}://\${tenant_subdomain}-~{app-uri}
+      # Dependencies below are just for lookup of saas-registry /dependencies info
+      - name: incidents-mtx-html5-runtime
+      - name: incidents-mtx-sdm
+      - name: incidents-mtx-destination
+
+  - name: incidents-mtx-destination-content
+    type: com.sap.application.content
+    requires:
+      - name: srv-api
+      - name: incidents-mtx-auth
+        parameters:
+          service-key:
+            name: incidents-mtx-auth-key
+      - name: incidents-mtx-html5-repo-host
+        parameters:
+          service-key:
+            name: incidents-mtx-repo-host-key
+      - name: incidents-mtx-destination
+        parameters:
+          content-target: true
+    parameters:
+      content:
+        instance:
+          destinations:
+            - Name: incidents-mtx-repo-host
+              ServiceInstanceName: incidents-mtx-html5-repo-host
+              ServiceKeyName: incidents-mtx-repo-host-key
+              sap.cloud.service: approuter
+            - Name: incidents-mtx-auth
+              Authentication: OAuth2UserTokenExchange
+              ServiceInstanceName: incidents-mtx-auth
+              ServiceKeyName: incidents-mtx-auth-key
+              sap.cloud.service: approuter
+            - Name: incidents-mtx-srv
+              Authentication: OAuth2UserTokenExchange
+              TokenServiceInstanceName: incidents-mtx-auth
+              TokenServiceKeyName: incidents-mtx-auth-key
+              URL: ~{srv-api/srv-url}
+              sap.cloud.service: approuter
+          # Possible values are fail, ignore, update
+          existing_destinations_policy: update
+    build-parameters:
+      no-source: true
+
+  - name: incidents-mtx-app-content
+    type: com.sap.application.content
+    path: ./
+    requires:
+      - name: incidents-mtx-destination
+      - name: incidents-mtx-html5-repo-host
+        parameters:
+          content-target: true
+    build-parameters:
+      build-result: resources
+      requires:
+        - name: incidents-mtx-app-incidents
+          artifacts:
+            - nsincidentsmtx.zip
+          target-path: resources/
+
+  - name: incidents-mtx-app-incidents
+    type: html5
+    path: app/incidents
+    build-parameters:
+      build-result: dist
+      builder: custom
+      commands:
+        # - npm ci
+        - npm i
+        - npm run build:cf
+      supported-platforms: []
+
+  - name: incidents-mtx
+    type: approuter.nodejs
+    path: app/router
+    build-parameters:
+      ignore:
+        - "default-env.json"
+        - "* copy.*"
+    parameters:
+      keep-existing-routes: true
+      disk-quota: 256M
+      memory: 256M
+      # Check https://help.sap.com/docs/SAP_HANA_PLATFORM/4505d0bdaf4948449b7f7379d24d0f0d/4050fee4c469498ebc31b10f2ae15ff2.html?version=1.0.12
+      host: ${space}-node-pgcnaim
+      routes:
+        - route: sdm-dev-consumer-eu12-6uxoiqfk-${default-uri}
+        - route: sdmgoogleworkspace-cpok9mi1-${default-uri}
+    properties:
+      TENANT_HOST_PATTERN: "^(.*)-${default-uri}"
+    requires:
+      - name: srv-api
+        group: destinations
+        properties:
+          # name: srv-api # must be used in xs-app.json as well
+          name: incidents-mtx-srv # must be used in xs-app.json as well
+          url: ~{srv-url}
+          forwardAuthToken: true
+      - name: mtx-api
+        group: destinations
+        properties:
+          name: mtx-api # must be used in xs-app.json as well
+          url: ~{mtx-url}
+      - name: incidents-mtx-auth
+      - name: incidents-mtx-html5-runtime
+      - name: incidents-mtx-destination
+    provides:
+      - name: app-api
+        properties:
+          app-protocol: ${protocol}
+          app-uri: ${default-uri}
+
+resources:
+  - name: incidents-mtx-registry
+    type: org.cloudfoundry.managed-service
+    requires:
+      - name: mtx-api
+    parameters:
+      service: saas-registry
+      service-plan: application
+      config:
+        xsappname: incidents-mtx-${org}-${space}-multitenancytest
+        appName: incidents-mtx-${org}-${space}-multitenancytest
+        displayName: Node js MTX Application Develop
+        description: MTX Application deployed using job 
+        category: Category
+        appUrls:
+          getDependencies: ~{mtx-api/mtx-url}/-/cds/saas-provisioning/dependencies
+          onSubscription: ~{mtx-api/mtx-url}/-/cds/saas-provisioning/tenant/{tenantId}
+          onSubscriptionAsync: true
+          onUnSubscriptionAsync: true
+          onUpdateDependenciesAsync: true
+          callbackTimeoutMillis: 300000 # Increase if your deployments are taking longer than that
+  - name: incidents-mtx-db
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: service-manager
+      service-plan: container
+  - name: incidents-mtx-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: incidents-mtx-${org}-${space}-multitenancytest
+        tenant-mode: shared
+  - name: incidents-mtx-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+      config:
+        HTML5Runtime_enabled: true
+        init_data:
+          instance:
+            existing_destinations_policy: update
+            destinations:
+              - Name: incidents-mtx-srv
+                URL: ~{srv-api/srv-url}
+                Authentication: NoAuthentication
+                Type: HTTP
+                ProxyType: Internet
+                HTML5.ForwardAuthToken: true
+                HTML5.DynamicDestination: true
+              - Authentication: NoAuthentication
+                Name: ui5
+                ProxyType: Internet
+                Type: HTTP
+                URL: https://ui5.sap.com
+    requires:
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api # must be used in xs-app.json as well
+          url: ~{srv-url}
+          forwardAuthToken: true
+  - name: incidents-mtx-html5-repo-host
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+  - name: incidents-mtx-html5-runtime
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-runtime
+
+  - name: incidents-mtx-sdm
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: sdm
+      service-plan: standard
+
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+

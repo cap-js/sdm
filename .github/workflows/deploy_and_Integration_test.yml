@@ -4,25 +4,37 @@
 name: Single Tenant Deploy and Integration Test
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches:
       - develop
   workflow_dispatch:
 
 permissions:
   pull-requests: read
+  id-token: write  # Required for OIDC (future enhancement)
+  contents: read   # Required for OIDC
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true
+    #if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    steps:        
+    timeout-minutes: 60
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x  
-          
+          node-version: 20.x
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -31,24 +43,25 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf8-cli
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "$CF_SPACE"
        
       - name: Clone and prepare projects & Build and deploy
         run: |
-          git clone --single-branch --branch develop https://github.com/cap-js/sdm.git
-          git clone --single-branch --branch sdmIncidents https://github.com/cap-js/incidents-app.git
-          cd sdm
           npm pack
-          echo "Current directory"
-          pwd
-          ls
-          mv *.tgz ../incidents-app
-          cd ../incidents-app
+          mv *.tgz app/single-tenant/central-space/incidents-app/
+          cd app/single-tenant/central-space/incidents-app
           npm i *.tgz
-      
-      - name: Build and deploy
+
+      - name: Inject REPOSITORY_ID into mta.yaml
+        working-directory: app/single-tenant/central-space/incidents-app
         run: |
-          cd incidents-app
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          yq -i e '(.modules[] | select(.name == "incidents-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}"' mta.yaml
+
+      - name: Build and deploy
+        working-directory: app/single-tenant/central-space/incidents-app
+        run: |
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
@@ -60,13 +73,24 @@ jobs:
   integration-test:
     needs: deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+      CAPAUTH_URL: ${{ secrets.CAPAUTH_URL }}
+      NOSDMROLEUSERNAME: ${{ secrets.NOSDMROLEUSERNAME }}
+      NOSDMROLEUSERPASSWORD: ${{ secrets.NOSDMROLEUSERPASSWORD }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v2.1.5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -78,7 +102,7 @@ jobs:
           | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
           sudo apt update
           sudo apt install cf8-cli jq
-          cf login -a ${{ secrets.CF_API }} -u ${{ secrets.CF_USER }} -p ${{ secrets.CF_PASSWORD }} -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "$CF_SPACE"
 
       - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
@@ -115,29 +139,35 @@ jobs:
           if [ -z "$clientID" ] || [ "$clientID" = "null" ]; then
             echo "Error: clientID is not set or is null"; exit 1;
           fi
+          # Mask both raw and escaped forms — if secret contains '$', they differ
+          echo "::add-mask::${clientSecret}"
+          echo "::add-mask::${escapedClientSecret}"
+          echo "::add-mask::${clientID}"
           # Export to env
           echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
           echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
           # Mask secrets in logs to prevent any appearance from being printed
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
+
       - name: Run integration tests
         run: |
-          appUrl="${{ secrets.CF_ORG }}-${{ secrets.CF_SPACE }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
-          echo "app url: ${appUrl}"
           JSON_FILE="test/integration/credentials.json"
+          trap 'rm -f "$JSON_FILE"' EXIT
+
+          appUrl="$CF_ORG-$CF_SPACE-incidents-srv.cfapps.eu12.hana.ondemand.com"
           # Avoid echoing command with secrets: run sensitive jq in a subshell with xtrace disabled
           (
             set +x
             jq \
               --arg appUrl "$appUrl" \
-              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg authUrl "$CAPAUTH_URL" \
               --arg clientID "${{ env.CLIENT_ID }}" \
               --arg clientSecret "${{ env.CLIENT_SECRET }}" \
-              --arg username "${{ secrets.CF_USER }}" \
-              --arg password "${{ secrets.CF_PASSWORD }}" \
-              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
-              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg username "$CF_USER" \
+              --arg password "$CF_PASSWORD" \
+              --arg noSDMRoleUsername "$NOSDMROLEUSERNAME" \
+              --arg noSDMRoleUserPassword "$NOSDMROLEUSERPASSWORD" \
               '
               .appUrl = $appUrl
               | .authUrl = $authUrl
@@ -150,11 +180,11 @@ jobs:
               ' "$JSON_FILE" > "temp.json"
           )
           mv "temp.json" "$JSON_FILE"
-          # Print only non-sensitive fields
-          jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
+          # Print only non-sensitive fields — never print credential fields
+          jq '{ appUrl, authUrl }' "$JSON_FILE"
           
           npm install
-          
+
           echo ""
           echo "📋 Running Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
           TENANCY_MODEL=single npm run integration-test
@@ -166,7 +196,7 @@ jobs:
           echo ""
           echo "📋 Running Technical user Single-Tenant Non-draft Entity(Projects) Integration Tests..."
           TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test-non-draft
-          
+
           echo ""
           echo "📋 Running Technical user Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
           TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test

@@ -8,11 +8,23 @@ on:
         required: true
 
 permissions:
-  pull-requests: read
+  id-token: write
+  contents: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+      CAPAUTH_URL: ${{ secrets.CAPAUTH_URL }}
+      NOSDMROLEUSERNAME: ${{ secrets.NOSDMROLEUSERNAME }}
+      NOSDMROLEUSERPASSWORD: ${{ secrets.NOSDMROLEUSERPASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -34,7 +46,7 @@ jobs:
         id: determine_space
         run: |
           if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
-            space="${{ secrets.CF_SPACE }}"
+            space="$CF_SPACE"
           else
             space="${{ github.event.inputs.cf_space }}"
           fi
@@ -42,10 +54,11 @@ jobs:
 
       - name: Login to Cloud Foundry
         run: |
-          cf login -a "${{ secrets.CF_API }}" \
-            -u "${{ secrets.CF_USER }}" \
-            -p "${{ secrets.CF_PASSWORD }}" \
-            -o "${{ secrets.CF_ORG }}" \
+          # Do not log space name or org to avoid unintended exposure
+          cf login -a "$CF_API" \
+            -u "$CF_USER" \
+            -p "$CF_PASSWORD" \
+            -o "$CF_ORG" \
             -s "${{ env.space }}"
 
       - name: Fetch and Mask Client Secret and ID
@@ -82,47 +95,48 @@ jobs:
           if [ -z "$clientID" ] || [ "$clientID" = "null" ]; then
             echo "Error: clientID is not set or is null"; exit 1;
           fi
+
+          # Mask both raw and escaped forms — if secret contains '$', they differ
+          echo "::add-mask::${clientSecret}"
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
 
-      - name: Generate credentials.json and run integration tests
-        env:
-          CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
-          CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
-          CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
-          CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+          # Export to env
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
+
+      - name: Run integration tests
         run: |
-          set -e
           JSON_FILE="test/integration/credentials.json"
-          appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
+          trap 'rm -f "$JSON_FILE"' EXIT
+
+          appUrl="$CF_ORG-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
 
           (
             set +x
-            cat > "$JSON_FILE" <<EOL
-          {
-            "appUrl": "$appUrl",
-            "authUrl": "${{ secrets.CAPAUTH_URL }}",
-            "clientID": "${{ env.CLIENT_ID }}",
-            "clientSecret": "${{ env.CLIENT_SECRET }}",
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
-            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ secrets.CMIS_URL }}",
-            "cmisClientID": "${CMIS_CLIENT_ID}",
-            "cmisClientSecret": "${CMIS_CLIENT_SECRET}",
-            "APP_NAME": "incidents-srv",
-            "MT_APP_NAME": "incidents-mtx-srv"
-          }
-          EOL
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "$CAPAUTH_URL" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "$CF_USER" \
+              --arg password "$CF_PASSWORD" \
+              --arg noSDMRoleUsername "$NOSDMROLEUSERNAME" \
+              --arg noSDMRoleUserPassword "$NOSDMROLEUSERPASSWORD" \
+              '
+              .appUrl = $appUrl
+              | .authUrl = $authUrl
+              | .clientID = $clientID
+              | .clientSecret = $clientSecret
+              | .username = $username
+              | .password = $password
+              | .noSDMRoleUsername = $noSDMRoleUsername
+              | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+              ' "$JSON_FILE" > "temp.json" && mv "temp.json" "$JSON_FILE"
           )
 
-          echo "Generated credentials.json:"
-          jq 'del(.password, .clientSecret, .noSDMRoleUserPassword, .cmisClientSecret)' "$JSON_FILE"
+          # Print only non-sensitive fields — never print credential fields
+          jq '{ appUrl, authUrl }' "$JSON_FILE"
 
           npm install
 
