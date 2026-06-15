@@ -762,7 +762,7 @@ describe("SDMAttachmentsService", () => {
       expect(req.warn).not.toHaveBeenCalled();
     });
 
-    it('should rename draft and non-draft attachments', async () => {
+    it('should rename draft attachments during save', async () => {
       const draftAttachments = [
         { HasActiveEntity: false, ID: 'draft1' },
         { HasActiveEntity: false, ID: 'draft2' }
@@ -1818,6 +1818,9 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service._registeredEntityHandlers = new Set();
+      service._registeredTargetHandlers = new Set();
+      service._registeredGlobalActionHandlers = false;
       
       mockSrv = {
         before: jest.fn(),
@@ -2114,6 +2117,9 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service._registeredEntityHandlers = new Set();
+      service._registeredTargetHandlers = new Set();
+      service._registeredGlobalActionHandlers = false;
       
       mockSrv = {
         before: jest.fn(),
@@ -2122,10 +2128,12 @@ describe("SDMAttachmentsService", () => {
       };
 
       entity = {
+        name: 'entity',
         drafts: 'entity.drafts'
       };
 
       target = {
+        name: 'target',
         drafts: 'target.drafts'
       };
     });
@@ -3126,6 +3134,7 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["Attachments.references"] = {
+        name: "Attachments.references",
         includes: ['sap.attachments.Attachments']
       };
       
@@ -3161,6 +3170,7 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["Attachments.references"] = {
+        name: "Attachments.references",
         includes: ['sap.attachments.Attachments']
       };
       
@@ -3438,6 +3448,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -4370,6 +4381,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -4657,9 +4669,11 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["testName.references"] = {
+        name: "testName.references",
         includes: ['sap.attachments.Attachments']
       };
       cds.model.definitions["testName.references.drafts"] = {
+        name: "testName.references.drafts",
         includes: ['sap.attachments.Attachments']
       };
     });
