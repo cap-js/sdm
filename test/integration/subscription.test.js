@@ -8,7 +8,10 @@ const SCRIPTS_DIR = path.join(__dirname, 'utills');
 const SUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-subscribe.sh');
 const UNSUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-unsubscribe.sh');
 const REPO_MANAGE_SCRIPT = path.join(SCRIPTS_DIR, 'sdm-repo-manage.sh');
+const TYPE_MANAGE_SCRIPT = path.join(SCRIPTS_DIR, 'sdm-type-manage.sh');
 const CF_LOGS_SCRIPT = path.join(SCRIPTS_DIR, 'cf-logs.sh');
+
+const SECONDARY_TYPES_DIR = path.join(__dirname, 'secondary-types');
 
 const SUBSCRIPTION_REPO_EXTERNAL_ID = credentials.defaultRepositoryIDMT || 'MULTITENANT-TEST-REPO';
 const MT_APP_NAME = credentials.MT_APP_NAME.replace(/-srv$/, '-mtx');
@@ -381,4 +384,62 @@ test('(5) Subscribe without existing repo — expect repo to be onboarded', asyn
   }
   expect(verifyResult.exitCode).toBe(0);
   expect(verifyResult.containsIgnoreCase('FOUND')).toBe(true);
+}, 600000);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 6 — Register custom CMIS Secondary Types in the subscribed repository
+//          and verify they are queryable.
+//
+// After test 5 the consumer is subscribed and SUBSCRIPTION_REPO_EXTERNAL_ID
+// is onboarded. We POST two secondary-type definitions (read from JSON
+// resources) via the CMIS browser-binding's createType action, then query
+// each one back via cmisselector=typeDefinition to confirm registration.
+//
+// The register-type helper treats "already exists" responses as success so
+// re-runs of this test against the same repo are idempotent.
+// ─────────────────────────────────────────────────────────────────────────────
+test('(6) Register CMIS secondary types in subscribed repo and verify they are queryable', async () => {
+  console.log('Test (6): Register CMIS secondary types in subscribed repo and verify they are queryable');
+
+  const secondaryTypes = [
+    { typeId: 'abc:bo',               typeFile: path.join(SECONDARY_TYPES_DIR, 'abc-bo-type.json') },
+    { typeId: 'Working:DocumentInfo', typeFile: path.join(SECONDARY_TYPES_DIR, 'documentinfo-type.json') }
+  ];
+
+  // Pre-condition: subscription must be active and the repo must be onboarded
+  // (left in place by test 5 / beforeAll).
+  expect(cmisEnv.CMIS_ACCESS_TOKEN).toBeTruthy();
+  console.log('  Verifying subscription repo is present before registering types...');
+  const preCheck = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  expect(preCheck.exitCode).toBe(0);
+
+  for (const { typeId, typeFile } of secondaryTypes) {
+    // Step 1: Register the secondary type
+    console.log(`  Registering secondary type '${typeId}' from ${typeFile}...`);
+    const registerExit = await run(
+      TYPE_MANAGE_SCRIPT,
+      'register-type',
+      '--externalId', SUBSCRIPTION_REPO_EXTERNAL_ID,
+      '--typeFile', typeFile,
+      '--subdomain', consumerSubdomain,
+      { env: cmisEnv }
+    );
+    // exit 0 = created or already-exists (idempotent)
+    expect(registerExit).toBe(0);
+
+    // Step 2: Verify the type is queryable
+    console.log(`  Verifying secondary type '${typeId}' is queryable...`);
+    const getResult = await runAndCaptureAll(
+      TYPE_MANAGE_SCRIPT,
+      'get-type',
+      '--externalId', SUBSCRIPTION_REPO_EXTERNAL_ID,
+      '--typeId', typeId,
+      '--subdomain', consumerSubdomain,
+      { env: cmisEnv }
+    );
+    expect(getResult.exitCode).toBe(0);
+    expect(getResult.containsIgnoreCase('FOUND')).toBe(true);
+  }
+
+  console.log(`  ✅ All ${secondaryTypes.length} secondary types registered and verified in '${SUBSCRIPTION_REPO_EXTERNAL_ID}'.`);
 }, 600000);
