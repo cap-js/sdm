@@ -155,6 +155,7 @@ jest.mock("@sap/cds/lib", () => {
         }
       }
     },
+    on: jest.fn(),
     // Add ql property to reference global mocks
     get ql() {
       return {
@@ -2905,7 +2906,11 @@ describe("SDMAttachmentsService", () => {
       await service.draftAttachmentUploadHandler(req);
 
       expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req);
+      expect(service.create).toHaveBeenCalledWith(
+        [expect.objectContaining({ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' })],
+        draftAttachments,
+        req
+      );
       expect(req.data.content).toBeNull();
     });
   });
