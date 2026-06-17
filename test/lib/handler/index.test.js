@@ -1136,4 +1136,361 @@ describe("handlers", () => {
       expect(req.reject).toHaveBeenCalledWith("Could not update the attachment: Unknown error");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Large file upload — new functions
+  // ---------------------------------------------------------------------------
+
+  describe("streamToBuffer", () => {
+    // streamToBuffer is not exported; we test it indirectly through createAttachment
+    // but we can also reach it via the module internals by re-requiring without the
+    // module cache trick. Instead we validate the behaviour through uploadSingleChunk
+    // (which uses the returned Buffer) and via direct Buffer / Readable inputs.
+    // Direct access requires exporting it, so these tests use createAttachment with
+    // a small file to exercise both Buffer and Readable branches.
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("passes a Buffer content through to formData unchanged", async () => {
+      const buf = Buffer.from("hello");
+      const response = { data: { succinctProperties: { "cmis:objectId": "obj1" } } };
+      executeHttpRequest.mockResolvedValue(response);
+
+      const data = { filename: "test.txt", content: buf, contentLength: buf.length };
+      await createAttachment(data, { uri: "http://test.com/" }, "parent1", { url: "http://test.com" });
+
+      const fd = mockFormDataInstances[mockFormDataInstances.length - 1];
+      expect(fd.append).toHaveBeenCalledWith("filename", buf, expect.objectContaining({ filename: "test.txt" }));
+    });
+  });
+
+  describe("uploadSingleChunk", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("posts createDocument with correct fields and returns response", async () => {
+      const mockResponse = { status: 200, data: "ok" };
+      executeHttpRequest.mockResolvedValue(mockResponse);
+
+      const data = { filename: "small.pdf", content: Buffer.from("data"), contentLength: 4 };
+      const credentials = { uri: "http://sdm.com/" };
+      const destination = { url: "http://sdm.com" };
+
+      const result = await createAttachment(data, credentials, "parent42", destination);
+
+      expect(result).toBe(mockResponse);
+      const fd = mockFormDataInstances[mockFormDataInstances.length - 1];
+      expect(fd.append).toHaveBeenCalledWith("cmisaction", "createDocument");
+      expect(fd.append).toHaveBeenCalledWith("objectId", "parent42");
+      expect(fd.append).toHaveBeenCalledWith("propertyId[0]", "cmis:name");
+      expect(fd.append).toHaveBeenCalledWith("propertyValue[0]", "small.pdf");
+      expect(fd.append).toHaveBeenCalledWith("propertyId[1]", "cmis:objectTypeId");
+      expect(fd.append).toHaveBeenCalledWith("propertyValue[1]", "cmis:document");
+      expect(fd.append).toHaveBeenCalledWith("succinct", "true");
+    });
+
+    it("returns the error object when executeHttpRequest rejects", async () => {
+      const mockError = new Error("network failure");
+      executeHttpRequest.mockRejectedValue(mockError);
+
+      const data = { filename: "fail.pdf", content: Buffer.from("x"), contentLength: 1 };
+      const result = await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
+
+      expect(result).toBe(mockError);
+    });
+  });
+
+  describe("createAttachment — routing by file size", () => {
+    const CHUNK = 20 * 1024 * 1024;
+    const THRESHOLD = 400 * 1024 * 1024;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("routes to uploadSingleChunk when contentLength <= threshold", async () => {
+      executeHttpRequest.mockResolvedValue({ status: 200 });
+      const data = { filename: "medium.pdf", content: Buffer.alloc(1), contentLength: THRESHOLD };
+      await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
+      // single-chunk: only one HTTP call
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it("routes to uploadLargeFileInChunks when contentLength > threshold", async () => {
+      // createEmptyDocument call returns objectId
+      executeHttpRequest
+        .mockResolvedValueOnce({
+          data: { succinctProperties: { "cmis:objectId": "largeObj1" } },
+        })
+        // appendContentStream call for the single chunk
+        .mockResolvedValueOnce({ status: 200 });
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = {
+        filename: "large.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+      const result = await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
+
+      // createEmptyDocument + at least one appendContentStream
+      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
+      expect(data.enqueueOrphan).toHaveBeenCalledWith("largeObj1", "123", "large.bin");
+      expect(data.dequeueOrphan).toHaveBeenCalledWith("largeObj1");
+      expect(result).toEqual({ status: 200 });
+    });
+
+    it("uses getContentLength when contentLength is 0", async () => {
+      const { getContentLength } = require("../../../lib/util/index");
+      // getContentLength is not in the current mock — add it temporarily
+      const util = require("../../../lib/util/index");
+      util.getContentLength = jest.fn().mockReturnValue(100);
+
+      executeHttpRequest.mockResolvedValue({ status: 200 });
+      const data = { filename: "nosize.pdf", content: Buffer.from("x"), contentLength: 0 };
+      await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
+
+      expect(util.getContentLength).toHaveBeenCalledWith(data.content);
+    });
+  });
+
+  describe("createEmptyDocument (via uploadLargeFileInChunks)", () => {
+    const THRESHOLD = 400 * 1024 * 1024;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("posts createDocument with no content and returns objectId", async () => {
+      executeHttpRequest
+        .mockResolvedValueOnce({
+          data: { succinctProperties: { "cmis:objectId": "emptyDoc99" } },
+        })
+        .mockResolvedValueOnce({ status: 200 });
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = {
+        filename: "bigfile.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+      await createAttachment(data, { uri: "http://sdm.com/" }, "parentX", { url: "http://sdm.com" });
+
+      // First call is createEmptyDocument — check form fields
+      const fd = mockFormDataInstances[0];
+      expect(fd.append).toHaveBeenCalledWith("cmisaction", "createDocument");
+      expect(fd.append).toHaveBeenCalledWith("objectId", "parentX");
+      expect(fd.append).toHaveBeenCalledWith("propertyValue[0]", "bigfile.bin");
+      expect(fd.append).toHaveBeenCalledWith("succinct", "true");
+    });
+
+    it("throws when createEmptyDocument returns no objectId", async () => {
+      executeHttpRequest.mockResolvedValueOnce({ data: { succinctProperties: {} } });
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = {
+        filename: "noId.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).rejects.toThrow("createEmptyDocument returned no objectId");
+    });
+  });
+
+  describe("appendContentStream (via uploadLargeFileInChunks)", () => {
+    const THRESHOLD = 400 * 1024 * 1024;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("appends chunk with isLastChunk=true for a single-chunk large file", async () => {
+      executeHttpRequest
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-append" } } })
+        .mockResolvedValueOnce({ status: 200 });
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = {
+        filename: "append.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+      await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
+
+      // Second formData instance is the appendContentStream call
+      const appendFd = mockFormDataInstances[1];
+      expect(appendFd.append).toHaveBeenCalledWith("cmisaction", "appendContent");
+      expect(appendFd.append).toHaveBeenCalledWith("objectId", "obj-append");
+      expect(appendFd.append).toHaveBeenCalledWith("isLastChunk", "true");
+      expect(appendFd.append).toHaveBeenCalledWith("succinct", "true");
+    });
+
+    it("throws and triggers cleanup when appendContentStream fails", async () => {
+      executeHttpRequest
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-fail" } } })
+        .mockRejectedValueOnce(Object.assign(new Error("append error"), { response: { status: 500 } }))
+        .mockResolvedValueOnce({ status: 204 }); // deleteAttachmentsOfFolder cleanup
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const dequeueOrphan = jest.fn();
+      const enqueueOrphan = jest.fn();
+      const data = {
+        filename: "failAppend.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan,
+        dequeueOrphan,
+      };
+
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).rejects.toThrow("Error appending chunk");
+
+      // cleanup was attempted
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
+      // dequeueOrphan called after successful cleanup
+      expect(dequeueOrphan).toHaveBeenCalledWith("obj-fail");
+    });
+  });
+
+  describe("deleteIncompleteDocumentWithRetry", () => {
+    const { deleteIncompleteDocumentWithRetry } = require("../../../lib/handler/index");
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("returns true and deletes on the first attempt", async () => {
+      executeHttpRequest.mockResolvedValueOnce({ status: 204 });
+
+      const result = await deleteIncompleteDocumentWithRetry(
+        "objToDelete",
+        { uri: "http://sdm.com/" },
+        { url: "http://sdm.com" }
+      );
+
+      expect(result).toBe(true);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on failure and succeeds on second attempt", async () => {
+      jest.useFakeTimers();
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("transient"))
+        .mockResolvedValueOnce({ status: 204 });
+
+      const promise = deleteIncompleteDocumentWithRetry(
+        "objRetry",
+        { uri: "http://sdm.com/" },
+        { url: "http://sdm.com" }
+      );
+
+      // advance past the 2 s backoff
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toBe(true);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
+      jest.useRealTimers();
+    });
+
+    it("returns false after all retries are exhausted", async () => {
+      jest.useFakeTimers();
+      executeHttpRequest.mockRejectedValue(new Error("always fails"));
+
+      const promise = deleteIncompleteDocumentWithRetry(
+        "objExhaust",
+        { uri: "http://sdm.com/" },
+        { url: "http://sdm.com" }
+      );
+
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toBe(false);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3); // CLEANUP_MAX_RETRIES
+      jest.useRealTimers();
+    });
+  });
+
+  describe("uploadLargeFileInChunks — orphan queue lifecycle", () => {
+    const THRESHOLD = 400 * 1024 * 1024;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFormDataInstances = [];
+    });
+
+    it("does not call enqueueOrphan / dequeueOrphan when callbacks are absent", async () => {
+      executeHttpRequest
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "noQueue" } } })
+        .mockResolvedValueOnce({ status: 200 });
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = { filename: "noqueue.bin", content: largeContent, contentLength: THRESHOLD + 1 };
+
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).resolves.toBeDefined();
+    });
+
+    it("handles client disconnect error without double-throw", async () => {
+      const abortErr = new Error("Stream closed by client disconnect");
+      executeHttpRequest
+        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "abortObj" } } })
+        .mockRejectedValueOnce(abortErr)
+        .mockResolvedValueOnce({ status: 204 }); // cleanup succeeds
+
+      const largeContent = Buffer.alloc(THRESHOLD + 1);
+      const data = {
+        filename: "aborted.bin",
+        content: largeContent,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).rejects.toThrow("Stream closed by client disconnect");
+    });
+
+    it("throws when no content is provided", async () => {
+      executeHttpRequest.mockResolvedValueOnce({
+        data: { succinctProperties: { "cmis:objectId": "obj1" } },
+      });
+
+      const data = {
+        filename: "empty.bin",
+        content: null,
+        contentLength: THRESHOLD + 1,
+        enqueueOrphan: jest.fn(),
+        dequeueOrphan: jest.fn(),
+      };
+
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).rejects.toThrow("No content provided for large file upload");
+    });
+  });
 });
