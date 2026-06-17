@@ -362,7 +362,6 @@ describe('ReadAheadStream', () => {
       const content = Buffer.from('ABCDE');
       const ras = new ReadAheadStream(content, content.length, 10);
       await ras.startReading();
-      // preloadChunks sets totalBytesRead = totalSize
       expect(ras.getRemainingBytes()).toBe(0);
       await ras.close();
     });
@@ -370,6 +369,236 @@ describe('ReadAheadStream', () => {
     it('returns positive value before reading begins', () => {
       const ras = new ReadAheadStream(Buffer.alloc(100), 100, 10);
       expect(ras.getRemainingBytes()).toBe(100);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Coverage gap tests — stream path partial chunk, error branches, aliases
+  // ---------------------------------------------------------------------------
+
+  describe('Readable stream source — partial last chunk (lines 97-98)', () => {
+    it('copies only bytesRead bytes into finalBuffer when last chunk is smaller than chunkSize', async () => {
+      // 7 bytes with chunkSize=5: second chunk is 2 bytes → triggers partial copy (lines 97-98)
+      const content = Buffer.from('ABCDEFG');
+      // autoDestroy:false so stream isn't destroyed before readBytes' guard runs
+      const stream = new Readable({
+        read() { this.push(content); this.push(null); },
+        autoDestroy: false,
+      });
+      const ras = new ReadAheadStream(stream, content.length, 5);
+      await ras.startReading();
+
+      const result = await drainAllBytes(ras);
+      await ras.close();
+
+      expect(result.toString()).toBe('ABCDEFG');
+    });
+  });
+
+  describe('_preloadChunks — zero bytes / error branches (lines 109-116)', () => {
+    it('stops the loop when _readChunk returns 0 bytes (EOF warn branch, line 109)', async () => {
+      const stream = makeReadable(Buffer.from('hi'), 2);
+      const ras = new ReadAheadStream(stream, 10, 5);
+      // Override _readChunk to return 0 → triggers the warn+break branch in _preloadChunks
+      ras._readChunk = async () => 0;
+      ras._preloadChunks();
+      await new Promise(r => setTimeout(r, 30));
+      expect(ras.readError).toBeNull();
+      await ras.close();
+    });
+
+    it('sets readError and emits error when _preloadChunks throws unexpectedly (lines 113-116)', done => {
+      const stream = makeReadable(Buffer.from('hi'), 2);
+      const ras = new ReadAheadStream(stream, 10, 5);
+      ras.isReading = true;
+
+      ras.once('error', err => {
+        expect(err.message).toBe('unexpected boom');
+        expect(ras.readError).toBeDefined();
+        // do not call ras.close() — stream already cleaned up
+        done();
+      });
+
+      ras._readChunk = async () => { throw new Error('unexpected boom'); };
+      ras._preloadChunks();
+    });
+  });
+
+  describe('_readChunk — retry and max-retry logic (lines 141-156)', () => {
+    it('retries on InsufficientDataException and succeeds on second call', async () => {
+      const ras = new ReadAheadStream(Buffer.from('x'), 1, 10);
+      ras._sleep = async () => {}; // skip retry delay
+
+      let calls = 0;
+      ras._readFromStream = async (stream, buffer, offset) => {
+        calls++;
+        if (calls === 1) throw new Error('InsufficientDataException: Read returned 0 bytes');
+        Buffer.from('hello').copy(buffer, offset);
+        return 5;
+      };
+
+      const buf = Buffer.allocUnsafe(10);
+      const bytes = await ras._readChunk({}, buf, 0);
+      expect(bytes).toBe(10); // loop continues; second call fills 5, third call also returns 5 → chunkSize reached
+      expect(calls).toBeGreaterThanOrEqual(2);
+    });
+
+    it('throws after maxRetries are exhausted (line 150)', async () => {
+      const ras = new ReadAheadStream(Buffer.from('x'), 1, 10);
+      ras._sleep = async () => {}; // skip retry delay
+
+      ras._readFromStream = async () => { throw new Error('EOFException: always fails'); };
+
+      const buf = Buffer.allocUnsafe(10);
+      await expect(ras._readChunk({}, buf, 0))
+        .rejects.toThrow(`Failed to read chunk after ${ras.maxRetries} retries`);
+    });
+
+    it('re-throws non-retryable errors immediately (line 156)', async () => {
+      const ras = new ReadAheadStream(Buffer.from('x'), 1, 10);
+      ras._readFromStream = async () => { throw new Error('network failure'); };
+
+      const buf = Buffer.allocUnsafe(10);
+      await expect(ras._readChunk({}, buf, 0)).rejects.toThrow('network failure');
+    });
+  });
+
+  describe('_readFromStream — onReadable returns null (line 193)', () => {
+    it('resolves 0 when readable event fires but read() still returns null', done => {
+      const stream = new Readable({ read() {} });
+      const ras = new ReadAheadStream(stream, 100, 10);
+      const buf = Buffer.allocUnsafe(10);
+
+      ras._readFromStream(stream, buf, 0, 10).then(result => {
+        expect(result).toBe(0);
+        done();
+      });
+
+      stream.read = () => null;
+      setImmediate(() => stream.emit('readable'));
+    });
+  });
+
+  describe('readNextChunk (lines 240-246)', () => {
+    it('returns a chunk once the queue is populated', async () => {
+      const content = Buffer.from('ABCD');
+      const ras = new ReadAheadStream(content, content.length, 4);
+      await ras.startReading();
+
+      ras.chunkQueue.push(Buffer.from('XY'));
+      const chunk = await ras.readNextChunk();
+      expect(chunk).toBeDefined();
+      expect(chunk.length).toBeGreaterThan(0);
+      await ras.close();
+    });
+
+    it('waits for queue to populate before returning chunk (lines 241-242 poll loop)', async () => {
+      const ras = new ReadAheadStream(Buffer.from('A'), 1, 10);
+      ras.lastChunkLoaded = false;
+      ras.chunkQueue = [];
+
+      // Push a chunk after a short delay so the poll loop at line 241 runs at least once
+      setTimeout(() => {
+        ras.chunkQueue.push(Buffer.from('Z'));
+        ras.lastChunkLoaded = true;
+      }, 30);
+
+      const chunk = await ras.readNextChunk();
+      expect(chunk).toBeDefined();
+    });
+
+    it('returns null when lastChunkLoaded is true and queue is empty', async () => {
+      const ras = new ReadAheadStream(Buffer.from('A'), 1, 10);
+      await ras.startReading();
+      ras.chunkQueue = [];
+      ras.lastChunkLoaded = true;
+
+      const result = await ras.readNextChunk();
+      expect(result).toBeNull();
+      await ras.close();
+    });
+
+    it('throws when readError is set (line 244)', async () => {
+      const ras = new ReadAheadStream(Buffer.from('A'), 1, 10);
+      await ras.startReading();
+      ras.readError = new Error('read failed');
+      ras.chunkQueue = [];
+
+      await expect(ras.readNextChunk()).rejects.toThrow('read failed');
+      await ras.close();
+    });
+  });
+
+  describe('isEOF and isQueueEmpty aliases (lines 259, 267)', () => {
+    it('isEOF() delegates to isEOFReached()', async () => {
+      const content = Buffer.from('hi');
+      const ras = new ReadAheadStream(content, content.length, 10);
+      await ras.startReading();
+      const tmp = Buffer.allocUnsafe(10);
+      await ras.readBytes(tmp, 0, 10);
+      await ras.close();
+      expect(ras.isEOF()).toBe(ras.isEOFReached());
+    });
+
+    it('isQueueEmpty() delegates to isChunkQueueEmpty()', () => {
+      const ras = new ReadAheadStream(Buffer.from('x'), 1);
+      expect(ras.isQueueEmpty()).toBe(true);
+      ras.chunkQueue.push(Buffer.from('x'));
+      expect(ras.isQueueEmpty()).toBe(false);
+    });
+  });
+
+  describe('_loadNextChunk — destroyed stream throws (lines 276-277)', () => {
+    it('throws when source stream is destroyed and queue is empty', async () => {
+      const stream = new Readable({ read() {}, autoDestroy: false });
+      const ras = new ReadAheadStream(stream, 4, 4);
+      // Set state: empty queue, not loaded, destroyed source
+      ras.lastChunkLoaded = false;
+      ras.chunkQueue = [];
+      stream.destroy();
+
+      await expect(ras._loadNextChunk()).rejects.toThrow('Stream closed by client disconnect');
+    });
+  });
+
+  describe('readBytes — _loadNextChunk path and destroyed-stream guard (lines 297, 301-302)', () => {
+    it('calls _loadNextChunk when position >= currentBufferSize and not lastChunkLoaded (line 297)', async () => {
+      const content = Buffer.from('ABCDEF');
+      const ras = new ReadAheadStream(content, content.length, 3);
+      await ras.startReading();
+
+      const tmp = Buffer.allocUnsafe(3);
+      await ras.readBytes(tmp, 0, 3); // consumes first chunk
+
+      // Force position to end of buffer and push a new chunk so _loadNextChunk doesn't hang
+      ras.position = ras.currentBufferSize;
+      ras.lastChunkLoaded = false;
+      ras.chunkQueue.unshift(Buffer.from('XY'));
+
+      const n = await ras.readBytes(tmp, 0, 3);
+      expect(n).toBeGreaterThan(0);
+      ras.lastChunkLoaded = true;
+      await ras.close();
+    });
+
+    it('throws in readBytes when source stream is destroyed (lines 301-302)', async () => {
+      // Use a Readable (not Buffer) source so the guard on line 300 activates
+      const stream = new Readable({
+        read() { this.push(Buffer.from('hello')); this.push(null); },
+        autoDestroy: false,
+      });
+      const ras = new ReadAheadStream(stream, 5, 10);
+      await ras.startReading();
+
+      // currentBuffer is loaded; destroy stream and clear lastChunkLoaded so guard fires
+      stream.destroy();
+      ras.lastChunkLoaded = false;
+      // position < currentBufferSize so _loadNextChunk is NOT called, then guard at 300-302 fires
+      ras.position = 0;
+
+      const tmp = Buffer.allocUnsafe(10);
+      await expect(ras.readBytes(tmp, 0, 10)).rejects.toThrow('Stream closed by client disconnect');
+      await ras.close().catch(() => {});
     });
   });
 });
