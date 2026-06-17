@@ -1206,7 +1206,6 @@ describe("handlers", () => {
   });
 
   describe("createAttachment — routing by file size", () => {
-    const CHUNK = 20 * 1024 * 1024;
     const THRESHOLD = 400 * 1024 * 1024;
 
     beforeEach(() => {
@@ -1249,7 +1248,6 @@ describe("handlers", () => {
     });
 
     it("uses getContentLength when contentLength is 0", async () => {
-      const { getContentLength } = require("../../../lib/util/index");
       // getContentLength is not in the current mock — add it temporarily
       const util = require("../../../lib/util/index");
       util.getContentLength = jest.fn().mockReturnValue(100);
