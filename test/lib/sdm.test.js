@@ -5,6 +5,8 @@ const {
   getConfigurations,
   isRepositoryVersioned,
   getSdmInstanceName,
+  getSdmClientId,
+  isClientCredentialForced,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -116,7 +118,10 @@ jest.mock("../../lib/util", () => ({
   getConfigurations: jest.fn(),
   isRepositoryVersioned: jest.fn(),
   getSdmInstanceName: jest.fn(),
+  getSdmClientId: jest.fn(),
   transformSDMServiceBindingToJWTBearerCredentialsDestination: jest.fn(),
+  transformSDMServiceBindingToClientCredentialsDestination: jest.fn(),
+  isClientCredentialForced: jest.fn(),
   isRestrictedCharactersInName: jest.fn(),
   getStatusCondition: jest.fn(),
   getPropertyTitles: jest.fn(),
@@ -438,9 +443,7 @@ describe("SDMAttachmentsService", () => {
   describe("getDestination", () => {
     it("should get destination and cache it on request object", async () => {
       const service = new SDMAttachmentsService();
-      const mockReq = {
-        _sdmDestination: undefined
-      };
+      const mockReq = {};
       cds.context = {
         user: {
           authInfo: {
@@ -470,7 +473,7 @@ describe("SDMAttachmentsService", () => {
         serviceBindingTransformFn: expect.any(Function)
       });
       expect(result).toEqual(mockDestination);
-      expect(mockReq._sdmDestination).toEqual(mockDestination);
+      expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
     });
 
     it("should return cached destination when available", async () => {
@@ -478,7 +481,7 @@ describe("SDMAttachmentsService", () => {
       const service = new SDMAttachmentsService();
       const cachedDestination = { url: "http://cached.com" };
       const mockReq = {
-        _sdmDestination: cachedDestination
+        _sdmDestinations: { _default: cachedDestination }
       };
 
       const result = await service.getDestination(mockReq);
@@ -486,13 +489,59 @@ describe("SDMAttachmentsService", () => {
       expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
       expect(result).toEqual(cachedDestination);
     });
+
+    it("should cache per-attachment-entity to support parents with multiple compositions", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const mockReq = {};
+      cds.context = {
+        user: {
+          authInfo: { token: { payload: { origin: "sap.custom", ext_attr: { zdn: "sub" } } } }
+        }
+      };
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const dest1 = { url: "http://a.com" };
+      const dest2 = { url: "http://b.com" };
+      getDestinationFromServiceBinding
+        .mockResolvedValueOnce(dest1)
+        .mockResolvedValueOnce(dest2);
+
+      const annotated   = { name: 'Refs',   '@SDM.useClientCredential': true };
+      const unannotated = { name: 'Plain' };
+
+      // The same request needs both flavors; per-entity cache makes this safe.
+      isClientCredentialForced
+        .mockReturnValueOnce(true)   // for annotated entity
+        .mockReturnValueOnce(false); // for unannotated entity
+
+      const result1 = await service.getDestination(mockReq, annotated);
+      const result2 = await service.getDestination(mockReq, unannotated);
+
+      expect(result1).toEqual(dest1);
+      expect(result2).toEqual(dest2);
+      expect(mockReq._sdmDestinations.Refs).toEqual(dest1);
+      expect(mockReq._sdmDestinations.Plain).toEqual(dest2);
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reuse cached per-entity destination across calls", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const cached = { url: "http://cached.com" };
+      const mockReq = { _sdmDestinations: { Refs: cached } };
+      const entity = { name: 'Refs' };
+
+      const result = await service.getDestination(mockReq, entity);
+
+      expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
+      expect(result).toEqual(cached);
+    });
   });
   it("should use Client Credentials when origin is not present in token", async () => {
     jest.clearAllMocks();
     const service = new SDMAttachmentsService();
-    const mockReq = {
-      _sdmDestination: undefined
-    };
+    const mockReq = {};
 
     // Mock cds.context without origin in token payload
     cds.context = {
@@ -524,15 +573,13 @@ describe("SDMAttachmentsService", () => {
       serviceBindingTransformFn: expect.any(Function)
     });
     expect(result).toEqual(mockDestination);
-    expect(mockReq._sdmDestination).toEqual(mockDestination);
+    expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
   });
 
   it("should use JWT Bearer when origin is present in token", async () => {
     jest.clearAllMocks();
     const service = new SDMAttachmentsService();
-    const mockReq = {
-      _sdmDestination: undefined
-    };
+    const mockReq = {};
 
     // Mock cds.context with origin in token payload
     cds.context = {
@@ -565,7 +612,7 @@ describe("SDMAttachmentsService", () => {
       serviceBindingTransformFn: expect.any(Function)
     });
     expect(result).toEqual(mockDestination);
-    expect(mockReq._sdmDestination).toEqual(mockDestination);
+    expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
   });
   describe("getSDMCredentials", () => {
     it("should return credentials", () => {
@@ -7238,6 +7285,111 @@ describe("SDMAttachmentsService", () => {
       expect(result).toContain('fullAttachments');
       expect(result).toContain('shortAttachments');
       expect(result.length).toBe(2);
+    });
+  });
+
+  describe('applyClientCredentialUser', () => {
+    let service;
+
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+      getSdmClientId.mockReset();
+      isClientCredentialForced.mockReset();
+    });
+
+    it('does nothing when getSdmClientId returns null', () => {
+      getSdmClientId.mockReturnValue(null);
+      const req = { event: 'CREATE', target: { '@SDM.useClientCredential': true }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('sets createdBy and modifiedBy on direct CREATE when annotation is set', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'CREATE', target: { '@SDM.useClientCredential': true }, data: { filename: 'a.pdf' } };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('sets only modifiedBy on UPDATE', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'UPDATE', target: { '@SDM.useClientCredential': true }, data: { filename: 'a.pdf' } };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('sets createdBy and modifiedBy on PUT', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'PUT', target: { '@SDM.useClientCredential': true }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('does nothing when annotation is absent on direct attachment target', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'CREATE', target: { elements: {} }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('walks composition rows on parent SAVE when composition target has annotation', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.Refs'] = { '@SDM.useClientCredential': true };
+      cds.model.definitions['Test.OtherRefs'] = { '@SDM.useClientCredential': false };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: {
+            references: { type: 'cds.Composition', target: 'Test.Refs' },
+            other: { type: 'cds.Composition', target: 'Test.OtherRefs' }
+          }
+        },
+        data: {
+          references: [
+            { ID: '1', filename: 'a.pdf' },
+            { ID: '2', filename: 'b.pdf', _op: 'update' },
+            { ID: '3', _op: 'delete' }
+          ],
+          other: [{ ID: '4', filename: 'c.pdf' }]
+        }
+      };
+      service.applyClientCredentialUser(req);
+      // annotated composition rows get the override (delete row skipped)
+      expect(req.data.references[0].createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[0].modifiedBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[1].createdBy).toBeUndefined();
+      expect(req.data.references[1].modifiedBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[2].createdBy).toBeUndefined();
+      expect(req.data.references[2].modifiedBy).toBeUndefined();
+      // unannotated composition rows untouched
+      expect(req.data.other[0].createdBy).toBeUndefined();
+      expect(req.data.other[0].modifiedBy).toBeUndefined();
+    });
+
+    it('does nothing on SAVE when no composition has the annotation', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.Plain'] = { '@SDM.useClientCredential': false };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: { plain: { type: 'cds.Composition', target: 'Test.Plain' } }
+        },
+        data: { plain: [{ ID: '1' }] }
+      };
+      service.applyClientCredentialUser(req);
+      expect(req.data.plain[0].createdBy).toBeUndefined();
+      expect(req.data.plain[0].modifiedBy).toBeUndefined();
     });
   });
 });
