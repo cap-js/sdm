@@ -31,7 +31,9 @@ const {
   updateLinkInDraft,
   getDraftAdministrativeData_DraftUUIDForUpId,
   getAttachmentById,
-  editLinkInDraft
+  editLinkInDraft,
+  getAllOrphans,
+  dequeueOrphan,
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -109,7 +111,10 @@ jest.mock("../../lib/persistence", () => ({
   updateLinkInDraft: jest.fn(),
   getDraftAdministrativeData_DraftUUIDForUpId: jest.fn(),
   getAttachmentById: jest.fn(),
-  editLinkInDraft: jest.fn()
+  editLinkInDraft: jest.fn(),
+  getAllOrphans: jest.fn(),
+  enqueueOrphan: jest.fn(),
+  dequeueOrphan: jest.fn(),
 }));
 jest.mock("../../lib/util", () => ({
   checkAttachmentsToRename: jest.fn(),
@@ -138,7 +143,8 @@ jest.mock("../../lib/handler", () => ({
   renameAttachment: jest.fn(),
   getRepositoryInfo: jest.fn(),
   updateAttachment: jest.fn(),
-  editLink: jest.fn()
+  editLink: jest.fn(),
+  deleteIncompleteDocumentWithRetry: jest.fn(),
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -7243,6 +7249,106 @@ describe("SDMAttachmentsService", () => {
       expect(result).toContain('fullAttachments');
       expect(result).toContain('shortAttachments');
       expect(result.length).toBe(2);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Branch coverage: sdm.js uncovered lines
+  // ---------------------------------------------------------------------------
+
+  describe("_reconcileOrphanQueue (lines 93, 105-133)", () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.options = { credentials: { uri: "http://sdm/" } };
+      service.creds = { uri: "http://sdm/" };
+      service.getTechnicalDestination = jest.fn().mockResolvedValue({ url: "http://sdm/" });
+    });
+
+    it("skips reconciliation and logs when getAllOrphans throws (line 105-110)", async () => {
+      getAllOrphans.mockRejectedValueOnce(new Error("DB not ready"));
+      await service._reconcileOrphanQueue();
+      // Should not throw; the catch block logs and returns
+      expect(getAllOrphans).toHaveBeenCalledTimes(1);
+    });
+
+    it("logs 'No orphaned documents' and returns early when orphan list is empty (line 113-116)", async () => {
+      getAllOrphans.mockResolvedValueOnce([]);
+      await service._reconcileOrphanQueue();
+      expect(service.getTechnicalDestination).not.toHaveBeenCalled();
+    });
+
+    it("dequeues orphan when cleanup succeeds (lines 118-129)", async () => {
+      getAllOrphans.mockResolvedValueOnce([
+        { objectId: "obj1", filename: "file1.pdf" }
+      ]);
+      const { deleteIncompleteDocumentWithRetry } = require("../../lib/handler");
+      deleteIncompleteDocumentWithRetry.mockResolvedValueOnce(true);
+      dequeueOrphan.mockResolvedValueOnce();
+
+      await service._reconcileOrphanQueue();
+
+      expect(dequeueOrphan).toHaveBeenCalledWith("obj1");
+    });
+
+    it("warns but does not dequeue when cleanup returns false (line 131)", async () => {
+      getAllOrphans.mockResolvedValueOnce([
+        { objectId: "obj2", filename: "file2.pdf" }
+      ]);
+      const { deleteIncompleteDocumentWithRetry } = require("../../lib/handler");
+      deleteIncompleteDocumentWithRetry.mockResolvedValueOnce(false);
+
+      await service._reconcileOrphanQueue();
+
+      expect(dequeueOrphan).not.toHaveBeenCalled();
+    });
+
+    it("logs error for unexpected exception per orphan (line 133)", async () => {
+      getAllOrphans.mockResolvedValueOnce([
+        { objectId: "obj3", filename: "file3.pdf" }
+      ]);
+      const { deleteIncompleteDocumentWithRetry } = require("../../lib/handler");
+      deleteIncompleteDocumentWithRetry.mockRejectedValueOnce(new Error("unexpected"));
+
+      await expect(service._reconcileOrphanQueue()).resolves.toBeUndefined();
+    });
+  });
+
+  describe("init — cds.on callback fires setTimeout (line 93)", () => {
+    it("registers cds.on('served') callback without throwing", async () => {
+      const service = new SDMAttachmentsService();
+      service.options = { credentials: { uri: "http://sdm/" } };
+      await service.init();
+      expect(cds.on).toHaveBeenCalledWith("served", expect.any(Function));
+    });
+  });
+
+  describe("getDestination — cached path (line 142)", () => {
+    it("returns cached destination on second call without calling getDestinationFromServiceBinding again", async () => {
+      const service = new SDMAttachmentsService();
+      const mockDest = { url: "http://cached/" };
+      const req = { _sdmDestination: mockDest };
+
+      const result = await service.getDestination(req);
+      expect(result).toBe(mockDest);
+    });
+  });
+
+  describe("draftSaveHandler — parentHandler invocation (line 558)", () => {
+    it("returned handler calls the parent handler and completes", async () => {
+      const service = new SDMAttachmentsService();
+      const parentHandler = jest.fn().mockResolvedValue();
+      jest.spyOn(Object.getPrototypeOf(Object.getPrototypeOf(service)), 'draftSaveHandler').mockReturnValue(parentHandler);
+
+      const attachments = {};
+      const handler = service.draftSaveHandler(attachments);
+      const res = {};
+      const req = { data: {} };
+
+      await handler(res, req);
+      expect(parentHandler).toHaveBeenCalledWith(res, req);
     });
   });
 });

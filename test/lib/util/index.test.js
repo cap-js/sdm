@@ -11,7 +11,8 @@ const {
   getUpdatedSecondaryProperties,
   extractSecondaryTypeIds,
   checkMCM,
-  prepareSecondaryProperties
+  prepareSecondaryProperties,
+  getContentLength,
 } = require("../../../lib/util/index");
 
 const cds = require("@sap/cds");
@@ -1448,7 +1449,7 @@ describe("util", () => {
     it("should return false for non-pwconly repoType", () => {
       // Set up proper cds.context
       cds.context = { user: { authInfo: { token: { payload: { ext_attr: { zdn: 'test-subdomain' } } } } } };
-      
+
       const repoInfo = {
         data: {
           repo123: {
@@ -1462,6 +1463,70 @@ describe("util", () => {
       const result = isRepositoryVersioned(repoInfo, "repo123");
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe("getContentLength", () => {
+    it("returns -1 for null/undefined content", () => {
+      expect(getContentLength(null)).toBe(-1);
+      expect(getContentLength(undefined)).toBe(-1);
+    });
+
+    it("returns buffer byte length for Buffer input", () => {
+      const buf = Buffer.from("hello");
+      expect(getContentLength(buf)).toBe(5);
+    });
+
+    it("returns readableLength for a stream with positive readableLength", () => {
+      const { Readable } = require("stream");
+      const stream = new Readable({ read() {} });
+      stream.push(Buffer.alloc(42));
+      expect(getContentLength(stream)).toBe(42);
+    });
+
+    it("returns size for objects with a numeric size property", () => {
+      expect(getContentLength({ size: 1024 })).toBe(1024);
+    });
+
+    it("returns -1 for a stream with readableLength of 0", () => {
+      const { Readable } = require("stream");
+      const stream = new Readable({ read() {} });
+      expect(getContentLength(stream)).toBe(-1);
+    });
+
+    it("returns -1 for an object without size or readableLength", () => {
+      expect(getContentLength({ foo: "bar" })).toBe(-1);
+    });
+  });
+
+  describe("messageConsts branch coverage", () => {
+    const { renameFileErr, noSDMRolesErrorMessage } = require("../../../lib/util/messageConsts");
+
+    it("renameFileErr returns delete-and-reupload message when statusCondition is \"don't\"", () => {
+      const result = renameFileErr(["file1.pdf"], "don't");
+      expect(result).toContain("Delete and upload the files again");
+      expect(result).toContain("file1.pdf");
+    });
+
+    it("renameFileErr returns already-exist message for other statusCondition", () => {
+      const result = renameFileErr(["file2.pdf"], "already");
+      expect(result).toContain("already exist");
+      expect(result).not.toContain("Delete and upload");
+    });
+
+    it("noSDMRolesErrorMessage uses sdmMissingRolesExceptionMsg for non-create operation", () => {
+      const consts = require("../../../lib/util/messageConsts");
+      const result = consts.noSDMRolesErrorMessage.call(consts, ["file.pdf"], "upload");
+      expect(result).toContain("upload");
+      expect(result).toContain("file.pdf");
+      expect(result).toContain(consts.sdmMissingRolesExceptionMsg);
+    });
+
+    it("noSDMRolesErrorMessage uses userNotAuthorisedError for create operation", () => {
+      const consts = require("../../../lib/util/messageConsts");
+      const result = consts.noSDMRolesErrorMessage.call(consts, ["file.pdf"], "create");
+      expect(result).toContain("create");
+      expect(result).toContain(consts.userNotAuthorisedError);
     });
   });
 });

@@ -1,6 +1,7 @@
 const config = {
   verbose: true,
   testTimeout: 100000,
+  forceExit: true,
   testMatch: ["**/test/lib/**/*.test.js"],
   collectCoverageFrom: ["**/lib/**/*"],
   coveragePathIgnorePatterns: ["node_modules", "<rootDir>/lib/persistence"],
