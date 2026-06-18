@@ -1583,7 +1583,7 @@ describe("handlers", () => {
       // After drain, readBytes is called again: returns the drained 1 byte
       // Then readBytes returns -1 again with empty queue → loop exits
       ReadAheadStream.prototype.startReading = async function() {};
-      ReadAheadStream.prototype.readBytes = async function(buf, off, len) {
+      ReadAheadStream.prototype.readBytes = async function(buf, off) {
         readCallCount++;
         if (readCallCount === 1) return -1;   // triggers premature EOF branch
         if (readCallCount === 2) {             // after drain sets bytesRead
