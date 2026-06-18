@@ -1500,7 +1500,7 @@ describe("util", () => {
   });
 
   describe("messageConsts branch coverage", () => {
-    const { renameFileErr, noSDMRolesErrorMessage } = require("../../../lib/util/messageConsts");
+    const { renameFileErr } = require("../../../lib/util/messageConsts");
 
     it("renameFileErr returns delete-and-reupload message when statusCondition is \"don't\"", () => {
       const result = renameFileErr(["file1.pdf"], "don't");

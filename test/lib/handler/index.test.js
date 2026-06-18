@@ -1543,7 +1543,6 @@ describe("handlers", () => {
     });
 
     it("returns false when deleteAttachmentsOfFolder is patched to throw every attempt", async () => {
-      const handlerModule = require("../../../lib/handler/index");
       // deleteIncompleteDocumentWithRetry is exported; deleteAttachmentsOfFolder is internal.
       // Patch executeHttpRequest so deleteAttachmentsOfFolder's catch path is hit but
       // deleteAttachmentsOfFolder itself is forced to re-throw by disabling its catch:
