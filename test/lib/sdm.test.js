@@ -69,7 +69,12 @@ let {
   mimeTypeInvalidError
 } = require("../../lib/util/messageConsts");
 
-jest.mock("@cap-js/attachments/srv/basic", () => class {
+// @cap-js/attachments switched the base-class path between versions:
+// 3.8 ships it at "srv/basic", 3.12+ at "srv/attachments/basic". virtual:true
+// lets jest.mock register a name that doesn't physically exist in the
+// installed copy, so whichever layout sdm.js resolves at runtime, our mock
+// wins.
+const _attachmentsBasicMock = class {
   async init() {
     return Promise.resolve();
   }
@@ -84,7 +89,9 @@ jest.mock("@cap-js/attachments/srv/basic", () => class {
   registerHandlers(_srv) {
     // Mock parent registerHandlers
   }
-});
+};
+jest.mock("@cap-js/attachments/srv/basic", () => _attachmentsBasicMock, { virtual: true });
+jest.mock("@cap-js/attachments/srv/attachments/basic", () => _attachmentsBasicMock, { virtual: true });
 jest.mock("@sap-cloud-sdk/connectivity", () => ({
   getDestinationFromServiceBinding: jest.fn(),
   retrieveJwt: jest.fn()
