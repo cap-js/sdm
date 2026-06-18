@@ -69,7 +69,7 @@ let {
   mimeTypeInvalidError
 } = require("../../lib/util/messageConsts");
 
-jest.mock("@cap-js/attachments/srv/attachments/basic", () => class {
+jest.mock("@cap-js/attachments/srv/basic", () => class {
   async init() {
     return Promise.resolve();
   }
@@ -4129,7 +4129,201 @@ describe("SDMAttachmentsService", () => {
       expect(service.updateBaselinesForEntity).not.toHaveBeenCalled();
     });
   });
-  
+
+  describe('captureSaveSnapshot', () => {
+    const { getSdmClientId } = require("../../lib/util");
+    let service;
+    let req;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      // Wire SELECT chain to chainable from -> columns -> where
+      global.SELECT.from = jest.fn().mockReturnThis();
+      global.SELECT.columns = jest.fn().mockReturnThis();
+      global.SELECT.where = jest.fn();
+      req = {
+        target: { name: 'ProcessorService.Incidents' },
+        data: { ID: 'parent-1' }
+      };
+    });
+
+    it('returns early when no clientId', async () => {
+      getSdmClientId.mockReturnValue(null);
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toBeUndefined();
+    });
+
+    it('returns early when no parentId', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req.data = {};
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toBeUndefined();
+    });
+
+    it('skips compositions without the annotation', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          refs: { type: 'cds.Composition', target: 'ProcessorService.Incidents.refs' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.refs'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+        // no @SDM.useClientCredential
+      };
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toEqual({});
+    });
+
+    it('captures preExistingActiveIds and draftClientStampedIds when annotated', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: { type: 'cds.Composition', target: 'ProcessorService.Incidents.references' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.references'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } },
+        '@SDM.useClientCredential': true
+      };
+      cds.model.definitions['ProcessorService.Incidents.references.drafts'] = { name: 'drafts' };
+
+      // Two SELECT calls: active first, draft second
+      global.SELECT.where
+        .mockResolvedValueOnce([{ ID: 'a1' }, { ID: 'a2' }])
+        .mockResolvedValueOnce([{ ID: 'a2' }]);
+
+      await service.captureSaveSnapshot(req);
+
+      const snap = req._sdmSaveSnapshot.references;
+      expect(snap.preExistingActiveIds).toEqual(new Set(['a1', 'a2']));
+      expect(snap.draftClientStampedIds).toEqual(new Set(['a2']));
+    });
+  });
+
+  describe('handleDraftSaveForLinks - client credential stamping', () => {
+    const { getSdmClientId } = require("../../lib/util");
+    let service;
+    let req;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+      service.updateBaselinesForEntity = jest.fn();
+      global.UPDATE.mockClear().mockImplementation(() => ({
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue()
+      }));
+      req = {
+        target: { name: 'ProcessorService.Incidents' },
+        data: { ID: 'parent-1' }
+      };
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: { type: 'cds.Composition', target: 'ProcessorService.Incidents.references' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.references'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } },
+        '@SDM.useClientCredential': true
+      };
+    });
+
+    it('stamps both createdBy and modifiedBy on freshly activated rows; only modifiedBy on edited existing', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req._sdmSaveSnapshot = {
+        references: {
+          preExistingActiveIds: new Set(['old-1']),
+          draftClientStampedIds: new Set(['old-1', 'new-1'])
+        }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data, where: null }); return obj; }),
+          where: jest.fn(function (where) { updateCalls[updateCalls.length - 1].where = where; return Promise.resolve(); })
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+
+      // Filter out the mimeType fix; pick the createdBy/modifiedBy stamping calls
+      const stampingCalls = updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy);
+      expect(stampingCalls).toHaveLength(2);
+
+      const fresh = stampingCalls.find((c) => c.data.createdBy);
+      expect(fresh.data).toEqual({ createdBy: 'client-X', modifiedBy: 'client-X' });
+      expect(fresh.where).toEqual({ ID: { in: ['new-1'] } });
+
+      const modified = stampingCalls.find((c) => !c.data.createdBy);
+      expect(modified.data).toEqual({ modifiedBy: 'client-X' });
+      expect(modified.where).toEqual({ ID: { in: ['old-1'] } });
+    });
+
+    it('does nothing when annotation absent', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents.references']['@SDM.useClientCredential'] = false;
+      req._sdmSaveSnapshot = {
+        references: { preExistingActiveIds: new Set(), draftClientStampedIds: new Set(['x']) }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+
+    it('does nothing when no clientId', async () => {
+      getSdmClientId.mockReturnValue(null);
+      req._sdmSaveSnapshot = {
+        references: { preExistingActiveIds: new Set(), draftClientStampedIds: new Set(['x']) }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+
+    it('does nothing when snapshot missing for composition', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req._sdmSaveSnapshot = {};
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+  });
+
   describe('updateBaselinesForEntity', () => {
     let service;
     
@@ -4258,7 +4452,8 @@ describe("SDMAttachmentsService", () => {
       expect(service.revertLinkInSDM).toHaveBeenCalledWith(
         draftAttachments[0],
         'http://original.com',
-        req
+        req,
+        expect.any(Object)
       );
       expect(service.originalUrlMap.has('attach1')).toBe(false);
     });
