@@ -339,7 +339,7 @@ test('(6) Create attachment with non-existent repo — should fail with repo inf
     modifiedBy: 'test@test.com'
   };
 
-  response = await api.createAttachment(appUrl, serviceName, entityName, bookId, postData, file);
+  await api.createAttachment(appUrl, serviceName, entityName, bookId, postData, file);
 
   // Save the entity — this should fail because the repo doesn't exist
   response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, bookId);
