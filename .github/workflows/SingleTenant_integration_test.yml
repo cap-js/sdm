@@ -100,8 +100,8 @@ jobs:
           echo "::add-mask::${clientSecret}"
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
           # Fetch SDM CMIS credentials from the 'sdm' service binding for incidents-srv
           cmis_service_guid=$(cf service sdm --guid)
           if [ -z "$cmis_service_guid" ]; then
@@ -133,17 +133,11 @@ jobs:
           echo "::add-mask::${cmis_url}"
           escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
           escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
-          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> "$GITHUB_ENV"
+          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> "$GITHUB_ENV"
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> "$GITHUB_ENV"
 
       - name: Run integration tests
-        env:
-          CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
-          CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
-          CMIS_CLIENT_ID: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_ID }}
-          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
-          CMIS_URL: ${{ steps.fetch_secret.outputs.CMIS_URL }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -153,26 +147,41 @@ jobs:
 
           (
             set +x
-            cat > "$JSON_FILE" <<EOL
-          {
-            "appUrl": "$appUrl",
-            "authUrl": "${{ secrets.CAPAUTH_URL }}",
-            "clientID": "${{ env.CLIENT_ID }}",
-            "clientSecret": "${{ env.CLIENT_SECRET }}",
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
-            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ env.CMIS_URL }}",
-            "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
-            "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
-            "APP_NAME": "incidents-srv",
-            "MT_APP_NAME": "incidents-mtx-srv"
-          }
-          EOL
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg virusScanRepositoryID "${{ secrets.VIRUSSCANREPOSITORYID }}" \
+              --arg defaultRepositoryID "${{ secrets.DEFAULTREPOSITORYID }}" \
+              --arg CMIS_URL "${{ env.CMIS_URL }}" \
+              --arg cmisClientID "${{ env.CMIS_CLIENT_ID }}" \
+              --arg cmisClientSecret "${{ env.CMIS_CLIENT_SECRET }}" \
+              --arg APP_NAME "incidents-srv" \
+              --arg MT_APP_NAME "incidents-mtx-srv" \
+              '
+                .appUrl = $appUrl
+               | .authUrl = $authUrl
+               | .clientID = $clientID
+               | .clientSecret = $clientSecret
+               | .username = $username
+               | .password = $password
+               | .noSDMRoleUsername = $noSDMRoleUsername
+               | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+               | .virusScanRepositoryID = $virusScanRepositoryID
+               | .defaultRepositoryID = $defaultRepositoryID
+               | .CMIS_URL = $CMIS_URL
+               | .cmisClientID = $cmisClientID
+               | .cmisClientSecret = $cmisClientSecret
+               | .APP_NAME = $APP_NAME
+               | .MT_APP_NAME = $MT_APP_NAME
+              ' "$JSON_FILE" > "temp.json"
           )
+          mv "temp.json" "$JSON_FILE"
 
           # Print only non-sensitive fields — never print credential fields
           echo "Generated credentials.json:"
@@ -258,8 +267,8 @@ jobs:
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
           # Fetch SDM CMIS credentials from the 'sdm' service binding for incidents-srv
           cmis_service_guid=$(cf service sdm --guid)
           if [ -z "$cmis_service_guid" ]; then
@@ -291,17 +300,11 @@ jobs:
           echo "::add-mask::${cmis_url}"
           escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
           escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
-          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> "$GITHUB_ENV"
+          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> "$GITHUB_ENV"
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> "$GITHUB_ENV"
 
       - name: Generate credentials.json and run versioned integration tests
-        env:
-          CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
-          CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
-          CMIS_CLIENT_ID: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_ID }}
-          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
-          CMIS_URL: ${{ steps.fetch_secret.outputs.CMIS_URL }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -309,26 +312,41 @@ jobs:
 
           (
             set +x
-            cat > "$JSON_FILE" <<EOL
-          {
-            "appUrl": "$appUrl",
-            "authUrl": "${{ secrets.CAPAUTH_URL }}",
-            "clientID": "${{ env.CLIENT_ID }}",
-            "clientSecret": "${{ env.CLIENT_SECRET }}",
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
-            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ env.CMIS_URL }}",
-            "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
-            "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
-            "APP_NAME": "incidents-srv",
-            "MT_APP_NAME": "incidents-mtx-srv"
-          }
-          EOL
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg virusScanRepositoryID "${{ secrets.VIRUSSCANREPOSITORYID }}" \
+              --arg defaultRepositoryID "${{ secrets.DEFAULTREPOSITORYID }}" \
+              --arg CMIS_URL "${{ env.CMIS_URL }}" \
+              --arg cmisClientID "${{ env.CMIS_CLIENT_ID }}" \
+              --arg cmisClientSecret "${{ env.CMIS_CLIENT_SECRET }}" \
+              --arg APP_NAME "incidents-srv" \
+              --arg MT_APP_NAME "incidents-mtx-srv" \
+              '
+                .appUrl = $appUrl
+               | .authUrl = $authUrl
+               | .clientID = $clientID
+               | .clientSecret = $clientSecret
+               | .username = $username
+               | .password = $password
+               | .noSDMRoleUsername = $noSDMRoleUsername
+               | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+               | .virusScanRepositoryID = $virusScanRepositoryID
+               | .defaultRepositoryID = $defaultRepositoryID
+               | .CMIS_URL = $CMIS_URL
+               | .cmisClientID = $cmisClientID
+               | .cmisClientSecret = $cmisClientSecret
+               | .APP_NAME = $APP_NAME
+               | .MT_APP_NAME = $MT_APP_NAME
+              ' "$JSON_FILE" > "temp.json"
           )
+          mv "temp.json" "$JSON_FILE"
 
           npm install
 
@@ -408,8 +426,8 @@ jobs:
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
           # Fetch SDM CMIS credentials from the 'sdm' service binding for incidents-srv
           cmis_service_guid=$(cf service sdm --guid)
           if [ -z "$cmis_service_guid" ]; then
@@ -441,9 +459,9 @@ jobs:
           echo "::add-mask::${cmis_url}"
           escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
           escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
-          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> "$GITHUB_ENV"
+          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> "$GITHUB_ENV"
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> "$GITHUB_ENV"
 
       - name: Download virus test file
         run: |
@@ -455,12 +473,6 @@ jobs:
           fi
 
       - name: Generate credentials.json and run virus scan integration tests
-        env:
-          CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
-          CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
-          CMIS_CLIENT_ID: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_ID }}
-          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
-          CMIS_URL: ${{ steps.fetch_secret.outputs.CMIS_URL }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -468,26 +480,41 @@ jobs:
 
           (
             set +x
-            cat > "$JSON_FILE" <<EOL
-          {
-            "appUrl": "$appUrl",
-            "authUrl": "${{ secrets.CAPAUTH_URL }}",
-            "clientID": "${{ env.CLIENT_ID }}",
-            "clientSecret": "${{ env.CLIENT_SECRET }}",
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
-            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ env.CMIS_URL }}",
-            "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
-            "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
-            "APP_NAME": "incidents-srv",
-            "MT_APP_NAME": "incidents-mtx-srv"
-          }
-          EOL
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg virusScanRepositoryID "${{ secrets.VIRUSSCANREPOSITORYID }}" \
+              --arg defaultRepositoryID "${{ secrets.DEFAULTREPOSITORYID }}" \
+              --arg CMIS_URL "${{ env.CMIS_URL }}" \
+              --arg cmisClientID "${{ env.CMIS_CLIENT_ID }}" \
+              --arg cmisClientSecret "${{ env.CMIS_CLIENT_SECRET }}" \
+              --arg APP_NAME "incidents-srv" \
+              --arg MT_APP_NAME "incidents-mtx-srv" \
+              '
+                .appUrl = $appUrl
+               | .authUrl = $authUrl
+               | .clientID = $clientID
+               | .clientSecret = $clientSecret
+               | .username = $username
+               | .password = $password
+               | .noSDMRoleUsername = $noSDMRoleUsername
+               | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+               | .virusScanRepositoryID = $virusScanRepositoryID
+               | .defaultRepositoryID = $defaultRepositoryID
+               | .CMIS_URL = $CMIS_URL
+               | .cmisClientID = $cmisClientID
+               | .cmisClientSecret = $cmisClientSecret
+               | .APP_NAME = $APP_NAME
+               | .MT_APP_NAME = $MT_APP_NAME
+              ' "$JSON_FILE" > "temp.json"
           )
+          mv "temp.json" "$JSON_FILE"
 
           npm install
 
@@ -566,8 +593,8 @@ jobs:
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           echo "::add-mask::${escapedClientSecret}"
           echo "::add-mask::${clientID}"
-          echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+          echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
           # Fetch SDM CMIS credentials from the 'sdm' service binding for incidents-srv
           cmis_service_guid=$(cf service sdm --guid)
           if [ -z "$cmis_service_guid" ]; then
@@ -599,17 +626,11 @@ jobs:
           echo "::add-mask::${cmis_url}"
           escaped_cmis_client_secret=$(echo "$cmis_client_secret" | sed 's/\$/\\$/g')
           escaped_cmis_url=$(echo "$cmis_url" | sed 's/\$/\\$/g')
-          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> $GITHUB_OUTPUT
-          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> $GITHUB_OUTPUT
-          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> $GITHUB_OUTPUT
+          printf 'CMIS_CLIENT_SECRET=%s\n' "$escaped_cmis_client_secret" >> "$GITHUB_ENV"
+          printf 'CMIS_CLIENT_ID=%s\n' "$cmis_client_id" >> "$GITHUB_ENV"
+          printf 'CMIS_URL=%s\n' "$escaped_cmis_url" >> "$GITHUB_ENV"
 
       - name: Generate credentials.json and run repo-specific integration tests
-        env:
-          CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
-          CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
-          CMIS_CLIENT_ID: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_ID }}
-          CMIS_CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CMIS_CLIENT_SECRET }}
-          CMIS_URL: ${{ steps.fetch_secret.outputs.CMIS_URL }}
         run: |
           set -e
           JSON_FILE="test/integration/credentials.json"
@@ -617,26 +638,41 @@ jobs:
 
           (
             set +x
-            cat > "$JSON_FILE" <<EOL
-          {
-            "appUrl": "$appUrl",
-            "authUrl": "${{ secrets.CAPAUTH_URL }}",
-            "clientID": "${{ env.CLIENT_ID }}",
-            "clientSecret": "${{ env.CLIENT_SECRET }}",
-            "username": "${{ secrets.CF_USER }}",
-            "password": "${{ secrets.CF_PASSWORD }}",
-            "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
-            "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
-            "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
-            "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
-            "CMIS_URL": "${{ env.CMIS_URL }}",
-            "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
-            "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
-            "APP_NAME": "incidents-srv",
-            "MT_APP_NAME": "incidents-mtx-srv"
-          }
-          EOL
+            jq \
+              --arg appUrl "$appUrl" \
+              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg clientID "${{ env.CLIENT_ID }}" \
+              --arg clientSecret "${{ env.CLIENT_SECRET }}" \
+              --arg username "${{ secrets.CF_USER }}" \
+              --arg password "${{ secrets.CF_PASSWORD }}" \
+              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
+              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg virusScanRepositoryID "${{ secrets.VIRUSSCANREPOSITORYID }}" \
+              --arg defaultRepositoryID "${{ secrets.DEFAULTREPOSITORYID }}" \
+              --arg CMIS_URL "${{ env.CMIS_URL }}" \
+              --arg cmisClientID "${{ env.CMIS_CLIENT_ID }}" \
+              --arg cmisClientSecret "${{ env.CMIS_CLIENT_SECRET }}" \
+              --arg APP_NAME "incidents-srv" \
+              --arg MT_APP_NAME "incidents-mtx-srv" \
+              '
+                .appUrl = $appUrl
+               | .authUrl = $authUrl
+               | .clientID = $clientID
+               | .clientSecret = $clientSecret
+               | .username = $username
+               | .password = $password
+               | .noSDMRoleUsername = $noSDMRoleUsername
+               | .noSDMRoleUserPassword = $noSDMRoleUserPassword
+               | .virusScanRepositoryID = $virusScanRepositoryID
+               | .defaultRepositoryID = $defaultRepositoryID
+               | .CMIS_URL = $CMIS_URL
+               | .cmisClientID = $cmisClientID
+               | .cmisClientSecret = $cmisClientSecret
+               | .APP_NAME = $APP_NAME
+               | .MT_APP_NAME = $MT_APP_NAME
+              ' "$JSON_FILE" > "temp.json"
           )
+          mv "temp.json" "$JSON_FILE"
 
           npm install
 
