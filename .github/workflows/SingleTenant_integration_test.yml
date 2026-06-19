@@ -199,6 +199,7 @@ jobs:
 
   versioned-repo-setup:
     runs-on: ubuntu-latest
+    environment: dev
     needs: integration-test
     steps:
       - name: Install Cloud Foundry CLI
@@ -225,6 +226,7 @@ jobs:
 
   versioned-integration-test:
     runs-on: ubuntu-latest
+    environment: dev
     needs: versioned-repo-setup
     steps:
       - name: Checkout repository
@@ -355,6 +357,7 @@ jobs:
 
   virusscan-repo-setup:
     runs-on: ubuntu-latest
+    environment: dev
     needs: versioned-integration-test
     steps:
       - name: Install Cloud Foundry CLI
@@ -381,6 +384,7 @@ jobs:
 
   virusscan-integration-test:
     runs-on: ubuntu-latest
+    environment: dev
     needs: virusscan-repo-setup
     env:
       FILE_URL: ${{ 'http://www.eicar.org/download/eicar.com.txt' }}
@@ -523,6 +527,7 @@ jobs:
 
   virusscan-repo-cleanup:
     runs-on: ubuntu-latest
+    environment: dev
     needs: [versioned-integration-test, virusscan-integration-test]
     if: always() && (needs.versioned-integration-test.result != 'skipped' || needs.virusscan-integration-test.result != 'skipped')
     steps:
@@ -550,6 +555,7 @@ jobs:
 
   repospecific-integration-test:
     runs-on: ubuntu-latest
+    environment: dev
     needs: [virusscan-integration-test, virusscan-repo-cleanup]
     if: false
     steps:
