@@ -875,7 +875,7 @@ jobs:
             "consumerSubaccountIdMT2": "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}",
             "consumerSubdomainMT2": "${{ secrets.CONSUMERSUBDOMAINMT2 }}",
             "SAAS_APP_NAME": "incidents-mtx-$CF_ORG-$CF_SPACE-multitenancytest",
-            "ROLE_COLLECTION_NAME": "ak-test",
+            "ROLE_COLLECTION_NAME": "test-cases-role",
             "APP_ROLE_FILTER": "incidents-mtx-$CF_ORG-$CF_SPACE-multitenancytest!t5256",
             "BTP_CLI_URL": "${{ secrets.BTP_CLI_URL }}",
             "BTP_GLOBAL_ACCOUNT_SUBDOMAIN": "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}",

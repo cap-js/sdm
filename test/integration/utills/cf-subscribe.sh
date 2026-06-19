@@ -188,7 +188,7 @@ for COLLECTION_NAME in "${COLLECTIONS_ARRAY[@]}"; do
   echo "--- Processing role collection: '$COLLECTION_NAME' ---"
 
   # Create the role collection if it doesn't already exist
-  # Use awk exact first-column match to avoid "ak-test" matching "ak-test2" as a substring
+  # Use awk exact first-column match to avoid "test-cases-role" matching "ak-test2" as a substring
   COLLECTION_EXISTS=$(btp list security/role-collection --subaccount "$CONSUMER_SUBACCOUNT_ID" 2>/dev/null \
     | awk -v name="$COLLECTION_NAME" '$1 == name {found=1} END {print found+0}' || echo 0)
   if [[ "$COLLECTION_EXISTS" == "1" ]]; then

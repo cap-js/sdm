@@ -882,7 +882,7 @@ jobs:
               --arg consumerSubaccountIdMT2 "${{ secrets.CONSUMERSUBACCOUNTIDMT2 }}" \
               --arg consumerSubdomainMT2 "${{ secrets.CONSUMERSUBDOMAINMT2 }}" \
               --arg SAAS_APP_NAME "incidents-mtx-sdmgoogleworkspacedev-${{ env.space }}-multitenancytest" \
-              --arg ROLE_COLLECTION_NAME "ak-test" \
+              --arg ROLE_COLLECTION_NAME "test-cases-role" \
               --arg APP_ROLE_FILTER "incidents-mtx-sdmgoogleworkspacedev-${{ env.space }}-multitenancytest!t5256" \
               --arg BTP_CLI_URL "${{ secrets.BTP_CLI_URL }}" \
               --arg BTP_GLOBAL_ACCOUNT_SUBDOMAIN "${{ secrets.BTP_GLOBAL_ACCOUNT_SUBDOMAIN }}" \
