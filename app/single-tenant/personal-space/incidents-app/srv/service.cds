@@ -54,7 +54,6 @@ service ProcessorService {
   }
 }
 
-extend my.Incidents with { references: Composition of many Attachments }
 extend my.Incidents with {
   attachments : Composition of many Attachments;
   references  : Composition of many Attachments;
