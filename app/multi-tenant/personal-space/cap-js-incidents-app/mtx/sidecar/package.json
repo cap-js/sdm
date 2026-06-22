@@ -1,0 +1,18 @@
+{
+  "name": "incidents-mtx",
+  "dependencies": {
+    "@cap-js/sdm": "../../../cap-js-sdm-1.10.0.tgz",
+    "@sap/cds": "^8",
+    "@sap/cds-hana": "^2",
+    "@sap/cds-mtxs": "^2",
+    "@sap/xsenv": "^5",
+    "@sap/xssec": "^3",
+    "express": "^4"
+  },
+  "scripts": {
+    "start": "cds-serve"
+  },
+  "cds": {
+    "profile": "mtx-sidecar"
+  }
+}

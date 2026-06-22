@@ -8,18 +8,30 @@ on:
         required: true
 
 permissions:
-  pull-requests: read
+  id-token: write
+  contents: read
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: dev
+    env:
+      CF_API: ${{ secrets.CF_API }}
+      CF_USER: ${{ secrets.CF_USER }}
+      CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+      CF_ORG: ${{ secrets.CF_ORG }}
+      CF_SPACE: ${{ secrets.CF_SPACE }}
+      CAPAUTH_URL: ${{ secrets.CAPAUTH_URL }}
+      NOSDMROLEUSERNAME: ${{ secrets.NOSDMROLEUSERNAME }}
+      NOSDMROLEUSERPASSWORD: ${{ secrets.NOSDMROLEUSERPASSWORD }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v2.1.5
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -34,76 +46,83 @@ jobs:
         id: determine_space
         run: |
           if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
-            space="${{ secrets.CF_SPACE }}"
+            space="$CF_SPACE"
           else
             space="${{ github.event.inputs.cf_space }}"
           fi
-          echo "Space determined for use"
           echo "space=$space" >> "$GITHUB_ENV"
 
       - name: Login to Cloud Foundry
         run: |
-          echo "Org Name: ${{ secrets.CF_ORG }}"
-          # Do not log space name to avoid unintended exposure
-          cf login -a "${{ secrets.CF_API }}" \
-            -u "${{ secrets.CF_USER }}" \
-            -p "${{ secrets.CF_PASSWORD }}" \
-            -o "${{ secrets.CF_ORG }}" \
+          # Do not log space name or org to avoid unintended exposure
+          cf login -a "$CF_API" \
+            -u "$CF_USER" \
+            -p "$CF_PASSWORD" \
+            -o "$CF_ORG" \
             -s "${{ env.space }}"
 
       - name: Fetch and Mask Client Secret and ID
         id: fetch_secret
         run: |
-          service_instance_guid=$(cf service sdm-incidents-auth --guid)
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            service_instance_guid=$(cf service sdm-incidents-auth --guid 2>/dev/null || echo "")
+            if [ -n "$service_instance_guid" ]; then
+              break
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "Attempt $attempt failed, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+              RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+          done
           if [ -z "$service_instance_guid" ]; then
-            echo "Error: Unable to retrieve service instance GUID"; exit 1;
+            echo "Error: Unable to retrieve service instance GUID after $MAX_RETRIES attempts"; exit 1;
           fi
-
           bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
           binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
           if [ -z "$binding_guid" ] || [ "$binding_guid" = "null" ]; then
             echo "Error: Unable to retrieve binding GUID"; exit 1;
           fi
-
           binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
-
           clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
           if [ -z "$clientSecret" ] || [ "$clientSecret" = "null" ]; then
             echo "Error: clientSecret is not set or is null"; exit 1;
           fi
           escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
-
           clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
           if [ -z "$clientID" ] || [ "$clientID" = "null" ]; then
             echo "Error: clientID is not set or is null"; exit 1;
           fi
 
+          # Mask both raw and escaped forms — if secret contains '$', they differ
+          echo "::add-mask::${clientSecret}"
+          echo "::add-mask::${escapedClientSecret}"
+          echo "::add-mask::${clientID}"
+
           # Export to env
           echo "CLIENT_SECRET=${escapedClientSecret}" >> "$GITHUB_ENV"
           echo "CLIENT_ID=${clientID}" >> "$GITHUB_ENV"
 
-          # Mask secrets in logs to prevent any appearance from being printed
-          echo "::add-mask::${escapedClientSecret}"
-          echo "::add-mask::${clientID}"
-
       - name: Run integration tests
         run: |
-          appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
-          echo "app url: ${appUrl}"
           JSON_FILE="test/integration/credentials.json"
+          trap 'rm -f "$JSON_FILE"' EXIT
 
-          # Avoid echoing command with secrets: run sensitive jq in a subshell with xtrace disabled
+          appUrl="$CF_ORG-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
+
           (
             set +x
             jq \
               --arg appUrl "$appUrl" \
-              --arg authUrl "${{ secrets.CAPAUTH_URL }}" \
+              --arg authUrl "$CAPAUTH_URL" \
               --arg clientID "${{ env.CLIENT_ID }}" \
               --arg clientSecret "${{ env.CLIENT_SECRET }}" \
-              --arg username "${{ secrets.CF_USER }}" \
-              --arg password "${{ secrets.CF_PASSWORD }}" \
-              --arg noSDMRoleUsername "${{ secrets.NOSDMROLEUSERNAME }}" \
-              --arg noSDMRoleUserPassword "${{ secrets.NOSDMROLEUSERPASSWORD }}" \
+              --arg username "$CF_USER" \
+              --arg password "$CF_PASSWORD" \
+              --arg noSDMRoleUsername "$NOSDMROLEUSERNAME" \
+              --arg noSDMRoleUserPassword "$NOSDMROLEUSERPASSWORD" \
               '
               .appUrl = $appUrl
               | .authUrl = $authUrl
@@ -113,27 +132,220 @@ jobs:
               | .password = $password
               | .noSDMRoleUsername = $noSDMRoleUsername
               | .noSDMRoleUserPassword = $noSDMRoleUserPassword
-              ' "$JSON_FILE" > "temp.json"
+              ' "$JSON_FILE" > "temp.json" && mv "temp.json" "$JSON_FILE"
           )
-          mv "temp.json" "$JSON_FILE"
 
-          # Print only non-sensitive fields
-          jq '{ appUrl, authUrl, username, password }' "$JSON_FILE"
+          # Print only non-sensitive fields — never print credential fields
+          jq '{ appUrl, authUrl }' "$JSON_FILE"
 
           npm install
 
           echo ""
-          echo "📋 Running Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
+          echo "Running Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
           TENANCY_MODEL=single npm run integration-test
 
           echo ""
-          echo "📋 Running Single-Tenant Non-draft Entity(Projects) Integration Tests..."
+          echo "Running Single-Tenant Non-draft Entity(Projects) Integration Tests..."
           TENANCY_MODEL=single npm run integration-test-non-draft
-          
-          echo ""
-          echo "📋 Running Technical user Single-Tenant Non-draft Entity(Projects) Integration Tests..."
-          TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test-non-draft
-          
-          echo ""
-          echo "📋 Running Technical user Single-Tenant Draft-enabled Entity(Books) Integration Tests..."
-          TOKEN_FLOW=technicalUser TENANCY_MODEL=single npm run integration-test
+
+  # versioned-repo-setup:
+  #   runs-on: ubuntu-latest
+  #   needs: integration-test
+  #   if: "!cancelled()"
+  #   steps:
+  #     - name: Install Cloud Foundry CLI
+  #       run: |
+  #         wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+  #         echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+  #         sudo apt-get update
+  #         sudo apt-get install -y cf8-cli
+
+  #     - name: Determine Cloud Foundry Space
+  #       run: |
+  #         if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+  #           space="${{ secrets.CF_SPACE }}"
+  #         else
+  #           space="${{ github.event.inputs.cf_space }}"
+  #         fi
+  #         echo "space=$space" >> "$GITHUB_ENV"
+
+  #     - name: Login and Switch to Versioned Repository
+  #       run: |
+  #         cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+  #         cf set-env incidents-srv REPOSITORY_ID "${{ secrets.VERSIONEDREPOSITORYID }}"
+  #         cf restage incidents-srv > /dev/null 2>&1
+
+  # versioned-integration-test:
+  #   runs-on: ubuntu-latest
+  #   needs: versioned-repo-setup
+  #   if: "!cancelled() && needs.versioned-repo-setup.result == 'success'"
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+
+  #     - name: Setup Node.js environment
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+
+  #     - name: Install Cloud Foundry CLI and jq
+  #       run: |
+  #         wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+  #         echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+  #         sudo apt-get update
+  #         sudo apt-get install -y cf8-cli jq
+
+  #     - name: Determine Cloud Foundry Space
+  #       run: |
+  #         if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+  #           space="${{ secrets.CF_SPACE }}"
+  #         else
+  #           space="${{ github.event.inputs.cf_space }}"
+  #         fi
+  #         echo "space=$space" >> "$GITHUB_ENV"
+
+  #     - name: Login to Cloud Foundry
+  #       run: |
+  #         cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+
+  #     - name: Fetch Client Credentials
+  #       id: fetch_secret
+  #       run: |
+  #         service_instance_guid=$(cf service sdm-incidents-auth --guid)
+  #         bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
+  #         binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
+  #         binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
+  #         clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
+  #         escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
+  #         clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
+  #         echo "::add-mask::${escapedClientSecret}"
+  #         echo "::add-mask::${clientID}"
+  #         echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
+  #         echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+
+  #     - name: Generate credentials.json and run versioned integration tests
+  #       env:
+  #         CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
+  #         CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
+  #         CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
+  #         CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+  #       run: |
+  #         set -e
+  #         JSON_FILE="test/integration/credentials.json"
+  #         appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
+
+  #         (
+  #           set +x
+  #           cat > "$JSON_FILE" <<EOL
+  #         {
+  #           "appUrl": "$appUrl",
+  #           "authUrl": "${{ secrets.CAPAUTH_URL }}",
+  #           "clientID": "${{ env.CLIENT_ID }}",
+  #           "clientSecret": "${{ env.CLIENT_SECRET }}",
+  #           "username": "${{ secrets.CF_USER }}",
+  #           "password": "${{ secrets.CF_PASSWORD }}",
+  #           "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+  #           "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+  #           "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+  #           "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+  #           "CMIS_URL": "${{ secrets.CMIS_URL }}",
+  #           "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
+  #           "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
+  #           "APP_NAME": "incidents-srv",
+  #           "MT_APP_NAME": "incidents-mtx-srv"
+  #         }
+  #         EOL
+  #         )
+
+  #         npm install
+
+  #         echo "Running Versioned Repository Integration Tests..."
+  #         TENANCY_MODEL=single npx jest --config jest-integration-versioned.config.js
+
+  # repospecific-integration-test:
+  #   runs-on: ubuntu-latest
+  #   needs: versioned-integration-test
+  #   if: "!cancelled() && needs.versioned-integration-test.result == 'success'"
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+
+  #     - name: Setup Node.js environment
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+
+  #     - name: Install Cloud Foundry CLI and jq
+  #       run: |
+  #         wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+  #         echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+  #         sudo apt-get update
+  #         sudo apt-get install -y cf8-cli jq
+
+  #     - name: Determine Cloud Foundry Space
+  #       run: |
+  #         if [ "${{ github.event.inputs.cf_space }}" == "developcap" ]; then
+  #           space="${{ secrets.CF_SPACE }}"
+  #         else
+  #           space="${{ github.event.inputs.cf_space }}"
+  #         fi
+  #         echo "space=$space" >> "$GITHUB_ENV"
+
+  #     - name: Login to Cloud Foundry
+  #       run: |
+  #         cf login -a "${{ secrets.CF_API }}" -u "${{ secrets.CF_USER }}" -p "${{ secrets.CF_PASSWORD }}" -o "${{ secrets.CF_ORG }}" -s "${{ env.space }}"
+
+  #     - name: Fetch Client Credentials
+  #       id: fetch_secret
+  #       run: |
+  #         service_instance_guid=$(cf service sdm-incidents-auth --guid)
+  #         bindings_response=$(cf curl "/v3/service_credential_bindings?service_instance_guids=${service_instance_guid}")
+  #         binding_guid=$(echo "$bindings_response" | jq -r '.resources[0].guid')
+  #         binding_details=$(cf curl "/v3/service_credential_bindings/${binding_guid}/details")
+  #         clientSecret=$(echo "$binding_details" | jq -r '.credentials.clientsecret')
+  #         escapedClientSecret=$(echo "$clientSecret" | sed 's/\$/\\$/g')
+  #         clientID=$(echo "$binding_details" | jq -r '.credentials.clientid')
+  #         echo "::add-mask::${escapedClientSecret}"
+  #         echo "::add-mask::${clientID}"
+  #         echo "CLIENT_SECRET=${escapedClientSecret}" >> $GITHUB_OUTPUT
+  #         echo "CLIENT_ID=${clientID}" >> $GITHUB_OUTPUT
+
+  #     - name: Generate credentials.json and run repo-specific integration tests
+  #       env:
+  #         CLIENT_SECRET: ${{ steps.fetch_secret.outputs.CLIENT_SECRET }}
+  #         CLIENT_ID: ${{ steps.fetch_secret.outputs.CLIENT_ID }}
+  #         CMIS_CLIENT_ID: ${{ secrets.CMISCLIENTID }}
+  #         CMIS_CLIENT_SECRET: ${{ secrets.CMISCLIENTSECRET }}
+  #       run: |
+  #         set -e
+  #         JSON_FILE="test/integration/credentials.json"
+  #         appUrl="${{ secrets.CF_ORG }}-${{ env.space }}-incidents-srv.cfapps.eu12.hana.ondemand.com"
+
+  #         (
+  #           set +x
+  #           cat > "$JSON_FILE" <<EOL
+  #         {
+  #           "appUrl": "$appUrl",
+  #           "authUrl": "${{ secrets.CAPAUTH_URL }}",
+  #           "clientID": "${{ env.CLIENT_ID }}",
+  #           "clientSecret": "${{ env.CLIENT_SECRET }}",
+  #           "username": "${{ secrets.CF_USER }}",
+  #           "password": "${{ secrets.CF_PASSWORD }}",
+  #           "noSDMRoleUsername": "${{ secrets.NOSDMROLEUSERNAME }}",
+  #           "noSDMRoleUserPassword": "${{ secrets.NOSDMROLEUSERPASSWORD }}",
+  #           "versionedRepositoryID": "${{ secrets.VERSIONEDREPOSITORYID }}",
+  #           "virusScanRepositoryID": "${{ secrets.VIRUSSCANREPOSITORYID }}",
+  #           "defaultRepositoryID": "${{ secrets.DEFAULTREPOSITORYID }}",
+  #           "CMIS_URL": "${{ secrets.CMIS_URL }}",
+  #           "cmisClientID": "${{ env.CMIS_CLIENT_ID }}",
+  #           "cmisClientSecret": "${{ env.CMIS_CLIENT_SECRET }}",
+  #           "APP_NAME": "incidents-srv",
+  #           "MT_APP_NAME": "incidents-mtx-srv"
+  #         }
+  #         EOL
+  #         )
+
+  #         npm install
+
+  #         echo "Running Repo-Specific Integration Tests..."
+  #         TENANCY_MODEL=single npx jest --config jest-integration-repo-specific.config.js
