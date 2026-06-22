@@ -1,0 +1,50 @@
+{
+  "welcomeFile": "app/index.html",
+  "routes": [
+    {
+      "source": "^/app/(.*)$",
+      "target": "$1",
+      "localDir": ".",
+      "cacheControl": "no-cache, no-store, must-revalidate",
+      "scope": [
+        "$XSAPPNAME.admin"
+      ]
+    },
+    {
+      "source": "^/appconfig/",
+      "localDir": ".",
+      "cacheControl": "no-cache, no-store, must-revalidate",
+      "scope": [
+        "$XSAPPNAME.admin"
+      ]
+    },
+    {
+      "source": "^/user-api(.*)",
+      "target": "$1",
+      "service": "sap-approuter-userapi",
+      "httpMethods": [
+        "GET"
+      ],
+      "scope": [
+        "$XSAPPNAME.admin",
+        "$XSAPPNAME.support"
+      ]
+    },
+    {
+      "source": "^/odata/(.*)$",
+      "target": "/odata/$1",
+      "destination": "incidents-mtx-srv",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/(.*)",
+      "target": "$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa",
+      "httpMethods": [
+        "GET"
+      ]
+    }
+  ]
+}

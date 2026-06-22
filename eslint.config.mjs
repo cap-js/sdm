@@ -2,8 +2,11 @@ import globals from "globals";
 import pluginJs from "@eslint/js";
 
 export default [
-  { 
-    files: ["**/*.js"], 
+  {
+    ignores: ["app/**"],
+  },
+  {
+    files: ["**/*.js"],
     languageOptions: { sourceType: "commonjs" },
   },
   {

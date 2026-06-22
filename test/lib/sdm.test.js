@@ -973,6 +973,8 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       service.creds = {};
+      // Default mock for _getNoteFromDB so existing tests are unaffected by the new note flow
+      service._getNoteFromDB = jest.fn().mockResolvedValue(null);
       req = {
         reject: jest.fn(),
         data: {
@@ -1313,7 +1315,9 @@ describe("SDMAttachmentsService", () => {
 
       // Initialize creds with a valid uri
       service.creds = { uri: 'mockUri' };
-  
+      // Default mock for _getNoteFromDB so existing tests are unaffected by the new note flow
+      service._getNoteFromDB = jest.fn().mockResolvedValue(null);
+
       // Mock dependencies
       service.replacePropertiesInAttachment = jest.fn();
       service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'file1.txt', folderId: 'mockFolderId' });
@@ -2358,6 +2362,7 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service._getNoteFromDB = jest.fn().mockResolvedValue(null);
     });
 
     it('should handle _updateAttachments when Object.keys length is 0', async () => {
@@ -2454,6 +2459,7 @@ describe("SDMAttachmentsService", () => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
       service.creds = { uri: 'http://mock-uri' };
+      service._getNoteFromDB = jest.fn().mockResolvedValue(null);
     });
 
     it('should handle onCreate when response.status is 403', async () => {
@@ -6236,6 +6242,7 @@ describe("SDMAttachmentsService", () => {
         getPropertiesForID.mockResolvedValue({});
         getUpdatedSecondaryProperties.mockReturnValue({});
         service._updateAttachments = jest.fn().mockResolvedValue([]);
+        service._getNoteFromDB = jest.fn().mockResolvedValue(null);
       });
 
       it("should skip if no attachments entity defined", async () => {
@@ -6696,7 +6703,8 @@ describe("SDMAttachmentsService", () => {
         isRestrictedCharactersInName.mockReturnValue(false);
         getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "file.pdf" });
         setupDestinationMocks();
-        
+        service._getNoteFromDB = jest.fn().mockResolvedValue(null);
+
         updateAttachment
           .mockResolvedValueOnce(403)  // First attachment returns 403
           .mockResolvedValueOnce(409); // Second attachment returns 409
@@ -6749,6 +6757,7 @@ describe("SDMAttachmentsService", () => {
         isRestrictedCharactersInName.mockReturnValue(false);
         getUpdatedSecondaryProperties.mockReturnValue({ "cmis:name": "success.pdf" });
         setupDestinationMocks();
+        service._getNoteFromDB = jest.fn().mockResolvedValue(null);
         updateAttachment.mockResolvedValue(200);
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
@@ -7252,6 +7261,416 @@ describe("SDMAttachmentsService", () => {
       expect(result).toContain('fullAttachments');
       expect(result).toContain('shortAttachments');
       expect(result.length).toBe(2);
+    });
+  });
+
+  // ─── cmis:description / note field mapping ───────────────────────────────────
+
+  describe('note → cmis:description mapping', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { uri: 'http://mock-uri/' };
+      getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+      setupDestinationMocks();
+    });
+
+    // ── Scenario 1: document upload with note ────────────────────────────────
+
+    describe('Scenario 1 – document upload with note field', () => {
+      it('should pass cmis:description to createAttachment when note is provided', async () => {
+        const attachmentData = [{
+          ID: 'att-001',
+          filename: 'report.pdf',
+          content: Buffer.from('pdf content'),
+          note: 'This is a test note',
+          mimeType: 'application/pdf'
+        }];
+        const parentId = 'folder-001';
+        const req = {
+          reject: jest.fn(),
+          target: { name: 'TestEntity.attachments', isDraft: true },
+          req: { url: '/TestEntity(ID=att-001)/content' }
+        };
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: { succinctProperties: { 'cmis:objectId': 'obj-001' } }
+        });
+        updateAttachmentInDraft.mockResolvedValue();
+
+        await service.onCreate(attachmentData, service.creds, req, parentId);
+
+        expect(createAttachment).toHaveBeenCalledWith(
+          expect.objectContaining({ note: 'This is a test note' }),
+          service.creds,
+          parentId,
+          expect.anything()
+        );
+      });
+
+      it('should not fail when note is absent on upload (cmis:description omitted)', async () => {
+        const attachmentData = [{
+          ID: 'att-002',
+          filename: 'report.pdf',
+          content: Buffer.from('pdf content'),
+          mimeType: 'application/pdf'
+          // note intentionally absent
+        }];
+        const parentId = 'folder-002';
+        const req = {
+          reject: jest.fn(),
+          target: { name: 'TestEntity.attachments', isDraft: true },
+          req: { url: '/TestEntity(ID=att-002)/content' }
+        };
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: { succinctProperties: { 'cmis:objectId': 'obj-002' } }
+        });
+        updateAttachmentInDraft.mockResolvedValue();
+
+        await service.onCreate(attachmentData, service.creds, req, parentId);
+
+        // createAttachment called without note (undefined) – should not throw
+        expect(createAttachment).toHaveBeenCalledWith(
+          expect.not.objectContaining({ note: expect.anything() }),
+          service.creds,
+          parentId,
+          expect.anything()
+        );
+      });
+    });
+
+    // ── Scenario 2: entity edit – draft save with changed note ───────────────
+
+    describe('Scenario 2 – entity edit: note updated on existing draft attachment', () => {
+      it('should include cmis:description in updateAttachment when note changes on draft save', async () => {
+        const req = {
+          reject: jest.fn(),
+          data: {
+            references: [{ ID: 'att-003', filename: 'invoice.pdf', note: 'Updated note' }]
+          }
+        };
+        const attachment = { ID: 'att-003', filename: 'invoice.pdf', url: 'obj-003', note: 'Updated note' };
+        const attachmentsEntity = { name: 'TestEntity.references', elements: {} };
+
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        updateAttachment.mockResolvedValue(200);
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        // _getNoteFromDB: SELECT.one.from(entity).where({ID}).columns('note') → {note}
+        const noteRow = { note: null };
+        const whereMock1 = { columns: jest.fn().mockResolvedValue(noteRow) };
+        const fromMock1 = { where: jest.fn().mockReturnValue(whereMock1) };
+        global.SELECT.one.from = jest.fn().mockReturnValue(fromMock1);
+
+        service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'invoice.pdf' });
+        service.replacePropertiesInAttachment = jest.fn();
+
+        const context = {
+          attachment,
+          attachmentsEntity,
+          filenameInSDM: 'invoice.pdf',
+          compositionName: 'references',
+          secondaryProperties: {
+            invalidDefinitions: {},
+            typeProperties: new Map()
+          }
+        };
+
+        await service._updateAttachments(req, context);
+
+        expect(updateAttachment).toHaveBeenCalledWith(
+          req,
+          attachment,
+          service.creds,
+          expect.anything(),
+          expect.objectContaining({ 'cmis:description': 'Updated note' }),
+          {}
+        );
+      });
+
+      it('should NOT call updateAttachment when note is unchanged', async () => {
+        const req = {
+          reject: jest.fn(),
+          data: {
+            references: [{ ID: 'att-004', filename: 'invoice.pdf', note: 'Same note' }]
+          }
+        };
+        const attachment = { ID: 'att-004', filename: 'invoice.pdf', url: 'obj-004', note: 'Same note' };
+        const attachmentsEntity = { name: 'TestEntity.references', elements: {} };
+
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        // DB already has the same note
+        const noteRow2 = { note: 'Same note' };
+        const whereMock2 = { columns: jest.fn().mockResolvedValue(noteRow2) };
+        const fromMock2 = { where: jest.fn().mockReturnValue(whereMock2) };
+        global.SELECT.one.from = jest.fn().mockReturnValue(fromMock2);
+
+        service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'invoice.pdf' });
+        service.replacePropertiesInAttachment = jest.fn();
+
+        const context = {
+          attachment,
+          attachmentsEntity,
+          filenameInSDM: 'invoice.pdf',
+          compositionName: 'references',
+          secondaryProperties: {
+            invalidDefinitions: {},
+            typeProperties: new Map()
+          }
+        };
+
+        await service._updateAttachments(req, context);
+
+        // No properties changed → updateAttachment must NOT be called
+        expect(updateAttachment).not.toHaveBeenCalled();
+      });
+
+      it('should map note to cmis:description when editing non-draft entity attachment', async () => {
+        const attachmentsEntity = {
+          name: 'TestEntity.references',
+          elements: {}
+        };
+        const attachment = { ID: 'att-005', filename: 'contract.pdf', note: 'New note for non-draft' };
+        cds.ql.SELECT = {
+          one: {
+            from: jest.fn().mockImplementation(() => ({
+              where: jest.fn().mockResolvedValue({ filename: 'contract.pdf', url: 'obj-005', note: null }),
+              columns: jest.fn().mockReturnValue({
+                where: jest.fn().mockResolvedValue({ note: null })
+              })
+            }))
+          }
+        };
+
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        updateAttachment.mockResolvedValue(200);
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        const validationContext = {
+          typeProperties: new Map(),
+          invalidDefinitions: {},
+          propertyTitles: {}
+        };
+
+        service._fetchCurrentAttachment = jest.fn().mockResolvedValue({
+          filename: 'contract.pdf',
+          url: 'obj-005',
+          note: null
+        });
+        service._getNoteFromDB = jest.fn().mockResolvedValue(null);
+        service._updateAttachmentInSDM = jest.fn().mockResolvedValue(null);
+
+        await service._processNonDraftAttachmentUpdate(
+          { reject: jest.fn() },
+          attachment,
+          attachmentsEntity,
+          validationContext
+        );
+
+        expect(service._updateAttachmentInSDM).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.anything(),
+          attachment,
+          expect.objectContaining({ 'cmis:description': 'New note for non-draft' }),
+          {},
+          expect.anything()
+        );
+      });
+
+      it('should clear cmis:description when note is removed (set to null)', async () => {
+        const req = {
+          reject: jest.fn(),
+          data: {
+            references: [{ ID: 'att-006', filename: 'doc.pdf', note: null }]
+          }
+        };
+        const attachment = { ID: 'att-006', filename: 'doc.pdf', url: 'obj-006', note: null };
+        const attachmentsEntity = { name: 'TestEntity.references', elements: {} };
+
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        updateAttachment.mockResolvedValue(200);
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        // DB has an existing note that user cleared
+        const noteRow3 = { note: 'Old note' };
+        const whereMock3 = { columns: jest.fn().mockResolvedValue(noteRow3) };
+        const fromMock3 = { where: jest.fn().mockReturnValue(whereMock3) };
+        global.SELECT.one.from = jest.fn().mockReturnValue(fromMock3);
+
+        service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'doc.pdf' });
+        service.replacePropertiesInAttachment = jest.fn();
+
+        const context = {
+          attachment,
+          attachmentsEntity,
+          filenameInSDM: 'doc.pdf',
+          compositionName: 'references',
+          secondaryProperties: {
+            invalidDefinitions: {},
+            typeProperties: new Map()
+          }
+        };
+
+        await service._updateAttachments(req, context);
+
+        // cmis:description should be sent as null to clear it
+        expect(updateAttachment).toHaveBeenCalledWith(
+          req,
+          attachment,
+          service.creds,
+          expect.anything(),
+          expect.objectContaining({ 'cmis:description': null }),
+          {}
+        );
+      });
+    });
+
+    // ── Scenario 3: link creation / link edit with note ──────────────────────
+
+    describe('Scenario 3 – link creation and edit with note field', () => {
+      it('should pass note as cmis:description when creating a link with a note', async () => {
+        const parentUUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+        const linkToCreateInSDM = {
+          filename: 'SAP Link',
+          mimeType: 'application/internet-shortcut',
+          repositoryId: 'repo123',
+          linkUrl: 'https://www.sap.com',
+          note: 'This is a link note'
+        };
+
+        createAttachment.mockResolvedValue({
+          status: 201,
+          data: { succinctProperties: { 'cmis:objectId': 'link-obj-001' } }
+        });
+        getDraftAdministrativeData_DraftUUIDForUpId.mockResolvedValue([{
+          DraftAdministrativeData_DraftUUID: 'draft-uuid-001'
+        }]);
+        updateLinkInDraft.mockResolvedValue();
+
+        const req = {
+          req: { url: `/TestEntity(ID=${parentUUID})/createLink` },
+          data: { name: 'SAP Link', url: 'https://www.sap.com' },
+          target: { name: 'TestEntity.references' },
+          reject: jest.fn()
+        };
+
+        await service.createLink(linkToCreateInSDM, service.creds, req, 'folder-001', 'up__ID');
+
+        expect(createAttachment).toHaveBeenCalledWith(
+          expect.objectContaining({ note: 'This is a link note' }),
+          service.creds,
+          'folder-001',
+          expect.anything()
+        );
+      });
+
+      it('should update cmis:description when note changes on an existing draft attachment during entity save', async () => {
+        // Simulates: user opens draft, changes note on an already-uploaded attachment, saves
+        const req = {
+          reject: jest.fn(),
+          data: {
+            references: [{ ID: 'att-007', filename: 'report.xlsx', note: 'Draft save note' }]
+          }
+        };
+        const attachment = {
+          ID: 'att-007',
+          filename: 'report.xlsx',
+          url: 'obj-007',
+          note: 'Draft save note',
+          HasActiveEntity: true  // existing (non-new) draft attachment
+        };
+        const attachmentsEntity = { name: 'TestEntity.references', elements: {} };
+
+        getPropertiesForID.mockResolvedValue({});
+        getUpdatedSecondaryProperties.mockReturnValue({});
+        updateAttachment.mockResolvedValue(200);
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        const noteRow4 = { note: null };
+        const whereMock4 = { columns: jest.fn().mockResolvedValue(noteRow4) };
+        const fromMock4 = { where: jest.fn().mockReturnValue(whereMock4) };
+        global.SELECT.one.from = jest.fn().mockReturnValue(fromMock4);
+
+        service.getAttachementDataInSDM = jest.fn().mockResolvedValue({ filename: 'report.xlsx' });
+        service.replacePropertiesInAttachment = jest.fn();
+
+        const context = {
+          attachment,
+          attachmentsEntity,
+          filenameInSDM: 'report.xlsx',
+          compositionName: 'references',
+          secondaryProperties: {
+            invalidDefinitions: {},
+            typeProperties: new Map()
+          }
+        };
+
+        await service._updateAttachments(req, context);
+
+        expect(updateAttachment).toHaveBeenCalledWith(
+          req,
+          attachment,
+          service.creds,
+          expect.anything(),
+          expect.objectContaining({ 'cmis:description': 'Draft save note' }),
+          {}
+        );
+      });
+
+      it('should preserve note value through editLink flow when note is not changed', async () => {
+        service.originalUrlMap = new Map();
+        const attachmentId = '123e4567-e89b-12d3-a456-426614174000';
+        const req = {
+          req: { url: `/Attachments(ID=${attachmentId})` },
+          target: { name: 'Attachments' },
+          data: { url: 'https://updated-url.com' },
+          reject: jest.fn()
+        };
+
+        cds.model.definitions['Attachments'] = {};
+
+        getAttachmentById.mockResolvedValue({
+          ID: attachmentId,
+          url: 'link-obj-001',
+          filename: 'MyLink.url',
+          linkUrl: 'https://original-url.com',
+          note: 'Existing note'
+        });
+
+        setupDestinationMocks();
+        editLink.mockResolvedValue({ status: 200 });
+        editLinkInDraft.mockResolvedValue();
+
+        const result = await service.handleEditLinkAction(req);
+
+        // editLink called with new URL
+        expect(editLink).toHaveBeenCalledWith(
+          'link-obj-001',
+          'MyLink',
+          'https://updated-url.com',
+          service.creds,
+          expect.anything()
+        );
+
+        // editLinkInDraft updates linkUrl and baseline note (not the user note)
+        expect(editLinkInDraft).toHaveBeenCalledWith(
+          req,
+          expect.objectContaining({ linkUrl: 'https://updated-url.com' })
+        );
+
+        expect(result).toEqual({ success: true, message: 'Link edited successfully' });
+      });
     });
   });
 });
