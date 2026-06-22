@@ -58,9 +58,9 @@ describe('ReadAheadStream', () => {
       expect(ras).toBeDefined();
     });
 
-    it('sets default chunkSize to 20 MB when not provided', () => {
+    it('sets default chunkSize to 50 MB when not provided', () => {
       const ras = new ReadAheadStream(Buffer.alloc(1), 1);
-      expect(ras.chunkSize).toBe(20 * 1024 * 1024);
+      expect(ras.chunkSize).toBe(50 * 1024 * 1024);
     });
 
     it('respects a custom chunkSize', () => {
@@ -407,20 +407,20 @@ describe('ReadAheadStream', () => {
       await ras.close();
     });
 
-    it('sets readError and emits error when _preloadChunks throws unexpectedly (lines 113-116)', done => {
+    it('sets readError without emitting error event when _preloadChunks throws unexpectedly (lines 113-116)', async () => {
       const stream = makeReadable(Buffer.from('hi'), 2);
       const ras = new ReadAheadStream(stream, 10, 5);
       ras.isReading = true;
 
-      ras.once('error', err => {
-        expect(err.message).toBe('unexpected boom');
-        expect(ras.readError).toBeDefined();
-        // do not call ras.close() — stream already cleaned up
-        done();
-      });
-
       ras._readChunk = async () => { throw new Error('unexpected boom'); };
       ras._preloadChunks();
+
+      // Give the async preload a tick to run and set readError
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(ras.readError).toBeDefined();
+      expect(ras.readError.message).toBe('unexpected boom');
+      // No 'error' event is emitted — no listener needed, no uncaught exception risk
     });
   });
 
