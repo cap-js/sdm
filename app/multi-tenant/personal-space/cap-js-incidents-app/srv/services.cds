@@ -10,7 +10,35 @@ service ProcessorService @(requires:['support','system-user']) {
   entity Customers @readonly as projection on my.Customers;
   entity Projects as projection on my.Projects; // Non-draft entity for testing
   entity Projects.references as projection on my.Projects.references;
+  entity Incidents.attachments as projection on my.Incidents.attachments
+  actions {
+    @(Common.SideEffects : {TargetEntities: ['']},)
+    action createLink(
+      in:many $self,
+      @mandatory @Common.Label:'Name' name: String @UI.Placeholder: 'Enter a name for the link',
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$' @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+    );
+    action editLink(
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+      @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+    );
+    action openAttachment() returns { value: String; };
+  }
   entity Incidents.references as projection on my.Incidents.references
+  actions {
+    @(Common.SideEffects : {TargetEntities: ['']},)
+    action createLink(
+      in:many $self,
+      @mandatory @Common.Label:'Name' name: String @UI.Placeholder: 'Enter a name for the link',
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$' @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+    );     
+    action editLink(
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+      @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+    );
+    action openAttachment() returns { value: String; };
+  }
+  entity Incidents.footnotes as projection on my.Incidents.footnotes
   actions {
     @(Common.SideEffects : {TargetEntities: ['']},)
     action createLink(
@@ -27,8 +55,10 @@ service ProcessorService @(requires:['support','system-user']) {
 }
 
 extend my.Incidents with {
-  references : Composition of many Attachments;
-}
+  attachments : Composition of many Attachments;
+  references  : Composition of many Attachments;
+  footnotes   : Composition of many Attachments;
+} 
 
 extend my.Projects with {
   references : Composition of many Attachments;

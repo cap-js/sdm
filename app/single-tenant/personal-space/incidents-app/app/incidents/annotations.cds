@@ -71,6 +71,24 @@ annotate service.Incidents with @(
             ID : 'i18nConversation',
             Target : 'conversation/@UI.LineItem#i18nConversation1',
         },
+        {
+            $Type : 'UI.ReferenceFacet',
+            ID    : 'AttachmentsFacet',
+            Label : 'Attachments',
+            Target: 'attachments/@UI.LineItem',
+        },
+        {
+            $Type : 'UI.ReferenceFacet',
+            ID    : 'ReferencesFacet',
+            Label : 'References',
+            Target: 'references/@UI.LineItem',
+        },
+        {
+            $Type : 'UI.ReferenceFacet',
+            ID    : 'FootnotesFacet',
+            Label : 'Footnotes',
+            Target: 'footnotes/@UI.LineItem',
+        },
     ]
 );
 annotate service.Incidents with @(
@@ -185,6 +203,65 @@ annotate service.Incidents.conversation with @(
 //
 //  Attachments Details
 //
+annotate service.Incidents.attachments with @UI: {
+  HeaderInfo: {
+        $Type         : 'UI.HeaderInfoType',
+        TypeName      : '{i18n>Attachment}',
+        TypeNamePlural: '{i18n>Attachments}',
+  },
+  LineItem  : [
+    {Value: type, @HTML5.CssDefaults: {width: '10%'}},
+    {Value: filename, @HTML5.CssDefaults: {width: '25%'}},
+    {Value: content, @HTML5.CssDefaults: {width: '0%'}},
+    {Value: createdAt, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: createdBy, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: note, @HTML5.CssDefaults: {width: '25%'}},
+    {
+      $Type  : 'UI.DataFieldForActionGroup',
+      ID     : 'TableActionGroup',
+      Label  : 'Create',
+      ![@UI.Hidden]: {$edmJson: {$Eq: [ {$Path: 'IsActiveEntity'}, true ]}},
+      Actions: [
+        {
+          $Type : 'UI.DataFieldForAction',
+          Label : 'Link',
+          Action: 'ProcessorService.createLink',
+        }
+      ]
+    },
+    {
+      @UI.Hidden: {$edmJson:{$If:[{$Eq:[{$Path: 'IsActiveEntity' },true]},true,{$If:[{$Ne:[{$Path:'mimeType'},'application/internet-shortcut']},true,false]}]}},
+      $Type : 'UI.DataFieldForAction',
+      Label : 'Edit Link',
+      Action: 'ProcessorService.editLink',
+      Inline: true,
+      IconUrl: 'sap-icon://edit',
+      @HTML5.CssDefaults: {width: '4%'}
+    },
+  ]
+}
+{
+  url @readonly;
+  note @(title: '{i18n>Note}');
+  filename @(title: '{i18n>Filename}');
+  modifiedAt @(odata.etag: null);
+  content
+      @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
+      @(title: '{i18n>Attachment}');
+  folderId @UI.Hidden;
+  mimeType @UI.Hidden;
+  status @UI.Hidden;
+  repositoryId @UI.Hidden;
+}
+
+annotate service.Incidents.attachments with {
+  customProperty1 @Common.ValueListWithFixedValues;
+}
+
+////////////////////////////////////////////////////////////////////////////
+//
+//  References Details
+//
 annotate service.Incidents.references with @UI: {
   HeaderInfo: {
         $Type         : 'UI.HeaderInfoType',
@@ -237,5 +314,64 @@ annotate service.Incidents.references with @UI: {
 }
 
 annotate service.Incidents.references with {
+  customProperty1 @Common.ValueListWithFixedValues;
+}
+
+////////////////////////////////////////////////////////////////////////////
+//
+//  Footnotes Details
+//
+annotate service.Incidents.footnotes with @UI: {
+  HeaderInfo: {
+        $Type         : 'UI.HeaderInfoType',
+        TypeName      : '{i18n>Footnote}',
+        TypeNamePlural: '{i18n>Footnotes}',
+  },
+  LineItem  : [
+    {Value: type, @HTML5.CssDefaults: {width: '10%'}},
+    {Value: filename, @HTML5.CssDefaults: {width: '25%'}},
+    {Value: content, @HTML5.CssDefaults: {width: '0%'}},
+    {Value: createdAt, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: createdBy, @HTML5.CssDefaults: {width: '20%'}},
+    {Value: note, @HTML5.CssDefaults: {width: '25%'}},
+    {
+      $Type  : 'UI.DataFieldForActionGroup',
+      ID     : 'TableActionGroup',
+      Label  : 'Create',
+      ![@UI.Hidden]: {$edmJson: {$Eq: [ {$Path: 'IsActiveEntity'}, true ]}},
+      Actions: [
+        {
+          $Type : 'UI.DataFieldForAction',
+          Label : 'Link',
+          Action: 'ProcessorService.createLink',
+        }
+      ]
+    },
+    {
+      @UI.Hidden: {$edmJson:{$If:[{$Eq:[{$Path: 'IsActiveEntity' },true]},true,{$If:[{$Ne:[{$Path:'mimeType'},'application/internet-shortcut']},true,false]}]}},
+      $Type : 'UI.DataFieldForAction',
+      Label : 'Edit Link',
+      Action: 'ProcessorService.editLink',
+      Inline: true,
+      IconUrl: 'sap-icon://edit',
+      @HTML5.CssDefaults: {width: '4%'}
+    },
+  ]
+}
+{
+  url @readonly;
+  note @(title: '{i18n>Note}');
+  filename @(title: '{i18n>Filename}');
+  modifiedAt @(odata.etag: null);
+  content
+      @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
+      @(title: '{i18n>Attachment}');
+  folderId @UI.Hidden;
+  mimeType @UI.Hidden;
+  status @UI.Hidden;
+  repositoryId @UI.Hidden;
+}
+
+annotate service.Incidents.footnotes with {
   customProperty1 @Common.ValueListWithFixedValues;
 }
