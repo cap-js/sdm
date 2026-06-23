@@ -745,6 +745,7 @@ jobs:
     timeout-minutes: 90
     needs: virusscan-repo-cleanup
     environment: dev
+    if: false   # Temporarily disabled — re-enable once btp login / SaaS subscribe issue is resolved
     env:
       CF_API: ${{ secrets.CF_API }}
       CF_USER: ${{ secrets.CF_USER }}

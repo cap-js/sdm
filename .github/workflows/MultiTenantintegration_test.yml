@@ -753,6 +753,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     needs: virusscan-repo-cleanup
+    if: false   # Temporarily disabled — re-enable once btp login / SaaS subscribe issue is resolved
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
