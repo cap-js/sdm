@@ -51,7 +51,11 @@ fi
 if [[ -n "${BTP_GLOBAL_ACCOUNT_SUBDOMAIN:-}" ]]; then
   LOGIN_ARGS+=(--subdomain "$BTP_GLOBAL_ACCOUNT_SUBDOMAIN")
 fi
-btp login "${LOGIN_ARGS[@]}"
+if ! LOGIN_OUT=$(btp login "${LOGIN_ARGS[@]}" 2>&1); then
+  echo "ERROR: btp login failed:"
+  echo "$LOGIN_OUT"
+  exit 1
+fi
 
 # --- Check current subscription status ---
 GET_ARGS=(--subaccount "$CONSUMER_SUBACCOUNT_ID" --of-app "$SAAS_APP_NAME")
@@ -71,11 +75,17 @@ else
   # --- Subscribe to SaaS application at subaccount level ---
   echo ""
   echo "Subscribing to SaaS application..."
+  echo "  Subaccount: $CONSUMER_SUBACCOUNT_ID"
+  echo "  App: $SAAS_APP_NAME"
   SUBSCRIBE_ARGS=(--subaccount "$CONSUMER_SUBACCOUNT_ID" --to-app "$SAAS_APP_NAME")
   if [[ -n "${SAAS_APP_PLAN:-}" ]]; then
     SUBSCRIBE_ARGS+=(--plan "$SAAS_APP_PLAN")
   fi
-  btp subscribe accounts/subaccount "${SUBSCRIBE_ARGS[@]}"
+  if ! SUBSCRIBE_OUT=$(btp subscribe accounts/subaccount "${SUBSCRIBE_ARGS[@]}" 2>&1); then
+    echo "ERROR: btp subscribe failed:"
+    echo "$SUBSCRIBE_OUT"
+    exit 1
+  fi
 
   # --- Wait for subscription to complete ---
   echo ""
@@ -178,7 +188,7 @@ for COLLECTION_NAME in "${COLLECTIONS_ARRAY[@]}"; do
   echo "--- Processing role collection: '$COLLECTION_NAME' ---"
 
   # Create the role collection if it doesn't already exist
-  # Use awk exact first-column match to avoid "ak-test" matching "ak-test2" as a substring
+  # Use awk exact first-column match to avoid "test-cases-role" matching "ak-test2" as a substring
   COLLECTION_EXISTS=$(btp list security/role-collection --subaccount "$CONSUMER_SUBACCOUNT_ID" 2>/dev/null \
     | awk -v name="$COLLECTION_NAME" '$1 == name {found=1} END {print found+0}' || echo 0)
   if [[ "$COLLECTION_EXISTS" == "1" ]]; then
