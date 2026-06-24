@@ -58,9 +58,9 @@ describe('ReadAheadStream', () => {
       expect(ras).toBeDefined();
     });
 
-    it('sets default chunkSize to 50 MB when not provided', () => {
+    it('sets default chunkSize to 20 MB when not provided', () => {
       const ras = new ReadAheadStream(Buffer.alloc(1), 1);
-      expect(ras.chunkSize).toBe(50 * 1024 * 1024);
+      expect(ras.chunkSize).toBe(20 * 1024 * 1024);
     });
 
     it('respects a custom chunkSize', () => {
@@ -582,19 +582,22 @@ describe('ReadAheadStream', () => {
     });
 
     it('throws in readBytes when source stream is destroyed (lines 301-302)', async () => {
-      // Use a Readable (not Buffer) source so the guard on line 300 activates
+      // Use a Readable (not Buffer) source that never ends — simulates an
+      // abrupt client disconnect where the stream is destroyed mid-upload
+      // (readableEnded stays false, so the destroyed-stream guard fires).
       const stream = new Readable({
-        read() { this.push(Buffer.from('hello')); this.push(null); },
+        read() { this.push(Buffer.alloc(5, 0x61)); }, // keeps pushing, never ends
         autoDestroy: false,
       });
-      const ras = new ReadAheadStream(stream, 5, 10);
-      await ras.startReading();
+      const ras = new ReadAheadStream(stream, 100, 10);
+      // Prime currentBuffer manually to avoid needing startReading
+      ras.currentBuffer = Buffer.from('hello');
+      ras.currentBufferSize = 5;
+      ras.position = 5; // force _loadNextChunk to be called on next readBytes
 
-      // currentBuffer is loaded; destroy stream and clear lastChunkLoaded so guard fires
+      // Destroy stream without ending it — simulates abrupt disconnect
       stream.destroy();
       ras.lastChunkLoaded = false;
-      // position < currentBufferSize so _loadNextChunk is NOT called, then guard at 300-302 fires
-      ras.position = 0;
 
       const tmp = Buffer.allocUnsafe(10);
       await expect(ras.readBytes(tmp, 0, 10)).rejects.toThrow('Stream closed by client disconnect');
