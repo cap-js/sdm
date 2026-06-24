@@ -44,6 +44,8 @@ const {
 } = require("../../../lib/handler/index");
 
 describe("handlers", () => {
+  const REPO_INFO_NO_VIRUS_SCAN = { data: { "123": { isVirusScanEnabled: "false", capabilities: { "capabilityContentStreamUpdatability": "none" } } } };
+
   describe("ReadAttachment function", () => {
     beforeEach(() => {
       jest.clearAllMocks();
@@ -1227,8 +1229,9 @@ describe("handlers", () => {
     });
 
     it("routes to uploadLargeFileInChunks when contentLength > threshold", async () => {
-      // createEmptyDocument call returns objectId
+      // getRepositoryInfo (virus scan check), then createEmptyDocument, then appendContentStream
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({
           data: { succinctProperties: { "cmis:objectId": "largeObj1" } },
         })
@@ -1241,15 +1244,11 @@ describe("handlers", () => {
         filename: "large.bin",
         content: Buffer.from("x"),
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
       const result = await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
 
-      // createEmptyDocument + exactly one appendContentStream for the 1-byte buffer
-      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
-      expect(data.enqueueOrphan).toHaveBeenCalledWith("largeObj1", expect.any(String), "large.bin");
-      expect(data.dequeueOrphan).toHaveBeenCalledWith("largeObj1");
+      // getRepositoryInfo + createEmptyDocument + exactly one appendContentStream for the 1-byte buffer
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
       expect(result).toEqual({ status: 200 });
     });
 
@@ -1264,6 +1263,17 @@ describe("handlers", () => {
 
       expect(getContentLength).toHaveBeenCalledWith(data.content);
     });
+
+    it("throws when file is > 400 MB and virus scan is enabled on the repository", async () => {
+      const THRESHOLD = 400 * 1024 * 1024;
+      const repoInfoVirusScanEnabled = { data: { "123": { isVirusScanEnabled: "true", capabilities: {} } } };
+      executeHttpRequest.mockResolvedValueOnce(repoInfoVirusScanEnabled);
+
+      const data = { filename: "large.bin", content: Buffer.from("x"), contentLength: THRESHOLD + 1 };
+      await expect(
+        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
+      ).rejects.toThrow("File size greater than 400MB is not allowed for virus scan enabled repositories.");
+    });
   });
 
   describe("createEmptyDocument (via uploadLargeFileInChunks)", () => {
@@ -1277,6 +1287,7 @@ describe("handlers", () => {
 
     it("posts createDocument with no content and returns objectId", async () => {
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({
           data: { succinctProperties: { "cmis:objectId": "emptyDoc99" } },
         })
@@ -1287,8 +1298,6 @@ describe("handlers", () => {
         filename: "bigfile.bin",
         content: largeContent,
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
       await createAttachment(data, { uri: "http://sdm.com/" }, "parentX", { url: "http://sdm.com" });
 
@@ -1301,15 +1310,15 @@ describe("handlers", () => {
     });
 
     it("throws when createEmptyDocument returns no objectId", async () => {
-      executeHttpRequest.mockResolvedValueOnce({ data: { succinctProperties: {} } });
+      executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
+        .mockResolvedValueOnce({ data: { succinctProperties: {} } });
 
       const largeContent = Buffer.from("x");
       const data = {
         filename: "noId.bin",
         content: largeContent,
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
 
       await expect(
@@ -1329,6 +1338,7 @@ describe("handlers", () => {
 
     it("appends chunk with isLastChunk=true for a single-chunk large file", async () => {
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-append" } } })
         .mockResolvedValueOnce({ status: 200 });
 
@@ -1337,8 +1347,6 @@ describe("handlers", () => {
         filename: "append.bin",
         content: Buffer.from("x"),
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
       await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
 
@@ -1352,19 +1360,16 @@ describe("handlers", () => {
 
     it("throws and triggers cleanup when appendContentStream fails", async () => {
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-fail" } } })
         .mockRejectedValueOnce(Object.assign(new Error("append error"), { response: { status: 500 } }))
         .mockResolvedValueOnce({ status: 204 }); // deleteAttachmentsOfFolder cleanup
 
       const largeContent = Buffer.from("x");
-      const dequeueOrphan = jest.fn();
-      const enqueueOrphan = jest.fn();
       const data = {
         filename: "failAppend.bin",
         content: largeContent,
         contentLength: THRESHOLD + 1,
-        enqueueOrphan,
-        dequeueOrphan,
       };
 
       await expect(
@@ -1372,9 +1377,7 @@ describe("handlers", () => {
       ).rejects.toThrow("Error appending chunk");
 
       // cleanup was attempted
-      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
-      // dequeueOrphan called after successful cleanup
-      expect(dequeueOrphan).toHaveBeenCalledWith("obj-fail");
+      expect(executeHttpRequest).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -1432,7 +1435,7 @@ describe("handlers", () => {
     });
   });
 
-  describe("uploadLargeFileInChunks — orphan queue lifecycle", () => {
+  describe("uploadLargeFileInChunks — error handling", () => {
     const THRESHOLD = 400 * 1024 * 1024;
 
     beforeEach(() => {
@@ -1441,21 +1444,10 @@ describe("handlers", () => {
       getConfigurations.mockReturnValue({ repositoryId: "123" });
     });
 
-    it("does not call enqueueOrphan / dequeueOrphan when callbacks are absent", async () => {
-      executeHttpRequest
-        .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "noQueue" } } })
-        .mockResolvedValueOnce({ status: 200 });
-
-      const data = { filename: "noqueue.bin", content: Buffer.from("x"), contentLength: THRESHOLD + 1 };
-
-      await expect(
-        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
-      ).resolves.toBeDefined();
-    });
-
     it("handles client disconnect error without double-throw", async () => {
       const abortErr = new Error("Stream closed by client disconnect");
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "abortObj" } } })
         .mockRejectedValueOnce(abortErr)
         .mockResolvedValueOnce({ status: 204 }); // cleanup succeeds
@@ -1464,8 +1456,6 @@ describe("handlers", () => {
         filename: "aborted.bin",
         content: Buffer.from("x"),
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
 
       await expect(
@@ -1474,16 +1464,16 @@ describe("handlers", () => {
     });
 
     it("throws when no content is provided", async () => {
-      executeHttpRequest.mockResolvedValueOnce({
-        data: { succinctProperties: { "cmis:objectId": "obj1" } },
-      });
+      executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
+        .mockResolvedValueOnce({
+          data: { succinctProperties: { "cmis:objectId": "obj1" } },
+        });
 
       const data = {
         filename: "empty.bin",
         content: null,
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
 
       await expect(
@@ -1605,6 +1595,7 @@ describe("handlers", () => {
       ReadAheadStream.prototype.close = async function() {};
 
       executeHttpRequest
+        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "drainObj" } } })
         .mockResolvedValueOnce({ status: 200 });
 
@@ -1612,14 +1603,12 @@ describe("handlers", () => {
         filename: "drain.bin",
         content: Buffer.from("x"),
         contentLength: THRESHOLD + 1,
-        enqueueOrphan: jest.fn(),
-        dequeueOrphan: jest.fn(),
       };
 
       await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
 
       Object.assign(ReadAheadStream.prototype, saved);
-      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
     });
   });
 

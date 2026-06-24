@@ -31,15 +31,3 @@ annotate Attachments with @UI:{
   status @UI.Hidden;
   repositoryId @UI.Hidden;
 }
-
-/**
- * Tracks SDM documents that were created (createEmptyDocument) but whose
- * chunked upload did not complete successfully and could not be deleted inline.
- * A reconciliation job on server startup retries deletion of each entry.
- */
-entity sap.sdm.OrphanCleanupQueue {
-  key objectId      : String(256);
-      repositoryId  : String(256);
-      filename      : String(1024);
-      createdAt     : Timestamp @cds.on.insert: $now;
-}
