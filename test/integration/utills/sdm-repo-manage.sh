@@ -33,7 +33,12 @@ fi
 json_val() { jq -r ".$1 // empty" "$CONFIG_FILE"; }
 
 CMIS_URL=$(json_val CMIS_URL)
-CMIS_TOKEN_URL=$(json_val authUrl)
+CMIS_TOKEN_URL=$(json_val authUrlMTSDC)
+if [[ "${TENANCY_MODEL:-}" == "multi" && "${TENANT:-}" == "SDMGoogleWorkspaceConsumer" ]]; then
+  CMIS_TOKEN_URL=$(json_val authUrlMTGWC)
+elif [[ "${TENANCY_MODEL:-}" != "multi" ]]; then
+  CMIS_TOKEN_URL=$(json_val authUrl)
+fi
 if [[ "${TENANCY_MODEL:-}" == "multi" ]]; then
   CMIS_CLIENT_ID=$(json_val cmisClientIDMT)
   CMIS_CLIENT_SECRET=$(json_val cmisClientSecretMT)
@@ -86,26 +91,23 @@ if [[ -n "$SUBDOMAIN" ]]; then
   echo "Using consumer subdomain: $SUBDOMAIN (token URL: $RESOLVED_TOKEN_URL)"
 fi
 
-# --- Obtain OAuth2 access token ---
+# --- Obtain OAuth2 access token (client_credentials grant) ---
+# If CMIS_ACCESS_TOKEN env var is already set (passed by the JS test harness),
+# skip the HTTP call and reuse it. This avoids one round-trip per script invocation
+# when tests pre-fetch the token once and pass it through execFile env option.
 get_token() {
-  local TOKEN_RESPONSE
-  if [[ -n "$SUBDOMAIN" ]]; then
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
-  else
-    TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
-      --data-urlencode "grant_type=password" \
-      --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}" \
-      --data-urlencode "username=${CMIS_USERNAME}" \
-      --data-urlencode "password=${CMIS_PASSWORD}")
+  if [[ -n "${CMIS_ACCESS_TOKEN:-}" ]]; then
+    ACCESS_TOKEN="$CMIS_ACCESS_TOKEN"
+    return
   fi
 
-  ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" \
-    | grep -o '"access_token":"[^"]*"' \
-    | sed 's/"access_token":"//;s/"$//' || true)
+  local TOKEN_RESPONSE
+  TOKEN_RESPONSE=$(curl -s -X POST "${RESOLVED_TOKEN_URL}/oauth/token" \
+    --data-urlencode "grant_type=client_credentials" \
+    --data-urlencode "client_id=${CMIS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CMIS_CLIENT_SECRET}")
+
+  ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
 
   if [[ -z "$ACCESS_TOKEN" ]]; then
     echo "ERROR: Failed to obtain access token."
@@ -299,16 +301,28 @@ for r in repos:
 }
 
 # ===========================================================================
+# ACTION: get-token — Fetch an access token and print it to stdout.
+# Used by the JS test harness to obtain the token once and cache it,
+# then pass it back via CMIS_ACCESS_TOKEN env var on all subsequent
+# invocations to skip repeated HTTP round-trips.
+# ===========================================================================
+action_get_token() {
+  get_token
+  echo "$ACCESS_TOKEN"
+}
+
+# ===========================================================================
 # Dispatch action
 # ===========================================================================
 case "$ACTION" in
-  check)    action_check    ;;
-  onboard)  action_onboard  ;;
-  offboard) action_offboard ;;
-  list)     action_list     ;;
+  check)      action_check     ;;
+  onboard)    action_onboard   ;;
+  offboard)   action_offboard  ;;
+  list)       action_list      ;;
+  get-token)  action_get_token ;;
   *)
     echo "Unknown action: $ACTION"
-    echo "Usage: $0 {check|onboard|offboard|list} [options]"
+    echo "Usage: $0 {check|onboard|offboard|list|get-token} [options]"
     exit 2
     ;;
 esac
