@@ -1,0 +1,58 @@
+{
+    "id": "abc:bo",
+    "localName": "109871.1",
+    "localNamespace": "http://opentext.com",
+    "displayName": "abc:bo",
+    "queryName": "abc:bo",
+    "description": "abc:bo",
+    "baseId": "cmis:secondary",
+    "parentId": "cmis:secondary",
+    "creatable": false,
+    "fileable": false,
+    "queryable": true,
+    "fulltextIndexed": false,
+    "includedInSupertypeQuery": true,
+    "controllablePolicy": false,
+    "controllableACL": false,
+    "typeMutability": {
+     "create": true,
+     "update": true,
+     "delete": true
+    },
+    "propertyDefinitions": {
+     "abc:myId1": {
+      "defaultValue": [],
+      "id": "abc:myId1",
+      "localName": "abc:myId1",
+      "localNamespace": "http://apache.org",
+      "displayName": "abc:myId1",
+      "queryName": "abc:myId1",
+      "description": "Hold Identifiers",
+      "propertyType": "string",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": false,
+      "openChoice": false
+     },
+     "abc:myId2": {
+      "defaultValue": [],
+      "id": "abc:myId2",
+      "localName": "abc:myId2",
+      "localNamespace": "http://apache.org",
+      "displayName": "abc:myId2",
+      "queryName": "abc:myId2",
+      "description": "Hold Identifiers",
+      "propertyType": "string",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": false,
+      "openChoice": false
+     }
+    }
+   }
