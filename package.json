@@ -63,7 +63,7 @@
       },
       "kinds": {
         "sdm": {
-          "impl": "./lib/sdm"
+          "impl": "@cap-js/sdm/lib/sdm"
         }
       },
       "[development]": {
