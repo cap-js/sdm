@@ -7287,7 +7287,6 @@ describe("SDMAttachmentsService", () => {
       expect(parentHandler).toHaveBeenCalledWith(res, req);
     });
   });
-});
   // ─── cmis:description / note field mapping ───────────────────────────────────
 
   describe('note → cmis:description mapping', () => {
@@ -7695,37 +7694,6 @@ describe("SDMAttachmentsService", () => {
 
         expect(result).toEqual({ success: true, message: 'Link edited successfully' });
       });
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Branch coverage: sdm.js uncovered lines
-  // ---------------------------------------------------------------------------
-
-  describe("getDestination — cached path (line 142)", () => {
-    it("returns cached destination on second call without calling getDestinationFromServiceBinding again", async () => {
-      const service = new SDMAttachmentsService();
-      const mockDest = { url: "http://cached/" };
-      const req = { _sdmDestination: mockDest };
-
-      const result = await service.getDestination(req);
-      expect(result).toBe(mockDest);
-    });
-  });
-
-  describe("draftSaveHandler — parentHandler invocation (line 558)", () => {
-    it("returned handler calls the parent handler and completes", async () => {
-      const service = new SDMAttachmentsService();
-      const parentHandler = jest.fn().mockResolvedValue();
-      jest.spyOn(Object.getPrototypeOf(Object.getPrototypeOf(service)), 'draftSaveHandler').mockReturnValue(parentHandler);
-
-      const attachments = {};
-      const handler = service.draftSaveHandler(attachments);
-      const res = {};
-      const req = { data: {} };
-
-      await handler(res, req);
-      expect(parentHandler).toHaveBeenCalledWith(res, req);
     });
   });
 });
