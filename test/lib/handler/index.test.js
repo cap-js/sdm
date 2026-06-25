@@ -44,8 +44,6 @@ const {
 } = require("../../../lib/handler/index");
 
 describe("handlers", () => {
-  const REPO_INFO_NO_VIRUS_SCAN = { data: { "123": { isVirusScanEnabled: "false", capabilities: { "capabilityContentStreamUpdatability": "none" } } } };
-
   describe("ReadAttachment function", () => {
     beforeEach(() => {
       jest.clearAllMocks();
@@ -1229,9 +1227,7 @@ describe("handlers", () => {
     });
 
     it("routes to uploadLargeFileInChunks when contentLength > threshold", async () => {
-      // getRepositoryInfo (virus scan check), then createEmptyDocument, then appendContentStream
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({
           data: { succinctProperties: { "cmis:objectId": "largeObj1" } },
         })
@@ -1247,8 +1243,8 @@ describe("handlers", () => {
       };
       const result = await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
 
-      // getRepositoryInfo + createEmptyDocument + exactly one appendContentStream for the 1-byte buffer
-      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
+      // createEmptyDocument + exactly one appendContentStream for the 1-byte buffer
+      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ status: 200 });
     });
 
@@ -1263,17 +1259,6 @@ describe("handlers", () => {
 
       expect(getContentLength).toHaveBeenCalledWith(data.content);
     });
-
-    it("throws when file is > 400 MB and virus scan is enabled on the repository", async () => {
-      const THRESHOLD = 400 * 1024 * 1024;
-      const repoInfoVirusScanEnabled = { data: { "123": { isVirusScanEnabled: "true", capabilities: {} } } };
-      executeHttpRequest.mockResolvedValueOnce(repoInfoVirusScanEnabled);
-
-      const data = { filename: "large.bin", content: Buffer.from("x"), contentLength: THRESHOLD + 1 };
-      await expect(
-        createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" })
-      ).rejects.toThrow("File size greater than 400MB is not allowed for virus scan enabled repositories.");
-    });
   });
 
   describe("createEmptyDocument (via uploadLargeFileInChunks)", () => {
@@ -1287,7 +1272,6 @@ describe("handlers", () => {
 
     it("posts createDocument with no content and returns objectId", async () => {
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({
           data: { succinctProperties: { "cmis:objectId": "emptyDoc99" } },
         })
@@ -1311,7 +1295,6 @@ describe("handlers", () => {
 
     it("throws when createEmptyDocument returns no objectId", async () => {
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: {} } });
 
       const largeContent = Buffer.from("x");
@@ -1338,7 +1321,6 @@ describe("handlers", () => {
 
     it("appends chunk with isLastChunk=true for a single-chunk large file", async () => {
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-append" } } })
         .mockResolvedValueOnce({ status: 200 });
 
@@ -1360,7 +1342,6 @@ describe("handlers", () => {
 
     it("throws and triggers cleanup when appendContentStream fails", async () => {
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "obj-fail" } } })
         .mockRejectedValueOnce(Object.assign(new Error("append error"), { response: { status: 500 } }))
         .mockResolvedValueOnce({ status: 204 }); // deleteAttachmentsOfFolder cleanup
@@ -1377,7 +1358,7 @@ describe("handlers", () => {
       ).rejects.toThrow("Error appending chunk");
 
       // cleanup was attempted
-      expect(executeHttpRequest).toHaveBeenCalledTimes(4);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -1447,7 +1428,6 @@ describe("handlers", () => {
     it("handles client disconnect error without double-throw", async () => {
       const abortErr = new Error("Stream closed by client disconnect");
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "abortObj" } } })
         .mockRejectedValueOnce(abortErr)
         .mockResolvedValueOnce({ status: 204 }); // cleanup succeeds
@@ -1465,7 +1445,6 @@ describe("handlers", () => {
 
     it("throws when no content is provided", async () => {
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({
           data: { succinctProperties: { "cmis:objectId": "obj1" } },
         });
@@ -1595,7 +1574,6 @@ describe("handlers", () => {
       ReadAheadStream.prototype.close = async function() {};
 
       executeHttpRequest
-        .mockResolvedValueOnce(REPO_INFO_NO_VIRUS_SCAN)
         .mockResolvedValueOnce({ data: { succinctProperties: { "cmis:objectId": "drainObj" } } })
         .mockResolvedValueOnce({ status: 200 });
 
@@ -1608,7 +1586,7 @@ describe("handlers", () => {
       await createAttachment(data, { uri: "http://sdm.com/" }, "p1", { url: "http://sdm.com" });
 
       Object.assign(ReadAheadStream.prototype, saved);
-      expect(executeHttpRequest).toHaveBeenCalledTimes(3);
+      expect(executeHttpRequest).toHaveBeenCalledTimes(2);
     });
   });
 
