@@ -44,6 +44,9 @@
     "test": "jest --coverage --config jest.config.js",
     "integration-test": "jest --config jest-integration.config.js",
     "integration-test-non-draft": "jest --config jest-integration-non-draft.config.js",
+    "integration-test-subscription": "jest --config jest-integration-subscription.config.js",
+    "integration-test-repo-specific": "jest --config jest-integration-repo-specific.config.js",
+    "integration-test-virus-scan": "jest --config jest-integration-virus-scan.config.js",
     "lint": "npx eslint --fix . --no-cache"
   },
   "cds": {
@@ -60,7 +63,7 @@
       },
       "kinds": {
         "sdm": {
-          "impl": "@cap-js/sdm/lib/sdm"
+          "impl": "./lib/sdm"
         }
       },
       "[development]": {

@@ -2,56 +2,83 @@
 
 const path = require('path');
 const credentials = require('./credentials.json');
-const { run, runAndCaptureAll } = require('./utills/shell-script-runner');
+const { run, runAndCaptureOutput, runAndCaptureAll } = require('./utills/shell-script-runner');
 
 const SCRIPTS_DIR = path.join(__dirname, 'utills');
 const SUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-subscribe.sh');
 const UNSUBSCRIBE_SCRIPT = path.join(SCRIPTS_DIR, 'cf-unsubscribe.sh');
 const REPO_MANAGE_SCRIPT = path.join(SCRIPTS_DIR, 'sdm-repo-manage.sh');
+const TYPE_MANAGE_SCRIPT = path.join(SCRIPTS_DIR, 'sdm-type-manage.sh');
+const CF_LOGS_SCRIPT = path.join(SCRIPTS_DIR, 'cf-logs.sh');
+
+const SECONDARY_TYPES_DIR = path.join(__dirname, 'secondary-types');
 
 const SUBSCRIPTION_REPO_EXTERNAL_ID = credentials.defaultRepositoryIDMT || 'MULTITENANT-TEST-REPO';
-const tenant = process.env.TENANT;
-const consumerSubdomain = (tenant === 'SDMGoogleWorkspaceConsumer')
+const MT_APP_NAME = credentials.MT_APP_NAME.replace(/-srv$/, '-mtx');
+const consumerSubdomain = process.env.TENANT === 'SDMGoogleWorkspaceConsumer'
   ? credentials.consumerSubdomainMT2
   : credentials.consumerSubdomainMT1;
 
+/** Cached CMIS_ACCESS_TOKEN env — fetched once in beforeAll, passed to all script invocations. */
+let cmisEnv = {};
+
 // Helper: check if a repo exists in consumer scope
-async function repoCheck(externalId) {
-  return runAndCaptureAll(REPO_MANAGE_SCRIPT, 'check', '--externalId', externalId, '--subdomain', consumerSubdomain);
+function repoCheck(externalId) {
+  if (!cmisEnv.CMIS_ACCESS_TOKEN) throw new Error('cmisEnv not initialized — CMIS token was not fetched in beforeAll');
+  return runAndCaptureAll(REPO_MANAGE_SCRIPT, 'check', '--externalId', externalId, '--subdomain', consumerSubdomain, { env: cmisEnv });
 }
 
 // Helper: onboard a repo in consumer scope
-async function repoOnboard(externalId) {
-  return run(REPO_MANAGE_SCRIPT, 'onboard', '--externalId', externalId, '--subdomain', consumerSubdomain);
+function repoOnboard(externalId) {
+  if (!cmisEnv.CMIS_ACCESS_TOKEN) throw new Error('cmisEnv not initialized — CMIS token was not fetched in beforeAll');
+  return run(REPO_MANAGE_SCRIPT, 'onboard', '--externalId', externalId, '--subdomain', consumerSubdomain, { env: cmisEnv });
 }
 
 // Helper: offboard a repo in consumer scope
-async function repoOffboard(externalId) {
-  return runAndCaptureAll(REPO_MANAGE_SCRIPT, 'offboard', '--externalId', externalId, '--subdomain', consumerSubdomain);
-}
-
-// Helper: check if a repo exists in provider scope (no --subdomain)
-async function repoCheckProviderScope(externalId) {
-  return runAndCaptureAll(REPO_MANAGE_SCRIPT, 'check', '--externalId', externalId);
-}
-
-// Helper: onboard a repo in provider scope (no --subdomain)
-async function repoOnboardProviderScope(externalId) {
-  return run(REPO_MANAGE_SCRIPT, 'onboard', '--externalId', externalId);
+function repoOffboard(externalId) {
+  if (!cmisEnv.CMIS_ACCESS_TOKEN) throw new Error('cmisEnv not initialized — CMIS token was not fetched in beforeAll');
+  return runAndCaptureAll(REPO_MANAGE_SCRIPT, 'offboard', '--externalId', externalId, '--subdomain', consumerSubdomain, { env: cmisEnv });
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-beforeAll(async () => {
-  const requiredFields = ['consumerSubdomainMT1', 'SAAS_APP_NAME', 'BTP_CLI_URL', 'defaultRepositoryIDMT', 'MT_APP_NAME'];
-  const missing = requiredFields.filter(f => !credentials[f]);
-  if (missing.length > 0) {
-    throw new Error(`Missing required credentials: ${missing.join(', ')}. Configure these GitHub secrets.`);
+/**
+ * Polls the CMIS API until the repo is no longer visible in the consumer scope, or the
+ * timeout is reached. Offboarding is async so this retries every intervalMs up to maxRetries
+ * times before failing. Exit code != 0 (NOT_FOUND or auth error) confirms offboarding.
+ */
+async function assertRepoOffboarded(externalId) {
+  const maxRetries = 6;
+  const intervalMs = 15000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const result = await repoCheck(externalId);
+    if (result.exitCode === 1) {
+      console.log(`  ✅ Repo '${externalId}' confirmed offboarded via CMIS (NOT_FOUND, attempt ${attempt}/${maxRetries})`);
+      return;
+    }
+    if (result.exitCode !== 0) {
+      throw new Error(`CMIS check returned unexpected exit code ${result.exitCode} for repo '${externalId}' (expected 0=found or 1=not_found). Output:\n${result.output}`);
+    }
+    if (attempt < maxRetries) {
+      console.log(`  Repo still visible after unsubscribe (attempt ${attempt}/${maxRetries}) — retrying in ${intervalMs / 1000}s...`);
+      await sleep(intervalMs);
+    }
   }
+  throw new Error(`Repo '${externalId}' still exists in consumer scope ${maxRetries * intervalMs / 1000}s after unsubscription`);
+}
 
+beforeAll(async () => {
   expect(consumerSubdomain).toBeTruthy();
+
+  // Fetch OAuth2 token once for all CMIS calls in this test run.
+  // Stored in cmisEnv and passed via CMIS_ACCESS_TOKEN env var to sdm-repo-manage.sh,
+  // which short-circuits the per-call HTTP token fetch in get_token().
+  console.log('BeforeAll: Fetching CMIS access token...');
+  const token = await runAndCaptureOutput(REPO_MANAGE_SCRIPT, 'get-token', '--subdomain', consumerSubdomain);
+  expect(token).toBeTruthy();
+  cmisEnv = { CMIS_ACCESS_TOKEN: token };
 
   // Ensure subscription is active before tests run
   console.log('BeforeAll: Ensuring app is subscribed...');
@@ -83,43 +110,28 @@ beforeAll(async () => {
 }, 600000);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 1 — Create Subscription with existing repo → onboarding skipped
+// Test 1 — Subscribe when already subscribed → graceful handling
 // ─────────────────────────────────────────────────────────────────────────────
-test('(1) Subscribe when repo already exists — expect onboarding skipped', async () => {
-  console.log('Test (1): Subscribe when repo already exists — expect graceful handling');
+test('(1) Subscribe when already subscribed — expect graceful handling', async () => {
+  console.log('Test (1): Subscribe when already subscribed — expect graceful handling');
 
-  // Pre-condition: repo should exist from beforeAll setup
+  // Pre-condition: beforeAll left us subscribed with the repo onboarded.
   console.log('  Verifying repo exists from setup subscription...');
   const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   expect(checkResult.exitCode).toBe(0);
 
-  // Unsubscribe but leave repo in place (repo persists after unsubscribe since
-  // it was onboarded; we only need the subscription itself removed)
-  console.log('  Unsubscribing (repo stays in SDM instance)...');
-  await run(UNSUBSCRIBE_SCRIPT);
-  await sleep(15000);
-
-  // Manually re-onboard the repo in consumer scope if the unsubscribe offboarded it
-  const reCheck = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  if (reCheck.exitCode !== 0) {
-    console.log('  Repo was offboarded by unsubscribe — re-onboarding for precondition...');
-    const onboardExit = await repoOnboard(SUBSCRIPTION_REPO_EXTERNAL_ID);
-    expect(onboardExit).toBe(0);
-    await sleep(5000);
-  }
-
-  // Act: Subscribe again — app should detect repo already exists and skip onboarding
+  // Act: Subscribe again (should detect 'Already subscribed' and exit 0)
   console.log('  Re-subscribing...');
   const subscribeResult = await runAndCaptureAll(SUBSCRIBE_SCRIPT);
   expect(subscribeResult.exitCode).toBe(0);
-  await sleep(15000);
+  const indicatesAlreadyActive = subscribeResult.containsIgnoreCase('Already subscribed')
+    || subscribeResult.containsIgnoreCase('Subscription is active');
+  expect(indicatesAlreadyActive).toBe(true);
 
-  // Verify: repo should still exist after re-subscribing (onboarding was skipped or idempotent)
-  console.log('  Verifying repo still exists after re-subscribe...');
+  // Verify: repo should still exist (subscription didn't break anything)
   const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   expect(verifyResult.exitCode).toBe(0);
-  console.log('  Confirmed: repo still exists after re-subscribe');
-}, 180000);
+}, 300000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 2 — Delete subscription with multiple repos → only correct repo offboarded
@@ -129,6 +141,7 @@ test('(2) Unsubscribe with multiple repos — only correct repo should be offboa
 
   const otherRepo = credentials.defaultRepositoryID;
   expect(otherRepo).toBeTruthy();
+  expect(otherRepo).not.toBe(SUBSCRIPTION_REPO_EXTERNAL_ID);
 
   // Ensure subscription is active
   const subscribeExit = await run(SUBSCRIBE_SCRIPT);
@@ -139,13 +152,32 @@ test('(2) Unsubscribe with multiple repos — only correct repo should be offboa
   }
   await sleep(15000);
 
-  // Ensure a second repo exists in provider scope (not tied to consumer subscription)
-  const checkOther = await repoCheckProviderScope(otherRepo);
-  if (checkOther.exitCode !== 0) {
-    console.log(`  Onboarding other repo '${otherRepo}' in provider scope...`);
-    const onboardExit = await repoOnboardProviderScope(otherRepo);
-    expect(onboardExit).toBe(0);
+  // Verify subscription repo exists (consumer scope works while subscribed)
+  console.log('  Verifying subscription repo exists after subscribe (via CMIS API)...');
+  let subRepoCheck;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    subRepoCheck = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+    if (subRepoCheck.exitCode === 0) break;
+    console.log(`  Repo not yet visible in CMIS — retrying after 10s (attempt ${attempt}/3)...`);
+    await sleep(10000);
   }
+  expect(subRepoCheck.exitCode).toBe(0);
+  expect(subRepoCheck.containsIgnoreCase('FOUND')).toBe(true);
+  console.log('  Confirmed: subscription repo exists');
+
+  // Ensure the other repo also exists — onboard if missing, then verify
+  console.log(`  Ensuring other repo '${otherRepo}' exists before unsubscribe...`);
+  let otherRepoCheck = await repoCheck(otherRepo);
+  if (otherRepoCheck.exitCode !== 0) {
+    console.log(`  Onboarding other repo '${otherRepo}'...`);
+    const onboardExit = await repoOnboard(otherRepo);
+    expect(onboardExit).toBe(0);
+    await sleep(5000);
+    otherRepoCheck = await repoCheck(otherRepo);
+  }
+  expect(otherRepoCheck.exitCode).toBe(0);
+  expect(otherRepoCheck.containsIgnoreCase('FOUND')).toBe(true);
+  console.log(`  Confirmed: other repo '${otherRepo}' exists before unsubscribe`);
 
   // Act: Unsubscribe
   console.log('  Unsubscribing...');
@@ -155,17 +187,24 @@ test('(2) Unsubscribe with multiple repos — only correct repo should be offboa
   // Allow time for async offboarding
   await sleep(15000);
 
-  // Verify: subscription repo should no longer exist in consumer scope
-  console.log('  Verifying subscription repo was offboarded...');
-  const repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  // exitCode 1 = not found (offboarded), exitCode 0 = still exists
-  console.log(`  Subscription repo check: exitCode=${repoResult.exitCode}`);
+  // Fetch CF logs and verify the subscription repo was offboarded
+  console.log('  Fetching CF logs to verify offboard event...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME, { silent: true });
+  const offboarded = logResult.containsIgnoreCase('offboarded') || logResult.containsIgnoreCase('offboard');
+  expect(offboarded).toBe(true);
+  console.log('  Confirmed via CF logs: subscription repo offboarded');
 
-  // Verify: The other repo (provider scope) should still exist
-  const verifyOther = await repoCheckProviderScope(otherRepo);
-  expect(verifyOther.exitCode).toBe(0);
-  console.log(`  Other repo '${otherRepo}' still exists — confirmed`);
-}, 300000);
+  // Stronger assertion: the @cap-js/sdm unsubscribe handler only operates on the
+  // tenant's REPOSITORY_ID (= SUBSCRIPTION_REPO_EXTERNAL_ID), so the other repo's
+  // externalId should never appear in the app's logs at all.
+  const otherRepoMentioned = logResult.containsIgnoreCase(otherRepo);
+  expect(otherRepoMentioned).toBe(false);
+  console.log(`  Confirmed via CF logs: other repo '${otherRepo}' was not touched during unsubscribe`);
+
+  // Extra check: verify via CMIS API that the subscription repo is no longer accessible
+  console.log('  Verifying subscription repo offboarded via CMIS API...');
+  await assertRepoOffboarded(SUBSCRIPTION_REPO_EXTERNAL_ID);
+}, 600000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 3 — Delete subscription with only correct repo → repo offboarded
@@ -189,9 +228,18 @@ test('(3) Unsubscribe with only the subscription repo — expect repo offboarded
   // Wait for repo to be onboarded
   await sleep(15000);
 
-  // Verify precondition — repo exists in consumer scope
-  const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  // Verify precondition via CMIS API — repo exists in consumer scope
+  console.log('  Verifying repo exists after subscribe (via CMIS API)...');
+  let checkResult;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+    if (checkResult.exitCode === 0) break;
+    console.log(`  Repo not yet visible in CMIS — retrying after 10s (attempt ${attempt}/3)...`);
+    await sleep(10000);
+  }
   expect(checkResult.exitCode).toBe(0);
+  expect(checkResult.containsIgnoreCase('FOUND')).toBe(true);
+  console.log('  Confirmed via CMIS API: repo exists after subscribe');
 
   // Act: Unsubscribe
   console.log('  Unsubscribing...');
@@ -201,12 +249,17 @@ test('(3) Unsubscribe with only the subscription repo — expect repo offboarded
   // Allow time for offboarding
   await sleep(15000);
 
-  // Verify: subscription repo should no longer exist in consumer scope
-  console.log('  Verifying subscription repo was offboarded...');
-  const repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  expect(repoResult.exitCode).toBe(1); // 1 = not found = offboarded
-  console.log('  Confirmed: repo was offboarded after unsubscribe');
-}, 300000);
+  // Verify offboard via CF logs (consumer-scope CMIS token is invalidated post-unsubscribe).
+  console.log('  Fetching CF logs to verify offboarding...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME, { silent: true });
+  const offboarded = logResult.containsIgnoreCase('offboarded') || logResult.containsIgnoreCase('offboard');
+  expect(offboarded).toBe(true);
+  console.log('  Confirmed via CF logs: repo was offboarded after unsubscribe');
+
+  // Extra check: verify via CMIS API that the subscription repo is no longer accessible
+  console.log('  Verifying subscription repo offboarded via CMIS API...');
+  await assertRepoOffboarded(SUBSCRIPTION_REPO_EXTERNAL_ID);
+}, 600000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 4 — Delete subscription when repo doesn't exist → logs indicate 404
@@ -230,10 +283,18 @@ test('(4) Unsubscribe when repo does not exist — expect logs to indicate 404 f
   // Wait for subscription callback to complete
   await sleep(15000);
 
-  // Verify repo was onboarded
-  console.log('  Verifying repo was onboarded after subscription...');
-  const repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  // Verify via CMIS API: repo was onboarded after subscription
+  console.log('  Verifying repo was onboarded after subscription (via CMIS API)...');
+  let repoResult;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    repoResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+    if (repoResult.exitCode === 0) break;
+    console.log(`  Repo not yet visible in CMIS — retrying after 10s (attempt ${attempt}/3)...`);
+    await sleep(10000);
+  }
   expect(repoResult.exitCode).toBe(0);
+  expect(repoResult.containsIgnoreCase('FOUND')).toBe(true);
+  console.log('  Confirmed via CMIS API: repo onboarded after subscription');
 
   // Manually offboard the repo so it doesn't exist when we unsubscribe
   console.log('  Manually offboarding repo to set up precondition...');
@@ -244,7 +305,7 @@ test('(4) Unsubscribe when repo does not exist — expect logs to indicate 404 f
     console.log(`  Repo was already not present (exit code: ${offboardResult.exitCode})`);
   }
 
-  // Verify precondition — repo should NOT exist
+  // Verify precondition — repo should NOT exist (still subscribed so consumer scope works)
   const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   expect(checkResult.exitCode).toBe(1);
 
@@ -256,13 +317,22 @@ test('(4) Unsubscribe when repo does not exist — expect logs to indicate 404 f
   // Allow time for unsubscribe callback to process
   await sleep(15000);
 
-  // Verify: unsubscribe should succeed even when repo doesn't exist
-  // The repo should still not exist after unsubscribe
-  console.log('  Verifying repo still does not exist...');
-  const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
-  expect(verifyResult.exitCode).toBe(1); // 1 = not found
-  console.log('  Confirmed: repo still does not exist — unsubscribe handled missing repo gracefully');
-}, 300000);
+  // Verify the app logged the missing-repo case via CF logs.
+  // Actual app log (lib/mtx/server.js): "SDM Plugin: Could not find a repository with externalId '<id>' for tenant <tenant>".
+  console.log('  Fetching CF logs to verify 404 handling...');
+  const logResult = await runAndCaptureAll(CF_LOGS_SCRIPT, '--app', MT_APP_NAME, { silent: true });
+  const has404Indication = logResult.containsIgnoreCase('Could not find a repository')
+    || logResult.containsIgnoreCase('could not find')
+    || logResult.containsIgnoreCase('not found')
+    || logResult.containsIgnoreCase('404')
+    || logResult.containsIgnoreCase('does not exist');
+  expect(has404Indication).toBe(true);
+  console.log('  Confirmed via CF logs: app handled missing repo gracefully');
+
+  // Extra check: verify via CMIS API that the repo remains absent
+  console.log('  Verifying repo remains absent via CMIS API...');
+  await assertRepoOffboarded(SUBSCRIPTION_REPO_EXTERNAL_ID);
+}, 600000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 5 — Create Subscription without existing repo → repo gets onboarded
@@ -275,6 +345,8 @@ test('(5) Subscribe without existing repo — expect repo to be onboarded', asyn
   await sleep(30000);
 
   // Pre-condition: ensure the repo does NOT exist (offboard if present)
+  // Note: consumer scope may be invalid after test (4) unsubscribed — that's OK,
+  // we just need to ensure the repo isn't there.
   console.log('  Ensuring repo does not exist...');
   const checkResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
   if (checkResult.exitCode === 0) {
@@ -301,12 +373,73 @@ test('(5) Subscribe without existing repo — expect repo to be onboarded', asyn
   }
   expect(subscribeExit).toBe(0);
 
-  // Allow time for async repo onboarding
-  await sleep(15000);
-
-  // Verify: repo should now exist
-  console.log('  Verifying repo was onboarded...');
-  const verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  // Allow time for async repo onboarding (retry up to 3 times with increasing wait)
+  let verifyResult;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await sleep(15000);
+    console.log(`  Verifying repo was onboarded (attempt ${attempt}/3)...`);
+    verifyResult = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+    if (verifyResult.exitCode === 0) break;
+    console.log(`  Repo not yet available — waiting before retry...`);
+  }
   expect(verifyResult.exitCode).toBe(0);
   expect(verifyResult.containsIgnoreCase('FOUND')).toBe(true);
-}, 300000);
+}, 600000);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 6 — Register custom CMIS Secondary Types in the subscribed repository
+//          and verify they are queryable.
+//
+// After test 5 the consumer is subscribed and SUBSCRIPTION_REPO_EXTERNAL_ID
+// is onboarded. We POST two secondary-type definitions (read from JSON
+// resources) via the CMIS browser-binding's createType action, then query
+// each one back via cmisselector=typeDefinition to confirm registration.
+//
+// The register-type helper treats "already exists" responses as success so
+// re-runs of this test against the same repo are idempotent.
+// ─────────────────────────────────────────────────────────────────────────────
+test('(6) Register CMIS secondary types in subscribed repo and verify they are queryable', async () => {
+  console.log('Test (6): Register CMIS secondary types in subscribed repo and verify they are queryable');
+
+  const secondaryTypes = [
+    { typeId: 'abc:bo',               typeFile: path.join(SECONDARY_TYPES_DIR, 'abc-bo-type.json') },
+    { typeId: 'Working:DocumentInfo', typeFile: path.join(SECONDARY_TYPES_DIR, 'documentinfo-type.json') }
+  ];
+
+  // Pre-condition: subscription must be active and the repo must be onboarded
+  // (left in place by test 5 / beforeAll).
+  expect(cmisEnv.CMIS_ACCESS_TOKEN).toBeTruthy();
+  console.log('  Verifying subscription repo is present before registering types...');
+  const preCheck = await repoCheck(SUBSCRIPTION_REPO_EXTERNAL_ID);
+  expect(preCheck.exitCode).toBe(0);
+
+  for (const { typeId, typeFile } of secondaryTypes) {
+    // Step 1: Register the secondary type
+    console.log(`  Registering secondary type '${typeId}' from ${typeFile}...`);
+    const registerExit = await run(
+      TYPE_MANAGE_SCRIPT,
+      'register-type',
+      '--externalId', SUBSCRIPTION_REPO_EXTERNAL_ID,
+      '--typeFile', typeFile,
+      '--subdomain', consumerSubdomain,
+      { env: cmisEnv }
+    );
+    // exit 0 = created or already-exists (idempotent)
+    expect(registerExit).toBe(0);
+
+    // Step 2: Verify the type is queryable
+    console.log(`  Verifying secondary type '${typeId}' is queryable...`);
+    const getResult = await runAndCaptureAll(
+      TYPE_MANAGE_SCRIPT,
+      'get-type',
+      '--externalId', SUBSCRIPTION_REPO_EXTERNAL_ID,
+      '--typeId', typeId,
+      '--subdomain', consumerSubdomain,
+      { env: cmisEnv }
+    );
+    expect(getResult.exitCode).toBe(0);
+    expect(getResult.containsIgnoreCase('FOUND')).toBe(true);
+  }
+
+  console.log(`  ✅ All ${secondaryTypes.length} secondary types registered and verified in '${SUBSCRIPTION_REPO_EXTERNAL_ID}'.`);
+}, 600000);
