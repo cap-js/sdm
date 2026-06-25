@@ -8,6 +8,10 @@ class Api {
         this.config = config
       }
 
+    getActiveFacet() {
+        return process.env.SDM_TEST_FACET || 'references';
+    }
+
     async createEntityDraft(appUrl, serviceName, entityName){
         let response;
         let incidentID;
@@ -211,11 +215,12 @@ class Api {
 
     async createAttachment(appUrl, serviceName, entityName, incidentID, postData, file){
         let response;
+        const activeFacet = this.getActiveFacet();
         postData['filename'] = file.filename;
 
         try{
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}`,
                 postData,
                 this.config
             )
@@ -226,7 +231,7 @@ class Api {
                 // responseStatus.attachmentID.push(response.data.ID)
                  try{
                     await axios.put(
-                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${response.data.ID},IsActiveEntity=false)/content`,
+                     `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(ID=${response.data.ID},IsActiveEntity=false)/content`,
 
                     formDataPut,
                     this.config
@@ -267,10 +272,11 @@ class Api {
     }
 
     async readAttachment(appUrl, serviceName, entityName, incidentID, attachment){
+        const activeFacet = this.getActiveFacet();
         try{
             let response;
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)/content`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${activeFacet}(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)/content`,
                 this.config
             );
             if (response.status === 200 && response.data) {
@@ -293,10 +299,11 @@ class Api {
 
     async fetchMetadata(appUrl, serviceName, entityName, incidentID, attachment) {
         let response;
+        const activeFacet = this.getActiveFacet();
 
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${activeFacet}(up__ID=${incidentID},ID=${attachment},IsActiveEntity=true)`,
                 this.config
             );
 
@@ -321,10 +328,11 @@ class Api {
 
     async fetchMetadataDraft(appUrl, serviceName, entityName, incidentID, attachment) {
         let response;
+        const activeFacet = this.getActiveFacet();
 
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(up__ID=${incidentID},ID=${attachment},IsActiveEntity=false)`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(up__ID=${incidentID},ID=${attachment},IsActiveEntity=false)`,
                 this.config
             );
 
@@ -349,9 +357,10 @@ class Api {
 
     async updateAttachment(appUrl, serviceName, entityName, incidentID, updateData, attachment){
         let response;
+        const activeFacet = this.getActiveFacet();
          try{
             response = await axios.patch(
-               `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)`,
+               `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(ID=${attachment},IsActiveEntity=false)`,
                 updateData,
                 this.config
             );
@@ -375,9 +384,10 @@ class Api {
 
     async deleteAttachment(appUrl, serviceName, incidentID, attachment,entityName){
         let response;
+        const activeFacet = this.getActiveFacet();
         try{
             response = await axios.delete(
-                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)`,
+                 `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(ID=${attachment},IsActiveEntity=false)`,
                 this.config
             );
             if (response.status === 204) {
@@ -400,6 +410,7 @@ class Api {
 
     async createLink(appUrl, serviceName, entityName, incidentID, srvpath, name, url) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             const linkData = {
                 name: name,
@@ -407,7 +418,7 @@ class Api {
             };
             
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references/${srvpath}.createLink`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}/${srvpath}.createLink`,
                 linkData,
                 this.config
             )
@@ -437,13 +448,14 @@ class Api {
 
     async editLink(appUrl, serviceName, entityName, incidentID, linkID, srvpath, url) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             const linkData = {
                 url: url
             };
 
             // Construct OData editLink URL
-            const requestUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(up__ID=${incidentID},ID=${linkID},IsActiveEntity=false)/${srvpath}.editLink`;
+            const requestUrl = `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(up__ID=${incidentID},ID=${linkID},IsActiveEntity=false)/${srvpath}.editLink`;
 
             response = await axios.post(requestUrl, linkData, this.config);
 
@@ -472,9 +484,10 @@ class Api {
 
     async getAttachmentsList(appUrl, serviceName, entityName, incidentID) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}`,
                 this.config
             );
             if (response.status === 200 && response.data && response.data.value) {
@@ -498,9 +511,10 @@ class Api {
 
     async getActiveAttachmentsList(appUrl, serviceName, entityName, incidentID) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             response = await axios.get(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${activeFacet}`,
                 this.config
             );
             if (response.status === 200 && response.data && response.data.value) {
@@ -524,9 +538,10 @@ class Api {
 
     async openAttachment(appUrl, serviceName, entityName, incidentID, srvpath, attachment) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/references(ID=${attachment},IsActiveEntity=false)/${srvpath}.openAttachment`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=false)/${activeFacet}(ID=${attachment},IsActiveEntity=false)/${srvpath}.openAttachment`,
                 {},
                 this.config
             )
@@ -551,9 +566,10 @@ class Api {
 
     async openAttachmentSaved(appUrl, serviceName, entityName, incidentID, srvpath, attachment) {
         let response;
+        const activeFacet = this.getActiveFacet();
         try {
             response = await axios.post(
-                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/references(ID=${attachment},IsActiveEntity=true)/${srvpath}.openAttachment`,
+                `https://${appUrl}/odata/v4/${serviceName}/${entityName}(ID=${incidentID},IsActiveEntity=true)/${activeFacet}(ID=${attachment},IsActiveEntity=true)/${srvpath}.openAttachment`,
                 {},
                 this.config
             )

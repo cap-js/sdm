@@ -29,6 +29,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Link type attachments](#support-for-link-type-attachments)
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
+- [Support for Multiple attachment facets](#support-for-multiple-attachment-facets)
 - [Support for Technical User](#support-for-technical-user)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
@@ -631,6 +632,130 @@ service ProcessorService {
   entity Projects.attachments as projection on my.Projects.attachments;
 }
 ```
+
+## Support for Multiple attachment facets
+
+The plugin supports creating multiple attachment facets or sections, each allowing various documents to be uploaded. The names of these facets are fully customizable. All existing operations available for the default attachment facet are also supported for any additional facets you create.
+
+Refer the following example from a sample Incidents Management app to configure multiple attachment facets.
+
+> **Note**
+>
+> This is an example of adding the `references` facet. You can add as many facets as needed by following the same pattern.
+
+### 1. Add facet entries in `annotations.cds` - [Example](https://github.com/cap-js/sdm/blob/develop/app/single-tenant/central-space/incidents-app/app/incidents/annotations.cds)
+
+Add `UI.ReferenceFacet` entries so each composition appears as a separate section on the object page.
+
+```cds
+{
+   $Type : 'UI.ReferenceFacet',
+   ID    : 'ReferencesFacet',
+   Label : 'References',
+   Target: 'references/@UI.LineItem',
+}
+```
+
+Add the following `references` annotation block in `annotations.cds`:
+
+```cds
+////////////////////////////////////////////////////////////////////////////
+//
+//  References Details
+//
+annotate service.Incidents.references with @UI: {
+   HeaderInfo: {
+            $Type         : 'UI.HeaderInfoType',
+            TypeName      : '{i18n>Attachment}',
+            TypeNamePlural: '{i18n>Attachments}',
+   },
+   LineItem  : [
+      {Value: type, @HTML5.CssDefaults: {width: '10%'}},
+      {Value: filename, @HTML5.CssDefaults: {width: '25%'}},
+      {Value: content, @HTML5.CssDefaults: {width: '0%'}},
+      {Value: createdAt, @HTML5.CssDefaults: {width: '20%'}},
+      {Value: createdBy, @HTML5.CssDefaults: {width: '20%'}},
+      {Value: note, @HTML5.CssDefaults: {width: '25%'}},
+      {
+         $Type  : 'UI.DataFieldForActionGroup',
+         ID     : 'TableActionGroup',
+         Label  : 'Create',
+         ![@UI.Hidden]: {$edmJson: {$Eq: [ {$Path: 'IsActiveEntity'}, true ]}},
+         Actions: [
+            {
+               $Type : 'UI.DataFieldForAction',
+               Label : 'Link',
+               Action: 'ProcessorService.createLink',
+            }
+         ]
+      },
+      {
+         @UI.Hidden: {$edmJson:{$If:[{$Eq:[{$Path: 'IsActiveEntity' },true]},true,{$If:[{$Ne:[{$Path:'mimeType'},'application/internet-shortcut']},true,false]}]}},
+         $Type : 'UI.DataFieldForAction',
+         Label : 'Edit Link',
+         Action: 'ProcessorService.editLink', // -> Ensure the service name is correct
+         Inline: true,
+         IconUrl: 'sap-icon://edit',
+         @HTML5.CssDefaults: {width: '4%'}
+      },
+   ]
+}
+{
+   url @readonly;
+   note @(title: '{i18n>Note}');
+   filename @(title: '{i18n>Filename}');
+   modifiedAt @(odata.etag: null);
+   content
+         @Core.ContentDisposition: { Filename: filename, Type: 'inline' }
+         @(title: '{i18n>Attachment}');
+   folderId @UI.Hidden;
+   mimeType @UI.Hidden;
+   status @UI.Hidden;
+   repositoryId @UI.Hidden;
+}
+
+annotate service.Incidents.references with {
+   customProperty1 @Common.ValueListWithFixedValues;
+}
+```
+
+### 2. Expose each facet as a projection with actions in `srv/service.cds` - [Example](https://github.com/cap-js/sdm/blob/develop/app/single-tenant/central-space/incidents-app/srv/service.cds)
+
+Each facet must be projected and action-enabled, for example:
+
+```cds
+entity Incidents.references as projection on my.Incidents.references
+actions {
+   @(Common.SideEffects : {TargetEntities: ['']},)
+   action createLink(
+      in:many $self,
+      @mandatory @Common.Label:'Name' name: String @UI.Placeholder: 'Enter a name for the link',
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$' @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+   );
+   action editLink(
+      @mandatory @assert.format:'^(https?:\/\/)(([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}|localhost)(:\d{2,5})?(\/[^\s]*)?$'
+      @Common.Label:'URL' url: String @UI.Placeholder: 'Example: https://www.example.com'
+   );
+   action openAttachment() returns { value: String; };
+}
+```
+
+### 3. Add `controlConfiguration` entries in `manifest.json` - [Example](https://github.com/cap-js/sdm/blob/develop/app/single-tenant/central-space/incidents-app/app/incidents/webapp/manifest.json)
+
+For row-press behavior in every facet table, configure each line item target:
+
+```json
+"controlConfiguration": {
+   "references/@com.sap.vocabularies.UI.v1.LineItem": {
+      "tableSettings": {
+         "type": "ResponsiveTable",
+         "selectionMode": "Auto",
+         "rowPress": ".extension.ns.incidents.controller.custom.onRowPress"
+      }
+   }
+}
+```
+
 ## Support for Technical User
 The CAP OData operations can be performed on attachments using a technical user. This flow can be used for machine-to-machine (M2M) interactions, where user involvement is not necessary.
 
