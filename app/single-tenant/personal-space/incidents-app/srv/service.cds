@@ -29,6 +29,8 @@ service ProcessorService {
 extend my.Incidents with { references: Composition of many Attachments }
 extend my.Projects with { references: Composition of many Attachments }
 
+annotate my.Incidents.references with @SDM.useClientCredential: false;
+
 extend Attachments with {
     customProperty1 : Association to WDIRSCodeList
         @SDM.Attachments.AdditionalProperty: {
