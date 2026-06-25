@@ -1,0 +1,124 @@
+{
+  "id": "Working:DocumentInfo",
+  "localName": "Document Info",
+  "localNamespace": "com.sap",
+  "displayName": "Document Info",
+  "queryName": "Working:DocumentInfo",
+  "description": "Document Info",
+  "baseId": "cmis:secondary",
+  "parentId": "cmis:secondary",
+  "creatable": false,
+  "fileable": false,
+  "queryable": true,
+  "fulltextIndexed": false,
+  "includedInSupertypeQuery": false,
+  "controllablePolicy": false,
+  "controllableACL": false,
+  "typeMutability": {
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "propertyDefinitions": {
+    "Working:DocumentInfoRecordBoolean": {
+      "maxLength": 35,
+      "id": "Working:DocumentInfoRecordBoolean",
+      "localName": "Another Document Info Record Boolean",
+      "localNamespace": "com.sap",
+      "displayName": "Another Document Info Record Boolean",
+      "queryName": "Working:DocumentInfoRecordBoolean",
+      "description": "Another Document Info Record Boolean",
+      "propertyType": "boolean",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": true,
+      "openChoice": true,
+      "mcm:miscellaneous": {
+        "isQueryableInUI": "true",
+        "isPartOfTable": "true",
+        "positionWeight": "10"
+      },
+      "value": 12345
+    },
+    "Working:DocumentInfoRecordDate": {
+      "maxLength": 35,
+      "id": "Working:DocumentInfoRecordDate",
+      "localName": "Another Document Info Record Date",
+      "localNamespace": "com.sap",
+      "displayName": "Another Document Info Record Date",
+      "queryName": "Working:DocumentInfoRecordDate",
+      "description": "Another Document Info Record Date",
+      "propertyType": "datetime",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": true,
+      "openChoice": true,
+      "mcm:miscellaneous": {
+        "isQueryableInUI": "true",
+        "isPartOfTable": "true",
+        "positionWeight": "10"
+      },
+      "value": 12345
+    },
+    "Working:DocumentInfoRecordString": {
+      "maxLength": 35,
+      "id": "Working:DocumentInfoRecordString",
+      "localName": "Another Document Info Record String",
+      "localNamespace": "com.sap",
+      "displayName": "Another Document Info Record String",
+      "queryName": "Working:DocumentInfoRecordString",
+      "description": "Another Document Info Record String",
+      "propertyType": "string",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": true,
+      "openChoice": true,
+      "mcm:miscellaneous": {
+        "isQueryableInUI": "true",
+        "isPartOfTable": "true",
+        "positionWeight": "10"
+      },
+      "value": 12345
+    },
+    "Working:DocumentInfoRecordInt": {
+      "maxLength": 35,
+      "id": "Working:DocumentInfoRecordInt",
+      "localName": "Another Document Info Record Int",
+      "localNamespace": "com.sap",
+      "displayName": "Another Document Info Record Int",
+      "queryName": "Working:DocumentInfoRecordInt",
+      "description": "Another Document Info Record Int",
+      "propertyType": "integer",
+      "cardinality": "single",
+      "updatability": "readwrite",
+      "inherited": false,
+      "required": false,
+      "queryable": true,
+      "orderable": true,
+      "openChoice": true,
+      "mcm:miscellaneous": {
+        "isQueryableInUI": "true",
+        "isPartOfTable": "true",
+        "positionWeight": "10"
+      },
+      "value": 12345
+    }
+  },
+  "mcm:propertyGrouping": {
+    "Document Additional Data": {
+      "mcm:title": {
+        "default": "Document Additional Data"
+      },
+      "mcm:propertyIds": "Working:DocumentInfoRecordDate,Working:DocumentInfoRecordBoolean,Working:Status,Working:Class"
+    }
+  }
+}

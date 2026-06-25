@@ -127,10 +127,31 @@ async function getCmisProperty(entityId, fileName, propertyName) {
   return String(value);
 }
 
+/**
+ * Like getCmisProperty but returns null instead of throwing when the property is not found
+ * or when the document/folder cannot be resolved.
+ *
+ * @param {string} entityId - the entity ID whose attachments folder contains the document
+ * @param {string} fileName - the cmis:name of the document
+ * @param {string} propertyName - the CMIS property name (e.g. "Working:DocumentInfoRecordString")
+ * @returns {Promise<string|null>} the property value as a string, or null if not found
+ */
+async function getCmisPropertyOrNull(entityId, fileName, propertyName) {
+  try {
+    const metadata = await readDocumentMetadataFromCmis(entityId, fileName);
+    const root = JSON.parse(metadata);
+    const value = root?.properties?.[propertyName]?.value;
+    return value !== undefined && value !== null ? String(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   createDocumentInCmis,
   deleteDocumentFromCmis,
   readDocumentFromCmis,
   readDocumentMetadataFromCmis,
-  getCmisProperty
+  getCmisProperty,
+  getCmisPropertyOrNull
 };
