@@ -49,6 +49,9 @@
     "integration-test-virus-scan": "jest --config jest-integration-virus-scan.config.js",
     "lint": "npx eslint --fix . --no-cache"
   },
+  "overrides": {
+    "node-fetch": "3.3.2"
+  },
   "cds": {
     "server": {
       "body_parser": {
