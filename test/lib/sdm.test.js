@@ -114,22 +114,27 @@ jest.mock("../../lib/persistence", () => ({
   getAttachmentById: jest.fn(),
   editLinkInDraft: jest.fn()
 }));
-jest.mock("../../lib/util", () => ({
-  checkAttachmentsToRename: jest.fn(),
-  getConfigurations: jest.fn(),
-  isRepositoryVersioned: jest.fn(),
-  getSdmInstanceName: jest.fn(),
-  transformSDMServiceBindingToClientCredentialsDestination: jest.fn(),
-  transformSDMServiceBindingToJWTBearerCredentialsDestination: jest.fn(),
-  isRestrictedCharactersInName: jest.fn(),
-  getStatusCondition: jest.fn(),
-  getPropertyTitles: jest.fn(),
-  getSecondaryPropertiesWithInvalidDefinition: jest.fn(),
-  getSecondaryTypeProperties: jest.fn(),
-  getUpdatedSecondaryProperties: jest.fn(),
-  checkIfSDMRolesExistInToken: jest.fn(),
-  decodeAccessToken: jest.fn()
-}));
+jest.mock("../../lib/util", () => {
+  const utilMock = {
+    checkAttachmentsToRename: jest.fn(),
+    getConfigurations: jest.fn(),
+    isRepositoryVersioned: jest.fn(),
+    getSdmInstanceName: jest.fn(),
+    isRestrictedCharactersInName: jest.fn(),
+    getStatusCondition: jest.fn(),
+    getPropertyTitles: jest.fn(),
+    getSecondaryPropertiesWithInvalidDefinition: jest.fn(),
+    getSecondaryTypeProperties: jest.fn(),
+    getUpdatedSecondaryProperties: jest.fn(),
+    checkIfSDMRolesExistInToken: jest.fn(),
+    decodeAccessToken: jest.fn()
+  };
+
+  utilMock.transformSDMServiceBindingToClientCredentialsDestination = jest.fn();
+  utilMock.transformSDMServiceBindingToJWTBearerCredentialsDestination = jest.fn();
+
+  return utilMock;
+});
 jest.mock("../../lib/handler", () => ({
   deleteAttachmentsOfFolder: jest.fn(),
   createAttachment: jest.fn(),
