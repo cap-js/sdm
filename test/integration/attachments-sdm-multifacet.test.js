@@ -178,9 +178,9 @@ beforeAll(async () => {
   };
   api = new Api(config);
 
-  baselineState = snapshotFacetState()
+  baselineState = snapshotFacetState();
   for (const facet of multifacets) {
-    facetStates.set(facet, { ...baselineState, attachments: [...baselineState.attachments] })
+    facetStates.set(facet, { ...baselineState, attachments: [...baselineState.attachments] });
   }
 });
 
