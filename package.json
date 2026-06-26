@@ -20,7 +20,7 @@
     "plugin"
   ],
   "dependencies": {
-    "@cap-js/attachments": "3.12.1",
+    "@cap-js/attachments": "3.13.0",
     "@sap-cloud-sdk/connectivity": "^4.3.1",
     "@sap-cloud-sdk/http-client": "^4.3.1",
     "@sap/xssec": "^4",
@@ -48,6 +48,13 @@
     "integration-test-repo-specific": "jest --config jest-integration-repo-specific.config.js",
     "integration-test-virus-scan": "jest --config jest-integration-virus-scan.config.js",
     "lint": "npx eslint --fix . --no-cache"
+  },
+  "overrides": {
+    "node-fetch": "3.3.2",
+    "https-proxy-agent": "9.1.0",
+    "iconv-lite": "0.7.2",
+    "path-to-regexp": "8.4.2",
+    "xml2js": "0.6.2"
   },
   "cds": {
     "server": {
