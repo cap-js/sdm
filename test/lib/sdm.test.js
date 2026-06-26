@@ -7505,6 +7505,18 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('getDestination — per-composition cache', () => {
+    it('uses attachmentsEntity.name as cache key when provided', async () => {
+      const service = new SDMAttachmentsService();
+      const mockDest = { url: 'http://cached-with-key/' };
+      const req = { _sdmDestinations: { 'MyEntity.references': mockDest } };
+      const attachmentsEntity = { name: 'MyEntity.references' };
+
+      const result = await service.getDestination(req, attachmentsEntity);
+      expect(result).toBe(mockDest);
+    });
+  });
+
   describe('applyClientCredentialUser', () => {
     let service;
 
