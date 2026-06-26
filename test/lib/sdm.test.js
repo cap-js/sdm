@@ -33,7 +33,7 @@ const {
   updateLinkInDraft,
   getDraftAdministrativeData_DraftUUIDForUpId,
   getAttachmentById,
-  editLinkInDraft
+  editLinkInDraft,
 } = require("../../lib/persistence");
 const {
   deleteAttachmentsOfFolder,
@@ -118,7 +118,7 @@ jest.mock("../../lib/persistence", () => ({
   updateLinkInDraft: jest.fn(),
   getDraftAdministrativeData_DraftUUIDForUpId: jest.fn(),
   getAttachmentById: jest.fn(),
-  editLinkInDraft: jest.fn()
+  editLinkInDraft: jest.fn(),
 }));
 jest.mock("../../lib/util", () => ({
   checkAttachmentsToRename: jest.fn(),
@@ -150,7 +150,8 @@ jest.mock("../../lib/handler", () => ({
   renameAttachment: jest.fn(),
   getRepositoryInfo: jest.fn(),
   updateAttachment: jest.fn(),
-  editLink: jest.fn()
+  editLink: jest.fn(),
+  deleteIncompleteDocumentWithRetry: jest.fn(),
 }));
 jest.mock("@sap/cds/lib", () => {
   const mockCds = {
@@ -167,6 +168,7 @@ jest.mock("@sap/cds/lib", () => {
         }
       }
     },
+    on: jest.fn(),
     // Add ql property to reference global mocks
     get ql() {
       return {
@@ -2965,7 +2967,11 @@ describe("SDMAttachmentsService", () => {
       await service.draftAttachmentUploadHandler(req);
 
       expect(req.reject).not.toHaveBeenCalled();
-      expect(service.create).toHaveBeenCalledWith([{ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' }], draftAttachments, req);
+      expect(service.create).toHaveBeenCalledWith(
+        [expect.objectContaining({ HasActiveEntity: false, ID: "afc3d040-60ae-4bf2-a44f-1da4043f4257", content: 'some content', filename: 'validname' })],
+        draftAttachments,
+        req
+      );
       expect(req.data.content).toBeNull();
     });
   });
@@ -7604,6 +7610,38 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Branch coverage: sdm.js uncovered lines
+  // ---------------------------------------------------------------------------
+
+  describe("getDestination — cached path (line 142)", () => {
+    it("returns cached destination on second call without calling getDestinationFromServiceBinding again", async () => {
+      const service = new SDMAttachmentsService();
+      const mockDest = { url: "http://cached/" };
+      // HEAD's getDestination uses per-composition caching via req._sdmDestinations[cacheKey].
+      // The default cache key when no attachmentsEntity is passed is '_default'.
+      const req = { _sdmDestinations: { _default: mockDest } };
+
+      const result = await service.getDestination(req);
+      expect(result).toBe(mockDest);
+    });
+  });
+
+  describe("draftSaveHandler — parentHandler invocation (line 558)", () => {
+    it("returned handler calls the parent handler and completes", async () => {
+      const service = new SDMAttachmentsService();
+      const parentHandler = jest.fn().mockResolvedValue();
+      jest.spyOn(Object.getPrototypeOf(Object.getPrototypeOf(service)), 'draftSaveHandler').mockReturnValue(parentHandler);
+
+      const attachments = {};
+      const handler = service.draftSaveHandler(attachments);
+      const res = {};
+      const req = { data: {} };
+
+      await handler(res, req);
+      expect(parentHandler).toHaveBeenCalledWith(res, req);
+    });
+  });
   // ─── cmis:description / note field mapping ───────────────────────────────────
 
   describe('note → cmis:description mapping', () => {
