@@ -7517,6 +7517,84 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('_setManagedUser — branch coverage', () => {
+    let service;
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+    });
+
+    it('returns silently when data is null', () => {
+      expect(() => service._setManagedUser(null, 'CREATE', 'client-id')).not.toThrow();
+    });
+
+    it('returns silently when data is not an object (string)', () => {
+      expect(() => service._setManagedUser('not-an-object', 'CREATE', 'client-id')).not.toThrow();
+    });
+
+    it('sets createdBy and modifiedBy on CREATE event', () => {
+      const data = {};
+      service._setManagedUser(data, 'CREATE', 'client-id');
+      expect(data.createdBy).toBe('client-id');
+      expect(data.modifiedBy).toBe('client-id');
+    });
+
+    it('sets createdBy and modifiedBy on PUT event', () => {
+      const data = {};
+      service._setManagedUser(data, 'PUT', 'client-id');
+      expect(data.createdBy).toBe('client-id');
+      expect(data.modifiedBy).toBe('client-id');
+    });
+
+    it('sets only modifiedBy on UPDATE event', () => {
+      const data = {};
+      service._setManagedUser(data, 'UPDATE', 'client-id');
+      expect(data.createdBy).toBeUndefined();
+      expect(data.modifiedBy).toBe('client-id');
+    });
+  });
+
+  describe('_rejectIfVirusScanLargeFile — file size threshold', () => {
+    let service;
+    let origEnv;
+
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+      origEnv = cds.env;
+      cds.env = { requires: { sdm: { settings: {} } } };
+    });
+
+    afterEach(() => {
+      cds.env = origEnv;
+    });
+
+    it('returns silently when file size is below the threshold', () => {
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 1024);
+      expect(req.reject).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 409 when file exceeds threshold and virus scan is enabled (string "true")', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = 'true';
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024); // 500MB
+      expect(req.reject).toHaveBeenCalledWith(409, expect.any(String));
+    });
+
+    it('rejects with 409 when file exceeds threshold and virus scan is enabled (boolean true)', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = true;
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024);
+      expect(req.reject).toHaveBeenCalledWith(409, expect.any(String));
+    });
+
+    it('does NOT reject when file exceeds threshold but virus scan is not enabled', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = 'false';
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024);
+      expect(req.reject).not.toHaveBeenCalled();
+    });
+  });
+
   describe('applyClientCredentialUser', () => {
     let service;
 
@@ -7619,6 +7697,23 @@ describe("SDMAttachmentsService", () => {
       service.applyClientCredentialUser(req);
       expect(req.data.plain[0].createdBy).toBeUndefined();
       expect(req.data.plain[0].modifiedBy).toBeUndefined();
+    });
+
+    it('returns early when req.event is not SAVE/CREATE/UPDATE and annotation absent', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'DELETE', target: { elements: {} }, data: { foo: 'bar' } };
+      service.applyClientCredentialUser(req);
+      // No managed fields stamped — DELETE is not a write event
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('returns early when req.target.elements is missing', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'SAVE', target: {}, data: {} };
+      expect(() => service.applyClientCredentialUser(req)).not.toThrow();
     });
   });
 
