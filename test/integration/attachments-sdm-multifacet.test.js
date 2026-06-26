@@ -1464,7 +1464,7 @@ const config = {
       try {
         response = await api.editEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath);
         if (response.status === "OK") {
-          response = await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
+          await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
         }
       } catch {
         // If cleanup still fails, log but don't fail the test
