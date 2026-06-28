@@ -211,6 +211,9 @@ jobs:
               --arg cmisUrl "${{ env.CMIS_URL }}" \
               --arg cmisClientIDMT "${{ env.CMIS_CLIENT_ID_MT }}" \
               --arg cmisClientSecretMT "${{ env.CMIS_CLIENT_SECRET_MT }}" \
+              --arg defaultRepositoryIDMT "${{ secrets.DEFAULTREPOSITORYIDMT }}" \
+              --arg defaultRepositoryID "${{ secrets.DEFAULTREPOSITORYID }}" \
+              --arg virusScanRepositoryID "${{ secrets.VIRUSSCANREPOSITORYID }}" \
               '
               .username = $username
               | .password = $password
@@ -224,6 +227,9 @@ jobs:
               | .CMIS_URL = $cmisUrl
               | .cmisClientIDMT = $cmisClientIDMT
               | .cmisClientSecretMT = $cmisClientSecretMT
+              | .defaultRepositoryIDMT = $defaultRepositoryIDMT
+              | .defaultRepositoryID = $defaultRepositoryID
+              | .virusScanRepositoryID = $virusScanRepositoryID
               ' "$JSON_FILE" > "temp.json"
           )
           mv "temp.json" "$JSON_FILE"

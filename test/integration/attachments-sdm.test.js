@@ -1822,9 +1822,13 @@ const config = {
     }
     expect(response.data.createdBy).toBeTruthy();
     expect(response.data.modifiedBy).toBeTruthy();
-    // When using named user token, createdBy should match the authenticated username
-    if (credentials.username) {
+    // When using named user token, createdBy should match the authenticated username.
+    // For technicalUser flow, the principal is the client_credentials clientid (not a named user),
+    // so createdBy must NOT equal the named user.
+    if (tokenFlow === 'namedUser' && credentials.username) {
       expect(response.data.createdBy).toBe(credentials.username);
+    } else if (tokenFlow === 'technicalUser' && credentials.username) {
+      expect(response.data.createdBy).not.toBe(credentials.username);
     }
 
     // Cleanup
@@ -2032,7 +2036,13 @@ describe.only('Attachments Integration Tests --CMIS METADATA', () => {
     const { getCmisProperty } = require('./utills/cmis-document-helper');
     const createdBy = await getCmisProperty(metadataEntityID, "metadata-test.pdf", "cmis:createdBy");
     expect(createdBy).toBeTruthy();
-    expect(createdBy).toBe(credentials.username);
+    // For namedUser flow, SDM's cmis:createdBy is the authenticated user.
+    // For technicalUser flow, it's the client_credentials clientid — must NOT match the named user.
+    if (tokenFlow === 'namedUser') {
+      expect(createdBy).toBe(credentials.username);
+    } else if (tokenFlow === 'technicalUser') {
+      expect(createdBy).not.toBe(credentials.username);
+    }
     console.log(`SDM createdBy field verified: ${createdBy}`);
 
     // Cleanup
