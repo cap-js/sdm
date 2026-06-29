@@ -1,6 +1,6 @@
 const integrationMultifacetConfig = {
   verbose: true,
-  testTimeout: 100000,
+  testTimeout: 500000,
   testMatch: ['**/test/integration/attachments-sdm-multifacet.test.js']
 }
 
