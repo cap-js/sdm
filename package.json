@@ -42,7 +42,9 @@
   "scripts": {
     "start": "cds-serve",
     "test": "jest --coverage --config jest.config.js",
-    "integration-test": "jest --config jest-integration.config.js",
+    "integration-test": "jest --config jest-integration.config.js --runInBand && jest --config jest-integration-multifacet.config.js --runInBand && npm run --silent integration-test:done",
+    "integration-test:done": "echo \"All single-facet and multifacet integration tests passed\"",
+    "integration-test-multifacet": "jest --config jest-integration-multifacet.config.js",
     "integration-test-non-draft": "jest --config jest-integration-non-draft.config.js",
     "integration-test-subscription": "jest --config jest-integration-subscription.config.js",
     "integration-test-repo-specific": "jest --config jest-integration-repo-specific.config.js",

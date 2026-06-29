@@ -111,7 +111,7 @@ beforeAll(async () => {
       authUrl = credentials.authUrlMTGWC;
     }
   } else {
-    console.log('Running integration tests | Single tenant Scenario');
+    console.log('Running integration tests | Single tenant Scenario | Multi facet');
     appUrl = credentials.appUrl;
     clientId = credentials.clientID;
     clientSecret = credentials.clientSecret;
