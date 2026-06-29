@@ -1,3 +1,69 @@
+const multifacets = ['attachments', 'references', 'footnotes']
+const facetStates = new Map()
+let baselineState
+
+const snapshotFacetState = () => ({
+  token,
+  noSDMRoleToken,
+  api,
+  apiNoSDMRole,
+  incidentID,
+  appUrl,
+  serviceName,
+  entityName,
+  srvpath,
+  attachments: [...attachments],
+  incidentToDelete,
+  incidentIDCustomProperty1,
+  incidentIDCustomProperty2,
+  attachment1,
+  attachment2,
+  attachment3,
+  editLinkIncidentID,
+  editLinkAttachmentID
+})
+
+const restoreFacetState = (state) => {
+  token = state.token
+  noSDMRoleToken = state.noSDMRoleToken
+  api = state.api
+  apiNoSDMRole = state.apiNoSDMRole
+  incidentID = state.incidentID
+  appUrl = state.appUrl
+  serviceName = state.serviceName
+  entityName = state.entityName
+  srvpath = state.srvpath
+  attachments = [...state.attachments]
+  incidentToDelete = state.incidentToDelete
+  incidentIDCustomProperty1 = state.incidentIDCustomProperty1
+  incidentIDCustomProperty2 = state.incidentIDCustomProperty2
+  attachment1 = state.attachment1
+  attachment2 = state.attachment2
+  attachment3 = state.attachment3
+  editLinkIncidentID = state.editLinkIncidentID
+  editLinkAttachmentID = state.editLinkAttachmentID
+}
+
+const itForAllFacets = (name, fn, timeout) => it(name, async () => {
+  const previousFacet = process.env.SDM_TEST_FACET
+  for (const facet of multifacets) {
+    process.env.SDM_TEST_FACET = facet
+    if (!facetStates.has(facet)) {
+      facetStates.set(
+        facet,
+        baselineState
+          ? { ...baselineState, attachments: [...baselineState.attachments] }
+          : snapshotFacetState()
+      )
+    }
+    restoreFacetState(facetStates.get(facet))
+    await fn()
+    facetStates.set(facet, snapshotFacetState())
+  }
+  if (previousFacet === undefined) delete process.env.SDM_TEST_FACET
+  else process.env.SDM_TEST_FACET = previousFacet
+}, timeout)
+
 const axios = require('axios');
 const credentials = require('./credentials.json');
 const Api = require('./api');
@@ -21,6 +87,11 @@ let attachments = []
 let incidentToDelete;
 let incidentIDCustomProperty1;
 let incidentIDCustomProperty2;
+let attachment1;
+let attachment2;
+let attachment3;
+let editLinkIncidentID;
+let editLinkAttachmentID;
 
 beforeAll(async () => {
   let clientId;
@@ -40,7 +111,7 @@ beforeAll(async () => {
       authUrl = credentials.authUrlMTGWC;
     }
   } else {
-    console.log('Running integration tests | Single tenant Scenario | Single facet');
+    console.log('Running integration tests | Single tenant Scenario | Multi facet');
     appUrl = credentials.appUrl;
     clientId = credentials.clientID;
     clientSecret = credentials.clientSecret;
@@ -106,11 +177,16 @@ beforeAll(async () => {
     headers: { 'Authorization': "Bearer " + token }
   };
   api = new Api(config);
+
+  baselineState = snapshotFacetState();
+  for (const facet of multifacets) {
+    facetStates.set(facet, { ...baselineState, attachments: [...baselineState.attachments] });
+  }
 });
 
-describe.only('Attachments Integration Tests --CREATE', () => {
+describe('Attachments Integration Tests --CREATE', () => {
   //When an attachment is created, the function also attempts to read it from drafts. If this attempt fails, an error is thrown and the attachment is not created.
-  it('should create an entity and check if it has been created', async () => { 
+  itForAllFacets('should create an entity and check if it has been created', async () => { 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -122,7 +198,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });   
 
-  it('should upload a single attachment and check if it has been uploaded with content --pdf', async () => {
+  itForAllFacets('should upload a single attachment and check if it has been uploaded with content --pdf', async () => {
     const file =
     {
       filename: "sample.pdf",
@@ -152,7 +228,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should upload a single attachment and check if it has been uploaded with content --exe', async () => {
+  itForAllFacets('should upload a single attachment and check if it has been uploaded with content --exe', async () => {
     //A separate test case is formed for exe as the postData will vary, and unlike pdf it can't be viewed in browser
     const file =
     {
@@ -183,7 +259,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should not upload an attachment when user does not have SDM role', async () => {
+  itForAllFacets('should not upload an attachment when user does not have SDM role', async () => {
     if (tokenFlow !== 'technicalUser') {
       const file =
           {
@@ -215,7 +291,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
 });
 
-  it('should not allow upload of duplicate files in same entity', async () => {
+  itForAllFacets('should not allow upload of duplicate files in same entity', async () => {
     const file =
       {
         filename: "sample.pdf",
@@ -248,7 +324,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should not allow upload of duplicate files in same entity --draft', async () => {
+  itForAllFacets('should not allow upload of duplicate files in same entity --draft', async () => {
     const files = [
       {
         filename: "sample2.pdf",
@@ -290,7 +366,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should allow upload of a duplicate file in a different entity', async () => {
+  itForAllFacets('should allow upload of a duplicate file in a different entity', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -321,7 +397,7 @@ describe.only('Attachments Integration Tests --CREATE', () => {
     }
   });
 
-  it('should fail to upload duplicate attachment and verify error from DI', async () => {
+  itForAllFacets('should fail to upload duplicate attachment and verify error from DI', async () => {
     let diErrorEntityID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
@@ -395,8 +471,8 @@ describe.only('Attachments Integration Tests --CREATE', () => {
   });
 });
 
-describe.only('Attachments Integration Tests --READ', () => {
-  it('should read the created attachment', async () => {
+describe('Attachments Integration Tests --READ', () => {
+  itForAllFacets('should read the created attachment', async () => {
     if (tokenFlow !== 'technicalUser') {
       //This test case also reads files not supported by browser (.exe)
       for (let i = 0; i < attachments.length; i++) {
@@ -416,7 +492,7 @@ describe.only('Attachments Integration Tests --READ', () => {
 
   });
 
-  it('should not read an attachment that doesnt exist', async () => {
+  itForAllFacets('should not read an attachment that doesnt exist', async () => {
     const invalidAttachment = 'invalid-attachment-id';
     const response = await api.readAttachment(appUrl, serviceName, entityName, incidentID, invalidAttachment);
     if (response.status == "OK") {
@@ -424,7 +500,7 @@ describe.only('Attachments Integration Tests --READ', () => {
     }
   });
 
-  it('should handle gracefully when attachment has been deleted from backend repository', async () => {
+  itForAllFacets('should handle gracefully when attachment has been deleted from backend repository', async () => {
     const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
     let readBackendDeletedEntityID;
 
@@ -480,12 +556,8 @@ describe.only('Attachments Integration Tests --READ', () => {
   });
 });
 
-describe.only('Attachments Integration Tests --UPDATE', () => {
-  let attachment1;
-  let attachment2;
-  let attachment3;
-
-  it('should update valid properties of attachments during create of entity', async () => {
+describe('Attachments Integration Tests --UPDATE', () => {
+  itForAllFacets('should update valid properties of attachments during create of entity', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
 
     if (response.status !== "OK") {
@@ -550,7 +622,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     expect(cmisDate).not.toBe(null);
   });
 
-  it('should update valid properties of attachments after save of entity', async () => {
+  itForAllFacets('should update valid properties of attachments after save of entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentIDCustomProperty1, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -595,7 +667,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     expect(cmisDate).not.toBe(null);
   });
 
-  it('should not update invalid properties of attachments and should update valid properties during create of entity', async () => {
+  itForAllFacets('should not update invalid properties of attachments and should update valid properties during create of entity', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -698,7 +770,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     expect(cmisBoolValid).toBe("true");
   });
 
-  it('should not update invalid properties of attachments and should update valid properties after save of entity', async () => {
+  itForAllFacets('should not update invalid properties of attachments and should update valid properties after save of entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentIDCustomProperty2, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -768,7 +840,7 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
     expect(cmisBoolValid).toBe("false");
   });
 
-  it('should fail to rename attachment to filename that already exists in backend', async () => {
+  itForAllFacets('should fail to rename attachment to filename that already exists in backend', async () => {
     const { createDocumentInCmis } = require('./utills/cmis-document-helper');
     let renameBackendConflictEntityID;
 
@@ -828,11 +900,8 @@ describe.only('Attachments Integration Tests --UPDATE', () => {
   });
 });
 
-describe.only('Attachments Integration Tests --LINK', () => {
-  let editLinkIncidentID;
-  let editLinkAttachmentID;
-
-  it('should successfully create a link and verify it is openable after multiple edits', async () => {
+describe('Attachments Integration Tests --LINK', () => {
+  itForAllFacets('should successfully create a link and verify it is openable after multiple edits', async () => {
     let linkIncidentID;
     let linkAttachmentID;
     let secondLinkAttachmentID;
@@ -975,7 +1044,7 @@ const config = {
     }
   });
 
-  it('should allow creation of a link with the same name and URL in a different entity', async () => {
+  itForAllFacets('should allow creation of a link with the same name and URL in a different entity', async () => {
     // Define the same link parameters as the previous test
     const linkName = 'GitHub';
     const linkUrl = 'https://github.com';
@@ -1030,7 +1099,7 @@ const config = {
     }
   });
 
-  it('should fail to create links with invalid parameters and prevent duplicate names', async () => {
+  itForAllFacets('should fail to create links with invalid parameters and prevent duplicate names', async () => {
     let testIncidentID;
     let validLinkAttachmentID;
 
@@ -1173,7 +1242,7 @@ const config = {
     }
   });
 
-  it('should successfully delete a link using deleteAttachment API', async () => {
+  itForAllFacets('should successfully delete a link using deleteAttachment API', async () => {
     let deleteTestIncidentID;
     let deleteTestLinkID;
 
@@ -1247,7 +1316,7 @@ const config = {
     }
   });
 
-  it('should successfully rename a link using updateAttachment API', async () => {
+  itForAllFacets('should successfully rename a link using updateAttachment API', async () => {
     let renameSuccessIncidentID;
     let renameSuccessLinkID;
 
@@ -1322,7 +1391,7 @@ const config = {
     }
   });
 
-  it('should fail to rename link with restricted characters', async () => {
+  itForAllFacets('should fail to rename link with restricted characters', async () => {
     let renameRestrictedIncidentID;
     let renameRestrictedLinkID;
 
@@ -1395,7 +1464,7 @@ const config = {
       try {
         response = await api.editEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID, srvpath);
         if (response.status === "OK") {
-          response = await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
+          await api.deleteEntity(appUrl, serviceName, entityName, renameRestrictedIncidentID);
         }
       } catch {
         // If cleanup still fails, log but don't fail the test
@@ -1404,7 +1473,7 @@ const config = {
     }
   });
 
-  it('should fail to rename link with duplicate name', async () => {
+  itForAllFacets('should fail to rename link with duplicate name', async () => {
     let renameDuplicateIncidentID;
     let renameDuplicateLink2ID;
 
@@ -1496,7 +1565,7 @@ const config = {
     }
   });
 
-  it('should successfully edit an existing link with valid URL using editLink API', async () => {
+  itForAllFacets('should successfully edit an existing link with valid URL using editLink API', async () => {
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -1557,7 +1626,7 @@ const config = {
     }
   });
 
-  it('should validate URL format when using editLink API', async () => {
+  itForAllFacets('should validate URL format when using editLink API', async () => {
     let invalidEditIncidentID;
     let invalidEditLinkID;
 
@@ -1619,7 +1688,7 @@ const config = {
     }
   });
 
-  it('should validate URL requirement when using editLink API', async () => {
+  itForAllFacets('should validate URL requirement when using editLink API', async () => {
     let emptyUrlEditIncidentID;
     let emptyUrlEditLinkID;
 
@@ -1680,7 +1749,7 @@ const config = {
     }
   });
 
-  it('should discard draft edited link and revert to original URL', async () => {
+  itForAllFacets('should discard draft edited link and revert to original URL', async () => {
     let discardTestIncidentID;
     let discardTestLinkID;
 
@@ -1756,7 +1825,7 @@ const config = {
     }
   });
 
-  it('should not allow editing a link without SDM role', async () => {
+  itForAllFacets('should not allow editing a link without SDM role', async () => {
     if (tokenFlow !== 'technicalUser') {
       // Enter draft mode with no-SDM-role user (reusing editLinkIncidentID from previous test)
       const config = {
@@ -1788,7 +1857,7 @@ const config = {
     }
   });
 
-  it('should verify createdBy field on link attachment matches authenticated user', async () => {
+  itForAllFacets('should verify createdBy field on link attachment matches authenticated user', async () => {
     let linkCreatedByEntityID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
@@ -1822,13 +1891,9 @@ const config = {
     }
     expect(response.data.createdBy).toBeTruthy();
     expect(response.data.modifiedBy).toBeTruthy();
-    // When using named user token, createdBy should match the authenticated username.
-    // For technicalUser flow, the principal is the client_credentials clientid (not a named user),
-    // so createdBy must NOT equal the named user.
-    if (tokenFlow === 'namedUser' && credentials.username) {
+    // When using named user token, createdBy should match the authenticated username
+    if (credentials.username) {
       expect(response.data.createdBy).toBe(credentials.username);
-    } else if (tokenFlow === 'technicalUser' && credentials.username) {
-      expect(response.data.createdBy).not.toBe(credentials.username);
     }
 
     // Cleanup
@@ -1838,7 +1903,7 @@ const config = {
     }
   });
 
-  it('should delete link not present in repository and remove from UI', async () => {
+  itForAllFacets('should delete link not present in repository and remove from UI', async () => {
     const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
     let linkNotInRepoEntityID;
 
@@ -1894,7 +1959,7 @@ const config = {
     }
   });
 
-  it('should fail to rename link to filename that already exists in backend', async () => {
+  itForAllFacets('should fail to rename link to filename that already exists in backend', async () => {
     const { createDocumentInCmis } = require('./utills/cmis-document-helper');
     let linkBackendConflictEntityID;
 
@@ -1947,7 +2012,7 @@ const config = {
     }
   });
 
-  it('should fail to rename link with whitespace-only name', async () => {
+  itForAllFacets('should fail to rename link with whitespace-only name', async () => {
     let linkWhitespaceEntityID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
@@ -2000,8 +2065,8 @@ const config = {
   });
 });
 
-describe.only('Attachments Integration Tests --CMIS METADATA', () => {
-  it('should verify SDM createdBy field matches the authenticated user', async () => {
+describe('Attachments Integration Tests --CMIS METADATA', () => {
+  itForAllFacets('should verify SDM createdBy field matches the authenticated user', async () => {
     // Create a fresh entity with an attachment to verify createdBy
     let response = await api.createEntityDraft(appUrl, serviceName, entityName);
     if (response.status !== "OK") {
@@ -2036,13 +2101,7 @@ describe.only('Attachments Integration Tests --CMIS METADATA', () => {
     const { getCmisProperty } = require('./utills/cmis-document-helper');
     const createdBy = await getCmisProperty(metadataEntityID, "metadata-test.pdf", "cmis:createdBy");
     expect(createdBy).toBeTruthy();
-    // For namedUser flow, SDM's cmis:createdBy is the authenticated user.
-    // For technicalUser flow, it's the client_credentials clientid — must NOT match the named user.
-    if (tokenFlow === 'namedUser') {
-      expect(createdBy).toBe(credentials.username);
-    } else if (tokenFlow === 'technicalUser') {
-      expect(createdBy).not.toBe(credentials.username);
-    }
+    expect(createdBy).toBe(credentials.username);
     console.log(`SDM createdBy field verified: ${createdBy}`);
 
     // Cleanup
@@ -2053,8 +2112,8 @@ describe.only('Attachments Integration Tests --CMIS METADATA', () => {
   });
 });
 
-describe.only('Attachments Integration Tests --DELETE', () => {
-  it('should delete the attachments of an entity', async () => {
+describe('Attachments Integration Tests --DELETE', () => {
+  itForAllFacets('should delete the attachments of an entity', async () => {
     let response = await api.editEntity(appUrl, serviceName, entityName, incidentID, srvpath);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -2069,7 +2128,7 @@ describe.only('Attachments Integration Tests --DELETE', () => {
     }
   });
 
-  it('should delete an entity and all its attachments', async () => {
+  itForAllFacets('should delete an entity and all its attachments', async () => {
     let response = await api.deleteEntity(appUrl, serviceName, entityName, incidentToDelete);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
@@ -2084,13 +2143,13 @@ describe.only('Attachments Integration Tests --DELETE', () => {
     }
   });
 
-  it('should delete an entity after all its attachments have been deleted', async () => {
+  itForAllFacets('should delete an entity after all its attachments have been deleted', async () => {
     const response = await api.deleteEntity(appUrl, serviceName, entityName, incidentID);
     if (response.status !== "OK") {
       throw new Error("Error : " + response.message)
     }
   });
-   it('should create an entity, edit and delete it without attachments', async () => {
+   itForAllFacets('should create an entity, edit and delete it without attachments', async () => {
 
       let response = await api.createEntityDraft(appUrl, serviceName, entityName);
       if (response.status !== "OK") {
@@ -2116,7 +2175,7 @@ describe.only('Attachments Integration Tests --DELETE', () => {
               }
     });
 
-  it('should delete attachment not present in repository and remove from UI', async () => {
+  itForAllFacets('should delete attachment not present in repository and remove from UI', async () => {
     const { deleteDocumentFromCmis } = require('./utills/cmis-document-helper');
     let delNotInRepoEntityID;
 
@@ -2177,7 +2236,7 @@ describe.only('Attachments Integration Tests --DELETE', () => {
     }
   });
 
-  it('should verify entity and its attachments are not accessible after entity delete', async () => {
+  itForAllFacets('should verify entity and its attachments are not accessible after entity delete', async () => {
     let deleteEntityTestID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
@@ -2220,7 +2279,7 @@ describe.only('Attachments Integration Tests --DELETE', () => {
     expect(response.status).toBe("FAILED");
   });
 
-  it('should verify attachments cleaned up after discarding draft', async () => {
+  itForAllFacets('should verify attachments cleaned up after discarding draft', async () => {
     let discardDraftEntityID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);
@@ -2256,7 +2315,7 @@ describe.only('Attachments Integration Tests --DELETE', () => {
     expect(response.status).toBe("FAILED");
   });
 
-  it('should verify all attachments removed after deleting all attachments from entity', async () => {
+  itForAllFacets('should verify all attachments removed after deleting all attachments from entity', async () => {
     let deleteAllEntityID;
 
     let response = await api.createEntityDraft(appUrl, serviceName, entityName, srvpath);

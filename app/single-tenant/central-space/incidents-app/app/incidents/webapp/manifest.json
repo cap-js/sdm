@@ -164,11 +164,25 @@
                     }
                   }
                 },
+                "attachments/@com.sap.vocabularies.UI.v1.LineItem": {
+                  "tableSettings": {
+                    "type": "ResponsiveTable",
+                    "selectionMode": "Auto",
+                    "rowPress": ".extension.ns.incidents.controller.custom.onRowPress"
+                  }
+                },
                 "references/@com.sap.vocabularies.UI.v1.LineItem": {
                   "tableSettings": {
                       "type": "ResponsiveTable",
                       "selectionMode": "Auto",
                       "rowPress": ".extension.ns.incidents.controller.custom.onRowPress"
+                  }
+                },
+                "footnotes/@com.sap.vocabularies.UI.v1.LineItem": {
+                  "tableSettings": {
+                    "type": "ResponsiveTable",
+                    "selectionMode": "Auto",
+                    "rowPress": ".extension.ns.incidents.controller.custom.onRowPress"
                   }
                 }
               }
