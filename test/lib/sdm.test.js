@@ -6,6 +6,8 @@ const {
   getConfigurations,
   isRepositoryVersioned,
   getSdmInstanceName,
+  getSdmClientId,
+  isClientCredentialForced,
   isRestrictedCharactersInName,
   getStatusCondition,
   getPropertyTitles,
@@ -70,7 +72,12 @@ let {
   mimeTypeInvalidError
 } = require("../../lib/util/messageConsts");
 
-jest.mock("@cap-js/attachments/srv/attachments/basic", () => class {
+// @cap-js/attachments switched the base-class path between versions:
+// 3.8 ships it at "srv/basic", 3.12+ at "srv/attachments/basic". virtual:true
+// lets jest.mock register a name that doesn't physically exist in the
+// installed copy, so whichever layout sdm.js resolves at runtime, our mock
+// wins.
+const _attachmentsBasicMock = class {
   async init() {
     return Promise.resolve();
   }
@@ -85,7 +92,9 @@ jest.mock("@cap-js/attachments/srv/attachments/basic", () => class {
   registerHandlers(_srv) {
     // Mock parent registerHandlers
   }
-});
+};
+jest.mock("@cap-js/attachments/srv/basic", () => _attachmentsBasicMock, { virtual: true });
+jest.mock("@cap-js/attachments/srv/attachments/basic", () => _attachmentsBasicMock, { virtual: true });
 jest.mock("@sap-cloud-sdk/connectivity", () => ({
   getDestinationFromServiceBinding: jest.fn(),
   retrieveJwt: jest.fn()
@@ -119,8 +128,10 @@ jest.mock("../../lib/util", () => ({
   getConfigurations: jest.fn(),
   isRepositoryVersioned: jest.fn(),
   getSdmInstanceName: jest.fn(),
+  getSdmClientId: jest.fn(),
   transformSDMServiceBindingToJWTBearerCredentialsDestination: jest.fn(),
   transformSDMServiceBindingToClientCredentialsDestination: jest.fn(),
+  isClientCredentialForced: jest.fn(),
   isRestrictedCharactersInName: jest.fn(),
   getStatusCondition: jest.fn(),
   getPropertyTitles: jest.fn(),
@@ -477,9 +488,7 @@ describe("SDMAttachmentsService", () => {
   describe("getDestination", () => {
     it("should get destination and cache it on request object", async () => {
       const service = new SDMAttachmentsService();
-      const mockReq = {
-        _sdmDestination: undefined
-      };
+      const mockReq = {};
       cds.context = {
         user: {
           authInfo: {
@@ -509,7 +518,7 @@ describe("SDMAttachmentsService", () => {
         serviceBindingTransformFn: expect.any(Function)
       });
       expect(result).toEqual(mockDestination);
-      expect(mockReq._sdmDestination).toEqual(mockDestination);
+      expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
     });
 
     it("should return cached destination when available", async () => {
@@ -517,13 +526,61 @@ describe("SDMAttachmentsService", () => {
       const service = new SDMAttachmentsService();
       const cachedDestination = { url: "http://cached.com" };
       const mockReq = {
-        _sdmDestination: cachedDestination
+        _sdmDestinations: { _default: cachedDestination }
       };
 
       const result = await service.getDestination(mockReq);
 
       expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
       expect(result).toEqual(cachedDestination);
+    });
+
+    it("should cache per-attachment-entity to support parents with multiple compositions", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const mockReq = {};
+      cds.context = {
+        user: {
+          authInfo: { token: { payload: { origin: "sap.custom", ext_attr: { zdn: "sub" } } } }
+        }
+      };
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      const dest1 = { url: "http://a.com" };
+      const dest2 = { url: "http://b.com" };
+      getDestinationFromServiceBinding
+        .mockResolvedValueOnce(dest1)
+        .mockResolvedValueOnce(dest2);
+
+      const annotated   = { name: 'Refs',   '@SDM.useClientCredential': true };
+      const unannotated = { name: 'Plain' };
+
+      // The same request needs both flavors; per-entity cache makes this safe.
+      isClientCredentialForced
+        .mockReturnValueOnce(true)   // for annotated entity
+        .mockReturnValueOnce(false); // for unannotated entity
+
+      const result1 = await service.getDestination(mockReq, annotated);
+      const result2 = await service.getDestination(mockReq, unannotated);
+
+      expect(result1).toEqual(dest1);
+      expect(result2).toEqual(dest2);
+      expect(mockReq._sdmDestinations.Refs).toEqual(dest1);
+      expect(mockReq._sdmDestinations.Plain).toEqual(dest2);
+      expect(getDestinationFromServiceBinding).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reuse cached per-entity destination across calls", async () => {
+      jest.clearAllMocks();
+      const service = new SDMAttachmentsService();
+      const cached = { url: "http://cached.com" };
+      const mockReq = { _sdmDestinations: { Refs: cached } };
+      const entity = { name: 'Refs' };
+
+      const result = await service.getDestination(mockReq, entity);
+
+      expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
+      expect(result).toEqual(cached);
     });
 
     it("should execute client-credentials transform callback when origin is missing", async () => {
@@ -600,9 +657,7 @@ describe("SDMAttachmentsService", () => {
   it("should use Client Credentials when origin is not present in token", async () => {
     jest.clearAllMocks();
     const service = new SDMAttachmentsService();
-    const mockReq = {
-      _sdmDestination: undefined
-    };
+    const mockReq = {};
 
     // Mock cds.context without origin in token payload
     cds.context = {
@@ -634,15 +689,13 @@ describe("SDMAttachmentsService", () => {
       serviceBindingTransformFn: expect.any(Function)
     });
     expect(result).toEqual(mockDestination);
-    expect(mockReq._sdmDestination).toEqual(mockDestination);
+    expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
   });
 
   it("should use JWT Bearer when origin is present in token", async () => {
     jest.clearAllMocks();
     const service = new SDMAttachmentsService();
-    const mockReq = {
-      _sdmDestination: undefined
-    };
+    const mockReq = {};
 
     // Mock cds.context with origin in token payload
     cds.context = {
@@ -675,7 +728,7 @@ describe("SDMAttachmentsService", () => {
       serviceBindingTransformFn: expect.any(Function)
     });
     expect(result).toEqual(mockDestination);
-    expect(mockReq._sdmDestination).toEqual(mockDestination);
+    expect(mockReq._sdmDestinations._default).toEqual(mockDestination);
   });
   describe("getSDMCredentials", () => {
     it("should return credentials", () => {
@@ -3957,7 +4010,7 @@ describe("SDMAttachmentsService", () => {
           }
         }
       });
-      
+
       await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(createAttachment).toHaveBeenCalledWith(
@@ -3983,6 +4036,44 @@ describe("SDMAttachmentsService", () => {
           DraftAdministrativeData_DraftUUID: "uuid-123"
         })
       );
+    });
+
+    it("should stamp createdBy and modifiedBy with SDM client_id when @SDM.useClientCredential is set", async () => {
+      // Covers the `isClientCredentialForced(req)` true-branch in createLink (PR #279 review fix #3 path)
+      setupDestinationMocks();
+      isClientCredentialForced.mockReturnValue(true);
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      createAttachment.mockResolvedValueOnce({
+        status: 201,
+        data: { succinctProperties: { "cmis:objectId": "objId" } }
+      });
+
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
+
+      expect(updateLinkInDraft).toHaveBeenCalledWith(
+        req,
+        expect.objectContaining({
+          createdBy: 'sb-clientid-xyz',
+          modifiedBy: 'sb-clientid-xyz'
+        })
+      );
+    });
+
+    it("does NOT stamp createdBy/modifiedBy when client_id resolution returns null", async () => {
+      // Covers the `if (clientId)` false-branch: annotation set but VCAP misconfigured
+      setupDestinationMocks();
+      isClientCredentialForced.mockReturnValue(true);
+      getSdmClientId.mockReturnValue(null);
+      createAttachment.mockResolvedValueOnce({
+        status: 201,
+        data: { succinctProperties: { "cmis:objectId": "objId" } }
+      });
+
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
+
+      const fields = updateLinkInDraft.mock.calls[0][1];
+      expect(fields.createdBy).toBeUndefined();
+      expect(fields.modifiedBy).toBeUndefined();
     });
 
     it("should reject with duplicateFileErr if nameConstraintViolation", async () => {
@@ -4213,7 +4304,201 @@ describe("SDMAttachmentsService", () => {
       expect(service.updateBaselinesForEntity).not.toHaveBeenCalled();
     });
   });
-  
+
+  describe('captureSaveSnapshot', () => {
+    const { getSdmClientId } = require("../../lib/util");
+    let service;
+    let req;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      // Wire SELECT chain to chainable from -> columns -> where
+      global.SELECT.from = jest.fn().mockReturnThis();
+      global.SELECT.columns = jest.fn().mockReturnThis();
+      global.SELECT.where = jest.fn();
+      req = {
+        target: { name: 'ProcessorService.Incidents' },
+        data: { ID: 'parent-1' }
+      };
+    });
+
+    it('returns early when no clientId', async () => {
+      getSdmClientId.mockReturnValue(null);
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toBeUndefined();
+    });
+
+    it('returns early when no parentId', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req.data = {};
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toBeUndefined();
+    });
+
+    it('skips compositions without the annotation', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          refs: { type: 'cds.Composition', target: 'ProcessorService.Incidents.refs' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.refs'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+        // no @SDM.useClientCredential
+      };
+      await service.captureSaveSnapshot(req);
+      expect(req._sdmSaveSnapshot).toEqual({});
+    });
+
+    it('captures preExistingActiveIds and draftClientStampedIds when annotated', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: { type: 'cds.Composition', target: 'ProcessorService.Incidents.references' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.references'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } },
+        '@SDM.useClientCredential': true
+      };
+      cds.model.definitions['ProcessorService.Incidents.references.drafts'] = { name: 'drafts' };
+
+      // Two SELECT calls: active first, draft second
+      global.SELECT.where
+        .mockResolvedValueOnce([{ ID: 'a1' }, { ID: 'a2' }])
+        .mockResolvedValueOnce([{ ID: 'a2' }]);
+
+      await service.captureSaveSnapshot(req);
+
+      const snap = req._sdmSaveSnapshot.references;
+      expect(snap.preExistingActiveIds).toEqual(new Set(['a1', 'a2']));
+      expect(snap.draftClientStampedIds).toEqual(new Set(['a2']));
+    });
+  });
+
+  describe('handleDraftSaveForLinks - client credential stamping', () => {
+    const { getSdmClientId } = require("../../lib/util");
+    let service;
+    let req;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.originalUrlMap = new Map();
+      service.updateBaselinesForEntity = jest.fn();
+      global.UPDATE.mockClear().mockImplementation(() => ({
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue()
+      }));
+      req = {
+        target: { name: 'ProcessorService.Incidents' },
+        data: { ID: 'parent-1' }
+      };
+      cds.model.definitions['ProcessorService.Incidents'] = {
+        elements: {
+          references: { type: 'cds.Composition', target: 'ProcessorService.Incidents.references' }
+        }
+      };
+      cds.model.definitions['ProcessorService.Incidents.references'] = {
+        includes: ['sap.attachments.Attachments'],
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } },
+        '@SDM.useClientCredential': true
+      };
+    });
+
+    it('stamps both createdBy and modifiedBy on freshly activated rows; only modifiedBy on edited existing', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req._sdmSaveSnapshot = {
+        references: {
+          preExistingActiveIds: new Set(['old-1']),
+          draftClientStampedIds: new Set(['old-1', 'new-1'])
+        }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data, where: null }); return obj; }),
+          where: jest.fn(function (where) { updateCalls[updateCalls.length - 1].where = where; return Promise.resolve(); })
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+
+      // Filter out the mimeType fix; pick the createdBy/modifiedBy stamping calls
+      const stampingCalls = updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy);
+      expect(stampingCalls).toHaveLength(2);
+
+      const fresh = stampingCalls.find((c) => c.data.createdBy);
+      expect(fresh.data).toEqual({ createdBy: 'client-X', modifiedBy: 'client-X' });
+      expect(fresh.where).toEqual({ ID: { in: ['new-1'] } });
+
+      const modified = stampingCalls.find((c) => !c.data.createdBy);
+      expect(modified.data).toEqual({ modifiedBy: 'client-X' });
+      expect(modified.where).toEqual({ ID: { in: ['old-1'] } });
+    });
+
+    it('does nothing when annotation absent', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      cds.model.definitions['ProcessorService.Incidents.references']['@SDM.useClientCredential'] = false;
+      req._sdmSaveSnapshot = {
+        references: { preExistingActiveIds: new Set(), draftClientStampedIds: new Set(['x']) }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+
+    it('does nothing when no clientId', async () => {
+      getSdmClientId.mockReturnValue(null);
+      req._sdmSaveSnapshot = {
+        references: { preExistingActiveIds: new Set(), draftClientStampedIds: new Set(['x']) }
+      };
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+
+    it('does nothing when snapshot missing for composition', async () => {
+      getSdmClientId.mockReturnValue('client-X');
+      req._sdmSaveSnapshot = {};
+
+      const updateCalls = [];
+      global.UPDATE.mockImplementation((entityName) => {
+        const obj = {
+          set: jest.fn(function (data) { updateCalls.push({ entityName, data }); return obj; }),
+          where: jest.fn().mockResolvedValue()
+        };
+        return obj;
+      });
+
+      await service.handleDraftSaveForLinks({}, req);
+      expect(updateCalls.filter((c) => c.data.createdBy || c.data.modifiedBy)).toHaveLength(0);
+    });
+  });
+
   describe('updateBaselinesForEntity', () => {
     let service;
     
@@ -4342,7 +4627,8 @@ describe("SDMAttachmentsService", () => {
       expect(service.revertLinkInSDM).toHaveBeenCalledWith(
         draftAttachments[0],
         'http://original.com',
-        req
+        req,
+        expect.any(Object)
       );
       expect(service.originalUrlMap.has('attach1')).toBe(false);
     });
@@ -7611,6 +7897,249 @@ describe("SDMAttachmentsService", () => {
     });
   });
 
+  describe('getDestination — per-composition cache', () => {
+    it('uses attachmentsEntity.name as cache key when provided', async () => {
+      const service = new SDMAttachmentsService();
+      const mockDest = { url: 'http://cached-with-key/' };
+      const req = { _sdmDestinations: { 'MyEntity.references': mockDest } };
+      const attachmentsEntity = { name: 'MyEntity.references' };
+
+      const result = await service.getDestination(req, attachmentsEntity);
+      expect(result).toBe(mockDest);
+    });
+  });
+
+  describe('_setManagedUser — branch coverage', () => {
+    let service;
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+    });
+
+    it('returns silently when data is null', () => {
+      expect(() => service._setManagedUser(null, 'CREATE', 'client-id')).not.toThrow();
+    });
+
+    it('returns silently when data is not an object (string)', () => {
+      expect(() => service._setManagedUser('not-an-object', 'CREATE', 'client-id')).not.toThrow();
+    });
+
+    it('sets createdBy and modifiedBy on CREATE event', () => {
+      const data = {};
+      service._setManagedUser(data, 'CREATE', 'client-id');
+      expect(data.createdBy).toBe('client-id');
+      expect(data.modifiedBy).toBe('client-id');
+    });
+
+    it('sets createdBy and modifiedBy on PUT event', () => {
+      const data = {};
+      service._setManagedUser(data, 'PUT', 'client-id');
+      expect(data.createdBy).toBe('client-id');
+      expect(data.modifiedBy).toBe('client-id');
+    });
+
+    it('sets only modifiedBy on UPDATE event', () => {
+      const data = {};
+      service._setManagedUser(data, 'UPDATE', 'client-id');
+      expect(data.createdBy).toBeUndefined();
+      expect(data.modifiedBy).toBe('client-id');
+    });
+  });
+
+  describe('_rejectIfVirusScanLargeFile — file size threshold', () => {
+    let service;
+    let origEnv;
+
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+      origEnv = cds.env;
+      cds.env = { requires: { sdm: { settings: {} } } };
+    });
+
+    afterEach(() => {
+      cds.env = origEnv;
+    });
+
+    it('returns silently when file size is below the threshold', () => {
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 1024);
+      expect(req.reject).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 409 when file exceeds threshold and virus scan is enabled (string "true")', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = 'true';
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024); // 500MB
+      expect(req.reject).toHaveBeenCalledWith(409, expect.any(String));
+    });
+
+    it('rejects with 409 when file exceeds threshold and virus scan is enabled (boolean true)', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = true;
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024);
+      expect(req.reject).toHaveBeenCalledWith(409, expect.any(String));
+    });
+
+    it('does NOT reject when file exceeds threshold but virus scan is not enabled', () => {
+      cds.env.requires.sdm.settings.isVirusScanEnabled = 'false';
+      const req = { reject: jest.fn() };
+      service._rejectIfVirusScanLargeFile(req, 500 * 1024 * 1024);
+      expect(req.reject).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('applyClientCredentialUser', () => {
+    let service;
+
+    beforeEach(() => {
+      service = new SDMAttachmentsService();
+      getSdmClientId.mockReset();
+      isClientCredentialForced.mockReset();
+    });
+
+    it('does nothing when getSdmClientId returns null', () => {
+      getSdmClientId.mockReturnValue(null);
+      const req = { event: 'CREATE', target: { '@SDM.useClientCredential': true }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('sets createdBy and modifiedBy on direct CREATE when annotation is set', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'CREATE', target: { '@SDM.useClientCredential': true }, data: { filename: 'a.pdf' } };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('sets only modifiedBy on UPDATE', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'UPDATE', target: { '@SDM.useClientCredential': true }, data: { filename: 'a.pdf' } };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('sets createdBy and modifiedBy on PUT', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(true);
+      const req = { event: 'PUT', target: { '@SDM.useClientCredential': true }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('does nothing when annotation is absent on direct attachment target', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'CREATE', target: { elements: {} }, data: {} };
+      service.applyClientCredentialUser(req);
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('walks composition rows on parent SAVE when composition target has annotation', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.Refs'] = { '@SDM.useClientCredential': true };
+      cds.model.definitions['Test.OtherRefs'] = { '@SDM.useClientCredential': false };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: {
+            references: { type: 'cds.Composition', target: 'Test.Refs' },
+            other: { type: 'cds.Composition', target: 'Test.OtherRefs' }
+          }
+        },
+        data: {
+          references: [
+            { ID: '1', filename: 'a.pdf' },
+            { ID: '2', filename: 'b.pdf', _op: 'update' },
+            { ID: '3', _op: 'delete' }
+          ],
+          other: [{ ID: '4', filename: 'c.pdf' }]
+        }
+      };
+      service.applyClientCredentialUser(req);
+      // annotated composition rows get the override (delete row skipped)
+      expect(req.data.references[0].createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[0].modifiedBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[1].createdBy).toBeUndefined();
+      expect(req.data.references[1].modifiedBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[2].createdBy).toBeUndefined();
+      expect(req.data.references[2].modifiedBy).toBeUndefined();
+      // unannotated composition rows untouched
+      expect(req.data.other[0].createdBy).toBeUndefined();
+      expect(req.data.other[0].modifiedBy).toBeUndefined();
+    });
+
+    it('does NOT stamp rows with _op === "read" (PR review fix: untouched rows must not be marked as modified)', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.ReadRefs'] = { '@SDM.useClientCredential': true };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: {
+            references: { type: 'cds.Composition', target: 'Test.ReadRefs' }
+          }
+        },
+        data: {
+          references: [
+            { ID: '1', filename: 'a.pdf', _op: 'create' },
+            { ID: '2', filename: 'b.pdf', _op: 'read' },   // untouched — should NOT be stamped
+            { ID: '3', filename: 'c.pdf', _op: 'update' }
+          ]
+        }
+      };
+      service.applyClientCredentialUser(req);
+      // create row → both fields stamped
+      expect(req.data.references[0].createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[0].modifiedBy).toBe('sb-clientid-xyz');
+      // read row → completely untouched (the regression this guards against)
+      expect(req.data.references[1].createdBy).toBeUndefined();
+      expect(req.data.references[1].modifiedBy).toBeUndefined();
+      // update row → only modifiedBy stamped
+      expect(req.data.references[2].createdBy).toBeUndefined();
+      expect(req.data.references[2].modifiedBy).toBe('sb-clientid-xyz');
+    });
+
+    it('does nothing on SAVE when no composition has the annotation', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.Plain'] = { '@SDM.useClientCredential': false };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: { plain: { type: 'cds.Composition', target: 'Test.Plain' } }
+        },
+        data: { plain: [{ ID: '1' }] }
+      };
+      service.applyClientCredentialUser(req);
+      expect(req.data.plain[0].createdBy).toBeUndefined();
+      expect(req.data.plain[0].modifiedBy).toBeUndefined();
+    });
+
+    it('returns early when req.event is not SAVE/CREATE/UPDATE and annotation absent', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'DELETE', target: { elements: {} }, data: { foo: 'bar' } };
+      service.applyClientCredentialUser(req);
+      // No managed fields stamped — DELETE is not a write event
+      expect(req.data.createdBy).toBeUndefined();
+      expect(req.data.modifiedBy).toBeUndefined();
+    });
+
+    it('returns early when req.target.elements is missing', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      const req = { event: 'SAVE', target: {}, data: {} };
+      expect(() => service.applyClientCredentialUser(req)).not.toThrow();
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Branch coverage: sdm.js uncovered lines
   // ---------------------------------------------------------------------------
@@ -7619,7 +8148,9 @@ describe("SDMAttachmentsService", () => {
     it("returns cached destination on second call without calling getDestinationFromServiceBinding again", async () => {
       const service = new SDMAttachmentsService();
       const mockDest = { url: "http://cached/" };
-      const req = { _sdmDestination: mockDest };
+      // HEAD's getDestination uses per-composition caching via req._sdmDestinations[cacheKey].
+      // The default cache key when no attachmentsEntity is passed is '_default'.
+      const req = { _sdmDestinations: { _default: mockDest } };
 
       const result = await service.getDestination(req);
       expect(result).toBe(mockDest);
@@ -7860,6 +8391,7 @@ describe("SDMAttachmentsService", () => {
           attachment,
           expect.objectContaining({ 'cmis:description': 'New note for non-draft' }),
           {},
+          expect.anything(),
           expect.anything()
         );
       });

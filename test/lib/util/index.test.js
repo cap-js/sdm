@@ -1218,6 +1218,144 @@ describe("util", () => {
         expect(result).toBeNull();
       });
     });
+
+    describe("getSdmClientId", () => {
+      const originalEnv = process.env.VCAP_SERVICES;
+
+      afterEach(() => {
+        if (originalEnv !== undefined) {
+          process.env.VCAP_SERVICES = originalEnv;
+        } else {
+          delete process.env.VCAP_SERVICES;
+        }
+      });
+
+      it("should extract clientid from SDM service binding's UAA credentials", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [
+            {
+              name: "my-sdm",
+              credentials: { uaa: { clientid: "sb-clientid-xyz" } }
+            }
+          ]
+        });
+
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBe("sb-clientid-xyz");
+      });
+
+      it("should return null when sdm service is missing", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({ other: [] });
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBeNull();
+      });
+
+      it("should return null when uaa.clientid is missing", () => {
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [{ name: "my-sdm", credentials: { uaa: {} } }]
+        });
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBeNull();
+      });
+
+      it("should return null when VCAP_SERVICES is unset", () => {
+        delete process.env.VCAP_SERVICES;
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBeNull();
+      });
+
+      it("should return null on malformed VCAP_SERVICES", () => {
+        process.env.VCAP_SERVICES = "not-json";
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBeNull();
+      });
+
+      it("should re-parse VCAP_SERVICES when the env var changes (cache invalidation)", () => {
+        // Verifies that the VCAP cache keyed on the raw string invalidates
+        // correctly when the env var is reassigned — important for tests
+        // that swap VCAP_SERVICES between scenarios.
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [{ name: "first", credentials: { uaa: { clientid: "first-id" } } }]
+        });
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBe("first-id");
+
+        // Reassign — the cache MUST invalidate
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [{ name: "second", credentials: { uaa: { clientid: "second-id" } } }]
+        });
+        expect(getSdmClientId()).toBe("second-id");
+      });
+    });
+
+    describe("isClientCredentialForced", () => {
+      const ANNOT = '@SDM.useClientCredential';
+
+      beforeEach(() => {
+        cds.model = { definitions: {} };
+      });
+
+      it("should return true when explicit attachmentsEntity has the annotation", () => {
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        const entity = { [ANNOT]: true };
+        expect(isClientCredentialForced({}, entity)).toBe(true);
+      });
+
+      it("should return false when explicit attachmentsEntity lacks the annotation, even if a sibling has it", () => {
+        // Explicit entity wins — per-composition selection.
+        cds.model.definitions['Test.AnnotatedSibling'] = { [ANNOT]: true };
+        const req = {
+          target: {
+            elements: {
+              annotated: { type: 'cds.Composition', target: 'Test.AnnotatedSibling' }
+            }
+          }
+        };
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        const unannotatedEntity = {};
+        expect(isClientCredentialForced(req, unannotatedEntity)).toBe(false);
+      });
+
+      it("should return true when annotation is on req.target directly", () => {
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        const req = { target: { [ANNOT]: true } };
+        expect(isClientCredentialForced(req)).toBe(true);
+      });
+
+      it("should fall back to scanning composition targets on the parent", () => {
+        cds.model.definitions['Test.AnnotatedComp'] = { [ANNOT]: true };
+        cds.model.definitions['Test.PlainComp'] = {};
+        const req = {
+          target: {
+            elements: {
+              annotated: { type: 'cds.Composition', target: 'Test.AnnotatedComp' },
+              other: { type: 'cds.Composition', target: 'Test.PlainComp' }
+            }
+          }
+        };
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        expect(isClientCredentialForced(req)).toBe(true);
+      });
+
+      it("should return false when no annotation anywhere", () => {
+        cds.model.definitions['Test.PlainOnly'] = {};
+        const req = {
+          target: {
+            elements: {
+              other: { type: 'cds.Composition', target: 'Test.PlainOnly' }
+            }
+          }
+        };
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        expect(isClientCredentialForced(req)).toBe(false);
+      });
+
+      it("should return false when req.target has no elements", () => {
+        const { isClientCredentialForced } = require("../../../lib/util/index");
+        expect(isClientCredentialForced({ target: {} })).toBe(false);
+        expect(isClientCredentialForced({})).toBe(false);
+      });
+    });
   });
 
   describe("getPropertyTitles edge cases", () => {
