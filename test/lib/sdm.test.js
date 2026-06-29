@@ -7683,6 +7683,37 @@ describe("SDMAttachmentsService", () => {
       expect(req.data.other[0].modifiedBy).toBeUndefined();
     });
 
+    it('does NOT stamp rows with _op === "read" (PR review fix: untouched rows must not be marked as modified)', () => {
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      isClientCredentialForced.mockReturnValue(false);
+      cds.model.definitions['Test.ReadRefs'] = { '@SDM.useClientCredential': true };
+      const req = {
+        event: 'SAVE',
+        target: {
+          elements: {
+            references: { type: 'cds.Composition', target: 'Test.ReadRefs' }
+          }
+        },
+        data: {
+          references: [
+            { ID: '1', filename: 'a.pdf', _op: 'create' },
+            { ID: '2', filename: 'b.pdf', _op: 'read' },   // untouched — should NOT be stamped
+            { ID: '3', filename: 'c.pdf', _op: 'update' }
+          ]
+        }
+      };
+      service.applyClientCredentialUser(req);
+      // create row → both fields stamped
+      expect(req.data.references[0].createdBy).toBe('sb-clientid-xyz');
+      expect(req.data.references[0].modifiedBy).toBe('sb-clientid-xyz');
+      // read row → completely untouched (the regression this guards against)
+      expect(req.data.references[1].createdBy).toBeUndefined();
+      expect(req.data.references[1].modifiedBy).toBeUndefined();
+      // update row → only modifiedBy stamped
+      expect(req.data.references[2].createdBy).toBeUndefined();
+      expect(req.data.references[2].modifiedBy).toBe('sb-clientid-xyz');
+    });
+
     it('does nothing on SAVE when no composition has the annotation', () => {
       getSdmClientId.mockReturnValue('sb-clientid-xyz');
       isClientCredentialForced.mockReturnValue(false);

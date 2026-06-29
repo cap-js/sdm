@@ -1269,6 +1269,23 @@ describe("util", () => {
         const { getSdmClientId } = require("../../../lib/util/index");
         expect(getSdmClientId()).toBeNull();
       });
+
+      it("should re-parse VCAP_SERVICES when the env var changes (cache invalidation)", () => {
+        // Verifies that the VCAP cache keyed on the raw string invalidates
+        // correctly when the env var is reassigned — important for tests
+        // that swap VCAP_SERVICES between scenarios.
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [{ name: "first", credentials: { uaa: { clientid: "first-id" } } }]
+        });
+        const { getSdmClientId } = require("../../../lib/util/index");
+        expect(getSdmClientId()).toBe("first-id");
+
+        // Reassign — the cache MUST invalidate
+        process.env.VCAP_SERVICES = JSON.stringify({
+          sdm: [{ name: "second", credentials: { uaa: { clientid: "second-id" } } }]
+        });
+        expect(getSdmClientId()).toBe("second-id");
+      });
     });
 
     describe("isClientCredentialForced", () => {
