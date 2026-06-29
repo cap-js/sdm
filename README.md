@@ -31,6 +31,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
 - [Support for Multiple attachment facets](#support-for-multiple-attachment-facets)
 - [Support for Technical User](#support-for-technical-user)
+- [Force Client Credentials Flow via Annotation](#force-client-credentials-flow-via-annotation)
 - [Support for Multitenancy](#support-for-multitenancy)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
@@ -765,6 +766,44 @@ service ProcessorService @(requires:['support','system-user']) {
 entity Incidents as projection on my.Incidents;
 }
 ```
+
+## Force Client Credentials Flow via Annotation
+
+By default, the plugin uses the **JWT-bearer** flow when a user context is present in the incoming token (named-user authentication), and falls back to **client-credentials** only for technical users that have no user origin. Some scenarios — for example, customer requirements where end users do not have SDM roles but the application still needs to upload, rename, edit links, and update attachment metadata on their behalf — need the client-credentials flow regardless of whether the token carries a user context.
+
+The `@SDM.useClientCredential: true` annotation on an attachments composition opts that composition into the client-credentials flow for **all** CRUD operations, irrespective of the calling user.
+
+### Behavior
+- **When enabled:** The plugin authenticates every SDM call for that composition with the SDM service binding's `clientid` / `clientsecret`. The technical user (the SDM service binding) is the principal recorded by DMS / DI as `cmis:createdBy` / `cmis:modifiedBy`. The plugin DB's `createdBy` / `modifiedBy` columns are aligned with the same `clientid` so the UI matches what the backend shows.
+- **When disabled (default):** The existing behavior is preserved — JWT-bearer when a user context is present, client-credentials only as a fallback.
+- **Per-composition scope:** The annotation is set on the attachments composition (or its target entity definition). A parent entity with two attachment compositions can have one composition use client-credentials and the other use the default flow.
+
+### Usage
+
+Add `@SDM.useClientCredential: true` to the attachments composition in your service's CDS model. In the sample Incidents app, the `footnotes` composition is annotated so footnote attachments are always uploaded under the technical user, while the human-user-authored `references` composition keeps the default flow:
+
+```cds
+using { sap.attachments.Attachments } from '@cap-js/sdm';
+
+service ProcessorService {
+  entity Incidents as projection on my.Incidents;
+}
+
+// References — created by the human end-user (default flow)
+extend my.Incidents with {
+  references : Composition of many Attachments;
+  footnotes  : Composition of many Attachments;
+}
+
+// Footnotes — always stored under the SDM technical user
+annotate my.Incidents.footnotes with @SDM.useClientCredential: true;
+```
+
+The annotation must live on the attachments **target** (the composition target entity). The plugin reads it both via `req.target` for direct attachment operations and via composition walking on parent SAVE events so the flow is honored on every CRUD path: create, upload, rename, edit links, update metadata, and delete.
+
+### Notes
+- The SDM service binding must be available in `VCAP_SERVICES` so the plugin can resolve the client credentials. This is the normal binding setup; no extra configuration is required.
+- The `createdBy` / `modifiedBy` stamp on freshly activated draft rows is fixed up after CAP's draft activation so the plugin DB and the SDM backend show the same `clientid` instead of the human user's JWT identity.
 
 ## Support for Multitenancy
 
