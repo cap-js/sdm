@@ -1,6 +1,7 @@
 const SDMAttachmentsService = require("../../lib/sdm");
 const NodeCache = require("node-cache");
 const { getDestinationFromServiceBinding, retrieveJwt } = require("@sap-cloud-sdk/connectivity");
+const { executeHttpRequest } = require("@sap-cloud-sdk/http-client");
 const {
   getConfigurations,
   isRepositoryVersioned,
@@ -13,6 +14,8 @@ const {
   getSecondaryPropertiesWithInvalidDefinition,
   getSecondaryTypeProperties,
   getUpdatedSecondaryProperties,
+  transformSDMServiceBindingToClientCredentialsDestination,
+  transformSDMServiceBindingToJWTBearerCredentialsDestination,
   checkIfSDMRolesExistInToken,
   decodeAccessToken
 } = require("../../lib/util");
@@ -447,6 +450,39 @@ describe("SDMAttachmentsService", () => {
       });
       expect(result).toEqual(mockDestination);
     });
+
+    it("should pass transform callback through technical destination lookup", async () => {
+      const service = new SDMAttachmentsService();
+
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      transformSDMServiceBindingToClientCredentialsDestination.mockReturnValue({ transformed: true });
+      getDestinationFromServiceBinding.mockImplementationOnce(async ({ serviceBindingTransformFn }) => {
+        const transformed = serviceBindingTransformFn({ binding: true }, { option: true });
+        expect(transformSDMServiceBindingToClientCredentialsDestination).toHaveBeenCalledWith(
+          { binding: true },
+          { option: true },
+          "test-subdomain"
+        );
+        expect(transformed).toEqual({ transformed: true });
+        return { url: "http://example.com" };
+      });
+
+      await service.getTechnicalDestination();
+    });
   });
 
   describe("getDestination", () => {
@@ -545,6 +581,77 @@ describe("SDMAttachmentsService", () => {
 
       expect(getDestinationFromServiceBinding).not.toHaveBeenCalled();
       expect(result).toEqual(cached);
+    });
+
+    it("should execute client-credentials transform callback when origin is missing", async () => {
+      const service = new SDMAttachmentsService();
+      const mockReq = { _sdmDestination: undefined };
+
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      transformSDMServiceBindingToClientCredentialsDestination.mockReturnValue({ transformed: true });
+      getDestinationFromServiceBinding.mockImplementationOnce(async ({ serviceBindingTransformFn }) => {
+        const transformed = serviceBindingTransformFn({ binding: true }, { option: true });
+        expect(transformSDMServiceBindingToClientCredentialsDestination).toHaveBeenCalledWith(
+          { binding: true },
+          { option: true },
+          "test-subdomain"
+        );
+        expect(transformed).toEqual({ transformed: true });
+        return { url: "http://example.com" };
+      });
+
+      await service.getDestination(mockReq);
+    });
+
+    it("should execute jwt-bearer transform callback when origin is present", async () => {
+      const service = new SDMAttachmentsService();
+      const mockReq = { _sdmDestination: undefined };
+
+      cds.context = {
+        user: {
+          authInfo: {
+            token: {
+              payload: {
+                origin: "sap.custom",
+                ext_attr: {
+                  zdn: "test-subdomain"
+                }
+              }
+            }
+          }
+        }
+      };
+
+      retrieveJwt.mockReturnValue("user-jwt");
+      getSdmInstanceName.mockReturnValue("sdm-instance");
+      transformSDMServiceBindingToJWTBearerCredentialsDestination.mockReturnValue({ transformed: true });
+      getDestinationFromServiceBinding.mockImplementationOnce(async ({ serviceBindingTransformFn }) => {
+        const transformed = serviceBindingTransformFn({ binding: true }, { option: true });
+        expect(transformSDMServiceBindingToJWTBearerCredentialsDestination).toHaveBeenCalledWith(
+          { binding: true },
+          { option: true },
+          "user-jwt"
+        );
+        expect(transformed).toEqual({ transformed: true });
+        return { url: "http://example.com" };
+      });
+
+      await service.getDestination(mockReq);
     });
   });
   it("should use Client Credentials when origin is not present in token", async () => {
@@ -818,7 +925,7 @@ describe("SDMAttachmentsService", () => {
       expect(req.warn).not.toHaveBeenCalled();
     });
 
-    it('should rename draft and non-draft attachments', async () => {
+    it('should rename draft attachments during save', async () => {
       const draftAttachments = [
         { HasActiveEntity: false, ID: 'draft1' },
         { HasActiveEntity: false, ID: 'draft2' }
@@ -1878,6 +1985,9 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service._registeredEntityHandlers = new Set();
+      service._registeredTargetHandlers = new Set();
+      service._registeredGlobalActionHandlers = false;
       
       mockSrv = {
         before: jest.fn(),
@@ -2174,6 +2284,9 @@ describe("SDMAttachmentsService", () => {
     beforeEach(() => {
       jest.clearAllMocks();
       service = new SDMAttachmentsService();
+      service._registeredEntityHandlers = new Set();
+      service._registeredTargetHandlers = new Set();
+      service._registeredGlobalActionHandlers = false;
       
       mockSrv = {
         before: jest.fn(),
@@ -2182,10 +2295,12 @@ describe("SDMAttachmentsService", () => {
       };
 
       entity = {
+        name: 'entity',
         drafts: 'entity.drafts'
       };
 
       target = {
+        name: 'target',
         drafts: 'target.drafts'
       };
     });
@@ -3192,6 +3307,7 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["Attachments.references"] = {
+        name: "Attachments.references",
         includes: ['sap.attachments.Attachments']
       };
       
@@ -3227,6 +3343,7 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["Attachments.references"] = {
+        name: "Attachments.references",
         includes: ['sap.attachments.Attachments']
       };
       
@@ -3504,6 +3621,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -3892,7 +4010,7 @@ describe("SDMAttachmentsService", () => {
           }
         }
       });
-      
+
       await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
 
       expect(createAttachment).toHaveBeenCalledWith(
@@ -3918,6 +4036,44 @@ describe("SDMAttachmentsService", () => {
           DraftAdministrativeData_DraftUUID: "uuid-123"
         })
       );
+    });
+
+    it("should stamp createdBy and modifiedBy with SDM client_id when @SDM.useClientCredential is set", async () => {
+      // Covers the `isClientCredentialForced(req)` true-branch in createLink (PR #279 review fix #3 path)
+      setupDestinationMocks();
+      isClientCredentialForced.mockReturnValue(true);
+      getSdmClientId.mockReturnValue('sb-clientid-xyz');
+      createAttachment.mockResolvedValueOnce({
+        status: 201,
+        data: { succinctProperties: { "cmis:objectId": "objId" } }
+      });
+
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
+
+      expect(updateLinkInDraft).toHaveBeenCalledWith(
+        req,
+        expect.objectContaining({
+          createdBy: 'sb-clientid-xyz',
+          modifiedBy: 'sb-clientid-xyz'
+        })
+      );
+    });
+
+    it("does NOT stamp createdBy/modifiedBy when client_id resolution returns null", async () => {
+      // Covers the `if (clientId)` false-branch: annotation set but VCAP misconfigured
+      setupDestinationMocks();
+      isClientCredentialForced.mockReturnValue(true);
+      getSdmClientId.mockReturnValue(null);
+      createAttachment.mockResolvedValueOnce({
+        status: 201,
+        data: { succinctProperties: { "cmis:objectId": "objId" } }
+      });
+
+      await service.createLink(linkToCreateInSDM, credentials, req, parentId, upIdKey);
+
+      const fields = updateLinkInDraft.mock.calls[0][1];
+      expect(fields.createdBy).toBeUndefined();
+      expect(fields.modifiedBy).toBeUndefined();
     });
 
     it("should reject with duplicateFileErr if nameConstraintViolation", async () => {
@@ -4631,6 +4787,7 @@ describe("SDMAttachmentsService", () => {
       };
 
       cds.model.definitions[mockReq.target.name + ".references"] = {
+        name: mockReq.target.name + ".references",
         keys: {
           up_: {
             keys: [{ ref: ["attachment"] }],
@@ -4721,6 +4878,121 @@ describe("SDMAttachmentsService", () => {
       expect(parentId).toEqual("mock_folder_id_1");
       expect(getFolderIdByPath).not.toHaveBeenCalled();
       expect(createFolder).not.toHaveBeenCalled();
+    });
+
+    it("should use composition folder strategy for multi-composition entities", async () => {
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+
+      const attachments = {
+        name: "testName.attachments",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "123" };
+      getFolderIdForEntity.mockResolvedValueOnce([{ folderId: "existing-composed-folder" }]);
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(parentId).toBe("existing-composed-folder");
+      expect(getFolderIdByPath).not.toHaveBeenCalled();
+    });
+
+    it("should create composition folder when lookup by path fails", async () => {
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+
+      const attachments = {
+        name: "testName.attachments",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "123" };
+      getFolderIdForEntity.mockResolvedValueOnce([]);
+      executeHttpRequest.mockRejectedValueOnce(new Error("not found"));
+      createFolder.mockResolvedValueOnce({
+        status: 201,
+        data: { succinctProperties: { "cmis:objectId": "created-composed-folder" } }
+      });
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(parentId).toBe("created-composed-folder");
+      expect(mockReq.data.ID).toBe("123");
+    });
+
+    it("should retry composition folder lookup after create conflict", async () => {
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+
+      const attachments = {
+        name: "testName.attachments",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "123" };
+      getFolderIdForEntity.mockResolvedValueOnce([]);
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("not found"))
+        .mockResolvedValueOnce({ data: { properties: { "cmis:objectId": { value: "retried-folder" } } } });
+      createFolder.mockResolvedValueOnce({ status: 409, message: "conflict" });
+
+      const parentId = await service.getParentId(attachments, mockReq, undefined);
+
+      expect(parentId).toBe("retried-folder");
+    });
+
+    it("should reject when composition folder creation is unauthorized and retry also fails", async () => {
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+
+      const attachments = {
+        name: "testName.attachments",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "123" };
+      getFolderIdForEntity.mockResolvedValueOnce([]);
+      executeHttpRequest
+        .mockRejectedValueOnce(new Error("not found"))
+        .mockRejectedValueOnce(new Error("still not found"));
+      createFolder.mockResolvedValueOnce({
+        status: 403,
+        response: { data: userDoesNotHaveRequiredScope }
+      });
+
+      await service.getParentId(attachments, mockReq, undefined);
+
+      expect(mockReq.reject).toHaveBeenCalledWith(403, userNotAuthorisedError);
+      expect(mockReq.reject).toHaveBeenCalledWith(500, "Failed to create folder for composition: attachments");
     });
   });
 
@@ -4918,9 +5190,11 @@ describe("SDMAttachmentsService", () => {
         }
       };
       cds.model.definitions["testName.references"] = {
+        name: "testName.references",
         includes: ['sap.attachments.Attachments']
       };
       cds.model.definitions["testName.references.drafts"] = {
+        name: "testName.references.drafts",
         includes: ['sap.attachments.Attachments']
       };
     });
@@ -5002,6 +5276,124 @@ describe("SDMAttachmentsService", () => {
   
       // Ensure parentId wasn't set since folderId is falsy
       expect(mockReq.parentId).toBeUndefined();
+    });
+
+    it("should resolve parent folder from composition path for multi-composition drafts", async () => {
+      service.creds = { uri: "https://sdm.example/" };
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references.drafts"] = {
+        name: "testName.references.drafts",
+        includes: ["sap.attachments.Attachments"],
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "entity-id-1" };
+      getURLsToDeleteFromDraftAttachments.mockReset();
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(["url-1"]);
+      mockReq.diff.mockResolvedValueOnce({ references: ["url-1"] });
+      setupDestinationMocks();
+      executeHttpRequest.mockResolvedValueOnce({
+        data: { properties: { "cmis:objectId": { value: "multi-folder-id" } } }
+      });
+
+      await service.attachDraftDeletionData(mockReq);
+
+      expect(mockReq.attachmentsToDelete).toEqual(["url-1"]);
+      expect(mockReq.parentId).toEqual(["multi-folder-id"]);
+      expect(getFolderIdByIDAsPath).not.toHaveBeenCalled();
+    });
+
+    it("should skip parentId when multi-composition folder lookup fails", async () => {
+      service.creds = { uri: "https://sdm.example/" };
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references.drafts"] = {
+        name: "testName.references.drafts",
+        includes: ["sap.attachments.Attachments"],
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+
+      mockReq.data = { ID: "entity-id-1" };
+      getURLsToDeleteFromDraftAttachments.mockReset();
+      getURLsToDeleteFromDraftAttachments.mockResolvedValueOnce(["url-1"]);
+      mockReq.diff.mockResolvedValueOnce({ references: ["url-1"] });
+      setupDestinationMocks();
+      executeHttpRequest.mockRejectedValueOnce(new Error("folder not found"));
+
+      await service.attachDraftDeletionData(mockReq);
+
+      expect(mockReq.attachmentsToDelete).toEqual(["url-1"]);
+      expect(mockReq.parentId).toBeUndefined();
+    });
+  });
+
+  describe("addFolderToParentIdList", () => {
+    let service;
+    let req;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { uri: "https://sdm.example/" };
+      getConfigurations.mockReturnValue({ repositoryId: "repo123" });
+      req = { data: { ID: "entity-id-1" } };
+
+      cds.model.definitions["testName"] = {
+        name: "testName",
+        elements: {
+          attachments: { type: "cds.Composition", target: "testName.attachments" },
+          references: { type: "cds.Composition", target: "testName.references" }
+        }
+      };
+      cds.model.definitions["testName.attachments"] = { includes: ["sap.attachments.Attachments"] };
+      cds.model.definitions["testName.references"] = { includes: ["sap.attachments.Attachments"] };
+    });
+
+    it("should add parent folder ID for multi-composition entities", async () => {
+      const attachments = {
+        name: "testName.references",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+      setupDestinationMocks();
+      executeHttpRequest.mockResolvedValueOnce({
+        data: { properties: { "cmis:objectId": { value: "folder-id-1" } } }
+      });
+
+      await service.addFolderToParentIdList(req, attachments);
+
+      expect(req.parentId).toEqual(["folder-id-1"]);
+    });
+
+    it("should not add parentId when multi-composition folder does not exist", async () => {
+      const attachments = {
+        name: "testName.references",
+        keys: { up_: { keys: [{ $generatedFieldName: "up__ID" }] } }
+      };
+      setupDestinationMocks();
+      executeHttpRequest.mockRejectedValueOnce(new Error("not found"));
+
+      await service.addFolderToParentIdList(req, attachments);
+
+      expect(req.parentId).toBeUndefined();
     });
   });
 

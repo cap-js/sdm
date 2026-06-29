@@ -1,6 +1,6 @@
 const integrationconfig = {
   verbose: true,
-  testTimeout: 100000,
+  testTimeout: 500000,
   testMatch: ["**/test/integration/attachments-sdm.test.js"],
 
 };

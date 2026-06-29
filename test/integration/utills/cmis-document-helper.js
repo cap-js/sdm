@@ -20,8 +20,15 @@ function extractId(line) {
   return line;
 }
 
+async function ParentFolderObjectId(entityId) {
+  const activeFacet = process.env.SDM_TEST_FACET || 'references';
+  const folderName = `${entityId}_${activeFacet}`;
+  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, folderName);
+  return extractId(folderLine);
+}
+
 /**
- * Resolves the CMIS parent folder ID from `entityId + "__attachments"`, then uploads
+ * Resolves the CMIS parent folder ID from `entityId + "_" + facet`, then uploads
  * a local file to that folder via create.sh.
  *
  * @param {string} cmisName - the name the document will have in the CMIS repository
@@ -29,8 +36,7 @@ function extractId(line) {
  * @param {string} entityId - the entity ID whose attachments folder is the upload target
  */
 async function createDocumentInCmis(cmisName, filePath, entityId) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
-  const parentFolderObjectId = extractId(folderLine);
+  const parentFolderObjectId = await ParentFolderObjectId(entityId);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
   const exitCode = await run(CREATE_SCRIPT, cmisName, filePath, parentFolderObjectId);
@@ -41,15 +47,14 @@ async function createDocumentInCmis(cmisName, filePath, entityId) {
 
 /**
  * Resolves the CMIS object ID of a document by name inside the folder named
- * `entityId + "__attachments"`, then deletes it via the delete.sh script.
+ * `entityId + "_" + facet`, then deletes it via the delete.sh script.
  *
  * @param {string} entityId - the entity ID whose attachments folder is the parent
  * @param {string} fileName - the cmis:name of the document to delete
  */
 async function deleteDocumentFromCmis(entityId, fileName) {
   // Step 1: resolve the parent folder object ID
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
-  const parentFolderObjectId = extractId(folderLine);
+  const parentFolderObjectId = await ParentFolderObjectId(entityId);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
   // Step 2: resolve the document object ID by filename inside the parent folder
@@ -73,8 +78,7 @@ async function deleteDocumentFromCmis(entityId, fileName) {
  * @param {string} outputPath - local path to save the downloaded content
  */
 async function readDocumentFromCmis(entityId, fileName, outputPath) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
-  const parentFolderObjectId = extractId(folderLine);
+  const parentFolderObjectId = await ParentFolderObjectId(entityId);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
   const docLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, fileName, parentFolderObjectId, 'cmis:document');
@@ -96,8 +100,7 @@ async function readDocumentFromCmis(entityId, fileName, outputPath) {
  * @returns {Promise<string>} the JSON metadata string returned by the CMIS API
  */
 async function readDocumentMetadataFromCmis(entityId, fileName) {
-  const folderLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, entityId);
-  const parentFolderObjectId = extractId(folderLine);
+  const parentFolderObjectId = await ParentFolderObjectId(entityId);
   console.log('Resolved parent folder object ID:', parentFolderObjectId);
 
   const docLine = await runAndCaptureOutput(GET_OBJECT_ID_SCRIPT, fileName, parentFolderObjectId, 'cmis:document');
