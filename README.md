@@ -30,6 +30,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Edit of Link type attachments](#support-for-edit-of-link-type-attachments)
 - [Support for Non-Draft Attachments](#support-for-non-draft-attachments)
 - [Support for Multiple attachment facets](#support-for-multiple-attachment-facets)
+- [Support for Large File Upload](#support-for-large-file-upload)
 - [Support for Technical User](#support-for-technical-user)
 - [Force Client Credentials Flow via Annotation](#force-client-credentials-flow-via-annotation)
 - [Support for Multitenancy](#support-for-multitenancy)
@@ -757,6 +758,49 @@ For row-press behavior in every facet table, configure each line item target:
 }
 ```
 
+## Support for Large File Upload
+
+This plugin supports uploading files larger than 400 MB to SAP Document Management (SDM) without buffering the entire file in memory. The plugin automatically detects file size and routes the upload through either the single-POST path or a chunked path. Clients use the same OData `PUT .../content` request regardless of file size.
+
+### Key Features
+
+- **Automatic Routing**: Files ≤ 400 MB use the existing single-POST path; files > 400 MB use a chunked upload path
+- **Streaming Upload**: Files > 400 MB are streamed in 20 MB chunks via CMIS `appendContentStream`, avoiding out-of-memory errors
+- **Read-Ahead Buffering**: Up to 4 chunks (80 MB max) are pre-loaded while the previous chunk is uploading, improving throughput
+- **Failure Recovery**: In-progress upload IDs are tracked in an orphan queue; incomplete documents are deleted with exponential-backoff retries on failure
+- **Client Disconnect Handling**: Partial uploads are cleanly cleaned up if the OData client drops the connection mid-upload
+- **Virus Scan Guard**: For repositories with virus scanning enabled, files > 400 MB are rejected upfront with HTTP 409 since SDM's virus scan service does not support files above this size
+
+### How It Works
+
+For attachment uploads via OData `PUT .../content`, the plugin automatically:
+
+1. **Detects file size** from the HTTP `Content-Length` header before any data is streamed
+2. **Routes small files (≤ 400 MB)** through the existing single-POST `createDocument` path — no change in behavior
+3. **Routes large files (> 400 MB)** through the chunked path:
+   - Creates an empty placeholder document in SDM via `createDocument`
+   - Streams the file in 20 MB chunks via `appendContentStream`, with the last chunk marked `isLastChunk=true`
+   - Pre-loads up to 4 chunks in a read-ahead buffer while the previous chunk uploads
+4. **Tracks orphans on failure**: if any chunk upload fails, the placeholder objectId is added to an orphan queue and the plugin attempts to delete the incomplete document with retry backoff
+5. **Reconciles on restart**: any orphan queue entry that survived a previous failure is cleaned up by the startup reconciliation job
+
+### Configuration
+
+No client-side or CDS-side configuration is required. The thresholds are constants in the plugin:
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `FILE_SIZE_THRESHOLD` | 400 MB | Boundary between single-POST and chunked upload paths |
+| `CHUNK_SIZE` | 20 MB | Size of each `appendContentStream` chunk |
+
+### Virus Scan Repositories
+
+SAP Document Management's virus-scan service does not support files above 400 MB. When `isVirusScanEnabled: true` is set on the SDM service binding, the plugin rejects uploads larger than 400 MB with HTTP 409 and a descriptive error message before any data is streamed, instead of letting the request fail later at the SDM side. Repositories without virus scanning are unaffected.
+
+### Tested File Sizes
+
+Verified with file sizes 500 MB, 1 GB, and 2 GB on Cloud Foundry single-tenant and multi-tenant scenarios.
+
 ## Support for Technical User
 The CAP OData operations can be performed on attachments using a technical user. This flow can be used for machine-to-machine (M2M) interactions, where user involvement is not necessary.
 
@@ -769,18 +813,28 @@ entity Incidents as projection on my.Incidents;
 
 ## Force Client Credentials Flow via Annotation
 
-By default, the plugin uses the **JWT-bearer** flow when a user context is present in the incoming token (named-user authentication), and falls back to **client-credentials** only for technical users that have no user origin. Some scenarios — for example, customer requirements where end users do not have SDM roles but the application still needs to upload, rename, edit links, and update attachment metadata on their behalf — need the client-credentials flow regardless of whether the token carries a user context.
+By default, the plugin uses the JWT-bearer flow when a user context is present in the incoming token (named-user authentication), and falls back to client-credentials only for technical users that have no user origin. Some scenarios — for example, customer requirements where end users do not have SDM roles but the application still needs to upload, rename, edit links, and update attachment metadata on their behalf — need the client-credentials flow regardless of whether the token carries a user context.
 
-The `@SDM.useClientCredential: true` annotation on an attachments composition opts that composition into the client-credentials flow for **all** CRUD operations, irrespective of the calling user.
+The `@SDM.useClientCredential: true` annotation on an attachments composition opts that composition into the client-credentials flow for all CRUD operations, irrespective of the calling user.
 
-### Behavior
-- **When enabled:** The plugin authenticates every SDM call for that composition with the SDM service binding's `clientid` / `clientsecret`. The technical user (the SDM service binding) is the principal recorded by DMS / DI as `cmis:createdBy` / `cmis:modifiedBy`. The plugin DB's `createdBy` / `modifiedBy` columns are aligned with the same `clientid` so the UI matches what the backend shows.
-- **When disabled (default):** The existing behavior is preserved — JWT-bearer when a user context is present, client-credentials only as a fallback.
-- **Per-composition scope:** The annotation is set on the attachments composition (or its target entity definition). A parent entity with two attachment compositions can have one composition use client-credentials and the other use the default flow.
+### Key Features
 
-### Usage
+- **Per-Composition Scope**: A parent entity can mix flows — one attachment composition using client-credentials, another using the default JWT-bearer flow
+- **Flow Override on All CRUD Paths**: Create, upload, rename, edit links, update metadata, and delete are all routed through the technical user when the annotation is set
+- **Aligned `createdBy` / `modifiedBy`**: The plugin DB columns are stamped with the SDM client_id so the UI matches `cmis:createdBy` / `cmis:modifiedBy` recorded by DMS / DI
+- **Default Preserved**: Without the annotation, existing behavior is unchanged — JWT-bearer when a user context is present, client-credentials only as a fallback
 
-Add `@SDM.useClientCredential: true` to the attachments composition in your service's CDS model. In the sample Incidents app, the `footnotes` composition is annotated so footnote attachments are always uploaded under the technical user, while the human-user-authored `references` composition keeps the default flow:
+### How It Works
+
+For an attachments composition annotated with `@SDM.useClientCredential: true`, the plugin:
+
+1. **Detects the annotation** on the composition target via `req.target` for direct attachment operations, and via composition walking on parent SAVE events
+2. **Authenticates every SDM call** with the SDM service binding's `clientid` / `clientsecret` (resolved from `VCAP_SERVICES`)
+3. **Stamps `createdBy` / `modifiedBy`** with the same `clientid` on freshly activated draft rows so the plugin DB and the SDM backend show identical principals
+
+### Entity Definition
+
+The annotation must live on the attachments **target** (the composition target entity). In the sample Incidents app, the `footnotes` composition is annotated so footnote attachments are always uploaded under the technical user, while the human-user-authored `references` composition keeps the default flow:
 
 ```cds
 using { sap.attachments.Attachments } from '@cap-js/sdm';
@@ -799,11 +853,9 @@ extend my.Incidents with {
 annotate my.Incidents.footnotes with @SDM.useClientCredential: true;
 ```
 
-The annotation must live on the attachments **target** (the composition target entity). The plugin reads it both via `req.target` for direct attachment operations and via composition walking on parent SAVE events so the flow is honored on every CRUD path: create, upload, rename, edit links, update metadata, and delete.
+### Configuration
 
-### Notes
-- The SDM service binding must be available in `VCAP_SERVICES` so the plugin can resolve the client credentials. This is the normal binding setup; no extra configuration is required.
-- The `createdBy` / `modifiedBy` stamp on freshly activated draft rows is fixed up after CAP's draft activation so the plugin DB and the SDM backend show the same `clientid` instead of the human user's JWT identity.
+The SDM service binding must be available in `VCAP_SERVICES` so the plugin can resolve the client credentials. This is the normal binding setup; no extra configuration is required.
 
 ## Support for Multitenancy
 
