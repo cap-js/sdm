@@ -2051,6 +2051,220 @@ describe.only('Attachments Integration Tests --CMIS METADATA', () => {
       console.warn("Cleanup failed:", response.message);
     }
   });
+
+  it('should map attachment note to cmis:description on create', async () => {
+    const noteText = `note-create-${Date.now()}`;
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const noteCreateEntityID = response.incidentID;
+
+    const file = {
+      filename: "note-create-file.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+
+    const postData = {
+      up__ID: noteCreateEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com",
+      note: noteText
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, noteCreateEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, noteCreateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const { getCmisProperty } = require('./utills/cmis-document-helper');
+    const cmisDescription = await getCmisProperty(noteCreateEntityID, "note-create-file.pdf", "cmis:description");
+    expect(cmisDescription).toBe(noteText);
+
+    response = await api.deleteEntity(appUrl, serviceName, entityName, noteCreateEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for noteCreateEntityID:", response.message);
+    }
+  });
+
+  it('should map updated attachment note to cmis:description on update', async () => {
+    const initialNote = `note-initial-${Date.now()}`;
+    const updatedNote = `note-updated-${Date.now()}`;
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const noteUpdateEntityID = response.incidentID;
+
+    const file = {
+      filename: "note-update-file.pdf",
+      filepath: "./test/integration/sample.pdf"
+    };
+
+    const postData = {
+      up__ID: noteUpdateEntityID,
+      mimeType: "application/pdf",
+      createdAt: new Date().toISOString(),
+      createdBy: "test@test.com",
+      modifiedBy: "test@test.com",
+      note: initialNote
+    };
+
+    response = await api.createAttachment(appUrl, serviceName, entityName, noteUpdateEntityID, postData, file);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const noteUpdateAttachmentID = response.ID;
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, noteUpdateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, noteUpdateEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.updateAttachment(appUrl, serviceName, entityName, noteUpdateEntityID, { note: updatedNote }, noteUpdateAttachmentID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, noteUpdateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const { getCmisProperty } = require('./utills/cmis-document-helper');
+    const cmisDescription = await getCmisProperty(noteUpdateEntityID, "note-update-file.pdf", "cmis:description");
+    expect(cmisDescription).toBe(updatedNote);
+
+    response = await api.deleteEntity(appUrl, serviceName, entityName, noteUpdateEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for noteUpdateEntityID:", response.message);
+    }
+  });
+
+  it('should map link note to cmis:description on create', async () => {
+    const noteText = `link-note-create-${Date.now()}`;
+    const linkName = `note-link-create-${Date.now()}`;
+    const linkUrl = 'https://example.com/create-note-link';
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const linkNoteCreateEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkNoteCreateEntityID, srvpath, linkName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, linkNoteCreateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const linkAttachment = response.attachments.find(att =>
+      att.filename === linkName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list");
+    }
+
+    response = await api.updateAttachment(appUrl, serviceName, entityName, linkNoteCreateEntityID, { note: noteText }, linkAttachment.ID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkNoteCreateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const { getCmisProperty } = require('./utills/cmis-document-helper');
+    const cmisDescription = await getCmisProperty(linkNoteCreateEntityID, linkName, "cmis:description");
+    expect(cmisDescription).toBe(noteText);
+
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkNoteCreateEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkNoteCreateEntityID:", response.message);
+    }
+  });
+
+  it('should map updated link note to cmis:description on update', async () => {
+    const initialNote = `link-note-initial-${Date.now()}`;
+    const updatedNote = `link-note-updated-${Date.now()}`;
+    const linkName = `note-link-update-${Date.now()}`;
+    const linkUrl = 'https://example.com/update-note-link';
+
+    let response = await api.createEntityDraft(appUrl, serviceName, entityName);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+    const linkNoteUpdateEntityID = response.incidentID;
+
+    response = await api.createLink(appUrl, serviceName, entityName, linkNoteUpdateEntityID, srvpath, linkName, linkUrl);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.getAttachmentsList(appUrl, serviceName, entityName, linkNoteUpdateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const linkAttachment = response.attachments.find(att =>
+      att.filename === linkName && att.linkUrl === linkUrl
+    );
+    if (!linkAttachment) {
+      throw new Error("Error : Created link not found in attachments list");
+    }
+
+    response = await api.updateAttachment(appUrl, serviceName, entityName, linkNoteUpdateEntityID, { note: initialNote }, linkAttachment.ID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkNoteUpdateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.editEntity(appUrl, serviceName, entityName, linkNoteUpdateEntityID, srvpath);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.updateAttachment(appUrl, serviceName, entityName, linkNoteUpdateEntityID, { note: updatedNote }, linkAttachment.ID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    response = await api.saveEntityDraft(appUrl, serviceName, entityName, srvpath, linkNoteUpdateEntityID);
+    if (response.status !== "OK") {
+      throw new Error("Error : " + response.message);
+    }
+
+    const { getCmisProperty } = require('./utills/cmis-document-helper');
+    const cmisDescription = await getCmisProperty(linkNoteUpdateEntityID, linkName, "cmis:description");
+    expect(cmisDescription).toBe(updatedNote);
+
+    response = await api.deleteEntity(appUrl, serviceName, entityName, linkNoteUpdateEntityID);
+    if (response.status !== "OK") {
+      console.warn("Cleanup failed for linkNoteUpdateEntityID:", response.message);
+    }
+  });
 });
 
 describe.only('Attachments Integration Tests --DELETE', () => {
