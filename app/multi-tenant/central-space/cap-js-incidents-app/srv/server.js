@@ -26,4 +26,9 @@ cds.once('bootstrap', async (app) => {
   // }
 });
 
+cds.once('listening', ({ server }) => {
+    // Increase timeout to 60 minutes (3600000ms)
+    server.requestTimeout = 3600000; // 60 minutes in milliseconds
+});
+
 module.exports = cds.server;
