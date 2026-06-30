@@ -52,6 +52,11 @@
     "lint": "npx eslint --fix . --no-cache"
   },
   "cds": {
+    "server": {
+      "body_parser": {
+        "limit": "2gb"
+      }
+    },
     "requires": {
       "sdm": {
         "vcap": {
