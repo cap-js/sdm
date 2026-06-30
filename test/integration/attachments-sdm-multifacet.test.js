@@ -1,6 +1,7 @@
 const multifacets = ['attachments', 'references', 'footnotes']
 const facetStates = new Map()
 let baselineState
+const isClientCredentialFacet = () => process.env.SDM_TEST_FACET === 'footnotes'
 
 const snapshotFacetState = () => ({
   token,
@@ -283,7 +284,11 @@ describe('Attachments Integration Tests --CREATE', () => {
         throw new Error("Error : " + response.message)
       }
       response = await apiNoSDMRole.createAttachment(appUrl, serviceName, entityName, incidentID, postData, file);
-      expect(response.message).toBe("Create attachment API call (put) failed : Request failed with status code 403");
+      if (isClientCredentialFacet()) {
+        expect(response.status).toBe("OK");
+      } else {
+        expect(response.message).toBe("Create attachment API call (put) failed : Request failed with status code 403");
+      }
       response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, incidentID);
       if (response.status !== "OK") {
         throw new Error("Error : " + response.message)
@@ -487,7 +492,11 @@ describe('Attachments Integration Tests --READ', () => {
       apiNoSDMRole = new Api(config);
       const response = await apiNoSDMRole.readAttachment(appUrl, serviceName, entityName, incidentID, attachments[0]);
       console.log(response.message);
-      expect(response.message).toBe("Read attachment API call failed : Request failed with status code 403");
+      if (isClientCredentialFacet()) {
+        expect(response.status).toBe("OK");
+      } else {
+        expect(response.message).toBe("Read attachment API call failed : Request failed with status code 403");
+      }
     }
 
   });
@@ -1020,7 +1029,11 @@ const config = {
     if (tokenFlow !== 'technicalUser') {
       apiNoSDMRole = new Api(config);
       response = await apiNoSDMRole.openAttachmentSaved(appUrl, serviceName, entityName, linkIncidentID, srvpath, secondLinkAttachmentID);
-      expect(response.message).toBe("Open attachment saved API call failed : Request failed with status code 403");
+      if (isClientCredentialFacet()) {
+        expect(response.status).toBe("OK");
+      } else {
+        expect(response.message).toBe("Open attachment saved API call failed : Request failed with status code 403");
+      }
     }
     // Verify metadata for both links after multiple edits
     response = await api.fetchMetadata(appUrl, serviceName, entityName, linkIncidentID, linkAttachmentID);
@@ -1840,8 +1853,12 @@ const config = {
       // Try to edit the link with valid URL using no-SDM-role user
       const updatedUrl = 'https://updated-norole.com';
       response = await apiNoSDMRole.editLink(appUrl, serviceName, entityName, editLinkIncidentID, editLinkAttachmentID, srvpath, updatedUrl);
-      expect(response.status).toBe("FAILED");
-      expect(response.message).toBe(userNotAuthorisedErrorEditLink);
+      if (isClientCredentialFacet()) {
+        expect(response.status).toBe("OK");
+      } else {
+        expect(response.status).toBe("FAILED");
+        expect(response.message).toBe(userNotAuthorisedErrorEditLink);
+      }
 
       // Save entity draft with no-SDM-role user to exit draft mode
       response = await apiNoSDMRole.saveEntityDraft(appUrl, serviceName, entityName, srvpath, editLinkIncidentID);
@@ -1892,7 +1909,9 @@ const config = {
     expect(response.data.createdBy).toBeTruthy();
     expect(response.data.modifiedBy).toBeTruthy();
 
-    if (tokenFlow === 'namedUser' && credentials.username) {
+    if (isClientCredentialFacet() && credentials.username) {
+      expect(response.data.createdBy).not.toBe(credentials.username);
+    } else if (tokenFlow === 'namedUser' && credentials.username) {
       expect(response.data.createdBy).toBe(credentials.username);
     } else if (tokenFlow === 'technicalUser' && credentials.username) {
       expect(response.data.createdBy).not.toBe(credentials.username);
@@ -2104,7 +2123,9 @@ describe('Attachments Integration Tests --CMIS METADATA', () => {
     const createdBy = await getCmisProperty(metadataEntityID, "metadata-test.pdf", "cmis:createdBy");
     expect(createdBy).toBeTruthy();
 
-    if (tokenFlow === 'namedUser') {
+    if (isClientCredentialFacet() && credentials.username) {
+      expect(createdBy).not.toBe(credentials.username);
+    } else if (tokenFlow === 'namedUser') {
       expect(createdBy).toBe(credentials.username);
     } else if (tokenFlow === 'technicalUser') {
       expect(createdBy).not.toBe(credentials.username);

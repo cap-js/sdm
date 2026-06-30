@@ -61,6 +61,8 @@ extend my.Incidents with {
 }
 extend my.Projects with { references: Composition of many Attachments }
 
+annotate my.Incidents.footnotes with @SDM.useClientCredential: true;
+
 extend Attachments with {
     customProperty1 : Association to WDIRSCodeList
         @SDM.Attachments.AdditionalProperty: {
