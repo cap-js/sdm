@@ -60,6 +60,8 @@ extend my.Incidents with {
   footnotes   : Composition of many Attachments;
 } 
 
+annotate my.Incidents.footnotes with @SDM.useClientCredential: true;
+
 extend my.Projects with {
   references : Composition of many Attachments;
 }
