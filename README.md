@@ -797,9 +797,6 @@ No client-side or CDS-side configuration is required. The thresholds are constan
 
 SAP Document Management's virus-scan service does not support files above 400 MB. When `isVirusScanEnabled: true` is set on the SDM service binding, the plugin rejects uploads larger than 400 MB with HTTP 409 and a descriptive error message before any data is streamed, instead of letting the request fail later at the SDM side. Repositories without virus scanning are unaffected.
 
-### Tested File Sizes
-
-Verified with file sizes 500 MB, 1 GB, and 2 GB on Cloud Foundry single-tenant and multi-tenant scenarios.
 
 ## Support for Technical User
 The CAP OData operations can be performed on attachments using a technical user. This flow can be used for machine-to-machine (M2M) interactions, where user involvement is not necessary.
