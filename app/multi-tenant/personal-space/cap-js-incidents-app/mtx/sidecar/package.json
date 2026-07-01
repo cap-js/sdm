@@ -10,7 +10,8 @@
     "express": "^4"
   },
   "scripts": {
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "postinstall": "node patch-ctnr-mgr.js"
   },
   "cds": {
     "profile": "mtx-sidecar"
