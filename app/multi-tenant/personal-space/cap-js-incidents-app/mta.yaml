@@ -159,6 +159,7 @@ modules:
           name: incidents-mtx-srv # must be used in xs-app.json as well
           url: ~{srv-url}
           forwardAuthToken: true
+          timeout: 3600000
       - name: mtx-api
         group: destinations
         properties:
