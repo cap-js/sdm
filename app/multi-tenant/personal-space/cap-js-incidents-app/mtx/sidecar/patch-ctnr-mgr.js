@@ -1,16 +1,13 @@
 /**
- * Patches two null-safety bugs in @sap/cds-mtxs (present in v3.x and v4.x):
+ * Patches null-safety bugs in @sap/cds-mtxs (present in v3.x and v4.x).
  *
  * Bug 1 — ctnr-mgr-base.js _pollError:
  *   response.data.errors[0] crashes when SM returns a failed operation without an errors array.
- *   Fix: use optional chaining.
  *
- * Bug 2 — srv-mgr.js create():
- *   `const status = e.status ?? 500` crashes with "Cannot read properties of undefined
- *   (reading 'status')" when the caught error `e` is itself undefined (SM returned a
- *   sync 200/no Location header so _poll resolved instead of rejecting, and the
- *   resulting throw propagates as undefined).
- *   Fix: guard `e` before reading .status.
+ * Bug 2 — srv-mgr.js create() catch block:
+ *   Multiple accesses to `e` (e.status, e.error, e.code, etc.) crash when the caught value
+ *   is undefined — which happens when _poll resolves/rejects with no error object.
+ *   Fix: add a single guard at the top of the catch block.
  */
 const fs = require('fs');
 const path = require('path');
@@ -38,10 +35,16 @@ patch(
   'ctnr-mgr-base.js _pollError'
 );
 
-// Bug 2: srv-mgr.js create() — `e` can be undefined when caught from _poll
+// Bug 2: srv-mgr.js — catch block accesses e.status, e.error, etc. but e can be undefined.
+// Guard the entire catch block with a single early check instead of patching each access.
 patch(
   path.join(__dirname, 'node_modules/@sap/cds-mtxs/srv/plugins/hana/srv-mgr.js'),
-  'const status = e.status ?? 500',
-  'const status = e?.status ?? 500',
-  'srv-mgr.js create() status'
+  `      } catch (e) {
+        this.instanceLocations.delete(tenant)
+        const status = e.status ?? 500`,
+  `      } catch (e) {
+        this.instanceLocations.delete(tenant)
+        if (!e) throw new Error('HDI container creation failed with no error details from Service Manager')
+        const status = e.status ?? 500`,
+  'srv-mgr.js create() catch block guard'
 );
