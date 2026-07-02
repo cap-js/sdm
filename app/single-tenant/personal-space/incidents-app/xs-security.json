@@ -1,5 +1,5 @@
 {
-  "xsappname": "sdmincidents-${org}-${space}",
+  "xsappname": "sdmincidents-sdmgoogleworkspacedev-Puja_Test",
   "tenant-mode": "dedicated",
   "description": "Security profile of called application",
   "scopes": [
