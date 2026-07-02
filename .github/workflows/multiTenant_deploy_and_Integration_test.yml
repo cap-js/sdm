@@ -56,11 +56,7 @@ jobs:
           sudo chmod a+x /usr/local/bin/yq
           yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID_MT }}"' mta.yaml
           yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID_MT }}")' mta.yaml
-
-      - name: Inject DATABASE_ID into package.json
-        working-directory: app/multi-tenant/central-space/cap-js-incidents-app
-        run: |
-          yq -i e '.cds.requires["cds.xt.DeploymentService"].hdi.create.database_id = "${{ secrets.DATABASE_ID }}"' mtx/sidecar/package.json
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).properties.DATABASE_ID = "${{ secrets.DATABASE_ID }}"' mta.yaml
 
       - name: Build and deploy
         working-directory: app/multi-tenant/central-space/cap-js-incidents-app

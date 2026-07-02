@@ -42,6 +42,8 @@ modules:
           # but let's give it a try here
           # https://cap.cloud.sap/docs/guides/multitenancy/#update-database-schema-for-tenants
           command: cds-mtx upgrade '*'
+    properties:
+      DATABASE_ID: REPLACE_WITH_YOUR_DATABASE_ID
     provides:
       - name: mtx-api
         properties:
