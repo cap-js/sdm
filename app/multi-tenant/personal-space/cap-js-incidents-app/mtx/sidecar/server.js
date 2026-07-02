@@ -9,19 +9,15 @@ cds.once('bootstrap', async (app) => {
   LOG.error('Hello');
   app.disable('x-powered-by');
 
-  // Set database_id from environment variable at runtime
   const databaseId = process.env.DATABASE_ID;
-  LOG.info(`DATABASE_ID env var value: "${databaseId}"`);
-
   if (databaseId && databaseId !== 'REPLACE_WITH_YOUR_DATABASE_ID') {
     cds.env.requires['cds.xt.DeploymentService'] ??= {};
     cds.env.requires['cds.xt.DeploymentService'].hdi ??= {};
     cds.env.requires['cds.xt.DeploymentService'].hdi.create ??= {};
     cds.env.requires['cds.xt.DeploymentService'].hdi.create.database_id = databaseId;
-    LOG.info(`Configured HDI database_id: ${databaseId}`);
-    LOG.info(`Full DeploymentService hdi config: ${JSON.stringify(cds.env.requires['cds.xt.DeploymentService'].hdi)}`);
+    LOG.info(`Configured HDI database_id from environment`);
   } else {
-    LOG.error(`DATABASE_ID environment variable is not set or is still the placeholder (value: "${databaseId}"). HDI container creation will fail. Set DATABASE_ID to the HANA Cloud instance GUID.`);
+    LOG.error(`DATABASE_ID environment variable is not set or is still the placeholder. HDI container creation will fail.`);
   }
 
   try {
@@ -43,7 +39,6 @@ cds.once('bootstrap', async (app) => {
     LOG.info(`Configured SaaS dependency to SDM: ${runtimeSdmXsappname}`);
     LOG.info(`Configured SaaS dependency to Destination: ${runtimeDestinationXsappname}`);
   } catch (err) {
-    // LOG.warn(`Could not find service binding for HTML5 app repo runtime. Skipping Saas dependency setup. Error: ${err.message}`);
     LOG.warn(`Could not find service binding for needed dependency. Skipping Saas dependency setup. Error: ${err.message}`);
   }
 });

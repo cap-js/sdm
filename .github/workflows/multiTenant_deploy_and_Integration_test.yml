@@ -49,7 +49,7 @@ jobs:
           cd app/multi-tenant/central-space/cap-js-incidents-app
           npm i *.tgz
 
-      - name: Inject REPOSITORY_ID into mta.yaml
+      - name: Inject secrets into mta.yaml
         working-directory: app/multi-tenant/central-space/cap-js-incidents-app
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64

@@ -43,7 +43,7 @@ jobs:
           sudo apt update
           sudo apt install cf8-cli
           cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "${{ github.event.inputs.space }}"
-       
+
       - name: Prepare app & Build and deploy
         run: |
           npm pack
@@ -51,32 +51,14 @@ jobs:
           cd app/multi-tenant/personal-space/cap-js-incidents-app
           npm i *.tgz
 
-      - name: Inject REPOSITORY_ID into mta.yaml
+      - name: Inject secrets into mta.yaml
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
-        env:
-          DATABASE_ID_VAL: ${{ secrets.DATABASE_ID }}
-          REPOSITORY_ID_VAL: ${{ secrets.REPOSITORY_ID }}
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod a+x /usr/local/bin/yq
-
-          echo "=== Secret diagnostics ==="
-          echo "DATABASE_ID secret length: ${#DATABASE_ID_VAL}"
-          echo "REPOSITORY_ID secret length: ${#REPOSITORY_ID_VAL}"
-          echo "DATABASE_ID value (masked by GitHub if set): $DATABASE_ID_VAL"
-
-          echo "=== mta.yaml before injection ==="
-          grep -E "DATABASE_ID|REPOSITORY_ID" mta.yaml
-
           yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}"' mta.yaml
           yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}")' mta.yaml
           yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).properties.DATABASE_ID = "${{ secrets.DATABASE_ID }}"' mta.yaml
-
-          echo "=== mta.yaml after injection ==="
-          grep -E "DATABASE_ID|REPOSITORY_ID" mta.yaml
-
-          echo "=== incidents-mtx-mtx module properties after injection ==="
-          yq e '.modules[] | select(.name == "incidents-mtx-mtx") | .properties' mta.yaml
 
       - name: Build and deploy
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
@@ -86,9 +68,5 @@ jobs:
           sudo mv mbt /usr/local/bin/
           npm i @sap/cds-dk -g
           mbt build
-          echo "=== gen/mtx/sidecar/package.json after build ==="
-          cat gen/mtx/sidecar/package.json
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
-          echo "=== CF env on incidents-mtx-mtx after deploy ==="
-          cf env incidents-mtx-mtx | grep -E "DATABASE_ID|REPOSITORY_ID"
