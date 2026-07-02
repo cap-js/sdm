@@ -59,10 +59,8 @@ jobs:
 
       - name: Inject DATABASE_ID into package.json
         working-directory: app/multi-tenant/central-space/cap-js-incidents-app
-        env:
-          DATABASE_ID: ${{ secrets.DATABASE_ID }}
         run: |
-          sed -i "s|\$DATABASE_ID|${DATABASE_ID}|g" mtx/sidecar/package.json
+          yq -i e '.cds.requires["cds.xt.DeploymentService"].hdi.create.database_id = "${{ secrets.DATABASE_ID }}"' mtx/sidecar/package.json
 
       - name: Build and deploy
         working-directory: app/multi-tenant/central-space/cap-js-incidents-app
