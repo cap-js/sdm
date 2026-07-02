@@ -57,6 +57,11 @@ jobs:
           yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID_MT }}"' mta.yaml
           yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID_MT }}")' mta.yaml
 
+      - name: Inject DATABASE_ID into package.json
+        working-directory: app/multi-tenant/central-space/cap-js-incidents-app
+        run: |
+          sed -i 's/\$DATABASE_ID/${{ secrets.DATABASE_ID }}/g' package.json
+
       - name: Build and deploy
         working-directory: app/multi-tenant/central-space/cap-js-incidents-app
         run: |

@@ -56,7 +56,12 @@
   "cds": {
     "requires": {
       "cds.xt.DeploymentService": {
-        "preset": "in-sidecar"
+        "preset": "in-sidecar",
+        "hdi": {
+          "create": {
+            "database_id": "$DATABASE_ID"
+          }
+        }
       },
       "auth": {
         "[development]": {
