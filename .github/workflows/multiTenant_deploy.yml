@@ -62,7 +62,7 @@ jobs:
       - name: Inject DATABASE_ID into package.json
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
         run: |
-          sed -i 's/\$DATABASE_ID/${{ secrets.DATABASE_ID }}/g' package.json
+          sed -i 's|\$DATABASE_ID|${{ secrets.DATABASE_ID }}|g' mtx/sidecar/package.json
 
       - name: Build and deploy
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app

@@ -13,6 +13,15 @@
     "start": "cds-serve"
   },
   "cds": {
-    "profile": "mtx-sidecar"
+    "profile": "mtx-sidecar",
+    "requires": {
+      "cds.xt.DeploymentService": {
+        "hdi": {
+          "create": {
+            "database_id": "$DATABASE_ID"
+          }
+        }
+      }
+    }
   }
 }
