@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout repository ✅
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
@@ -254,7 +254,7 @@ jobs:
     needs: versioned-repo-setup
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
@@ -427,7 +427,7 @@ jobs:
       DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
@@ -608,7 +608,7 @@ jobs:
     if: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
@@ -756,7 +756,7 @@ jobs:
     if: false   # Temporarily disabled — re-enable once btp login / SaaS subscribe issue is resolved
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.branch_name }}
 
