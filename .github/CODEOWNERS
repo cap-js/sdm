@@ -2,5 +2,5 @@
 # before a PR can be merged (enforced when branch protection requires CODEOWNER review).
 
 # Any change to workflow files or GitHub config must be reviewed by the designated owner
-/.github/                    @vibhutikumar07 @yashmeet29
-/.github/workflows/          @vibhutikumar07 @yashmeet29
+/.github/                    @vibhutikumar07 @yashmeet29 @PujaDeshmukh17
+/.github/workflows/          @vibhutikumar07 @yashmeet29 @PujaDeshmukh17
