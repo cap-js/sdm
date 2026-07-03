@@ -2,11 +2,11 @@
   "name": "incidents-mtx",
   "dependencies": {
     "@cap-js/sdm": "../../../cap-js-sdm-1.10.0.tgz",
-    "@sap/cds": "^8",
-    "@sap/cds-hana": "^2",
-    "@sap/cds-mtxs": "^2",
+    "@sap/cds": "^9",
+    "@cap-js/hana": "^2",
+    "@sap/cds-mtxs": "^3",
     "@sap/xsenv": "^5",
-    "@sap/xssec": "^3",
+    "@sap/xssec": "^4",
     "express": "^4"
   },
   "scripts": {
