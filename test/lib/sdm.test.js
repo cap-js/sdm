@@ -6502,6 +6502,54 @@ describe("SDMAttachmentsService", () => {
         expect(mockReq.data.up__ID).toBe('123e4567-e89b-12d3-a456-426614174000');
       });
 
+      it("should handle programmatic UPDATE query without HTTP request object (no req.req)", async () => {
+        //Test for fix provided for failure caused when a CAP query is issued programmatically (not via an HTTP REST call), req.req is undefined — there is no underlying HTTP request object, so there's no URL to match against.
+        const mockReq = {
+          data: {
+            ID: '223e4567-e89b-12d3-a456-426614174000',
+            content: Buffer.from('updated content'),
+          },
+          target: { name: 'Orders.references', isDraft: false },
+          event: 'UPDATE',
+          // req.req is intentionally absent — simulates a programmatic CDS query
+          req: undefined,
+          reject: jest.fn(),
+        };
+
+        const mockMetadata = {
+          ID: '223e4567-e89b-12d3-a456-426614174000',
+          filename: 'existing.pdf',
+          up__ID: '123e4567-e89b-12d3-a456-426614174000',
+        };
+
+        SELECT.one.from.mockReturnValue({
+          where: jest.fn()
+            .mockResolvedValueOnce(mockMetadata)
+            .mockResolvedValueOnce({
+              ID: '223e4567-e89b-12d3-a456-426614174000',
+              url: 'updated-object-id',
+              folderId: 'parent-folder-id',
+              repositoryId: 'test-repo-id',
+              status: 'Clean',
+              type: 'sap-icon://document',
+            }),
+        });
+
+        isRestrictedCharactersInName.mockReturnValue(false);
+
+        // Should not throw — should fall back to req.data.ID when req.req is absent
+        await expect(service.nonDraftAttachmentCreateHandler(mockReq)).resolves.not.toThrow();
+
+        expect(service.onCreate).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({ ID: '223e4567-e89b-12d3-a456-426614174000', filename: 'existing.pdf' }),
+          ]),
+          service.creds,
+          mockReq,
+          'parent-folder-id',
+        );
+      });
+
       it("should reject if attachment not found during PUT", async () => {
         const mockReq = {
           data: { content: Buffer.from('content') },
