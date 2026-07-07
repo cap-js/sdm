@@ -43,7 +43,7 @@ jobs:
           sudo apt update
           sudo apt install cf8-cli
           cf login -a "$CF_API" -u "$CF_USER" -p "$CF_PASSWORD" -o "$CF_ORG" -s "${{ github.event.inputs.space }}"
-       
+
       - name: Prepare app & Build and deploy
         run: |
           npm pack
@@ -51,13 +51,14 @@ jobs:
           cd app/multi-tenant/personal-space/cap-js-incidents-app
           npm i *.tgz
 
-      - name: Inject REPOSITORY_ID into mta.yaml
+      - name: Inject secrets into mta.yaml
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod a+x /usr/local/bin/yq
           yq -i e '(.modules[] | select(.name == "incidents-mtx-srv")).properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}"' mta.yaml
           yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).requires[] |= (select(.name == "app-api").properties.REPOSITORY_ID = "${{ secrets.REPOSITORY_ID }}")' mta.yaml
+          yq -i e '(.modules[] | select(.name == "incidents-mtx-mtx")).properties.DATABASE_ID = "${{ secrets.DATABASE_ID }}"' mta.yaml
 
       - name: Build and deploy
         working-directory: app/multi-tenant/personal-space/cap-js-incidents-app

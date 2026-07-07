@@ -137,7 +137,7 @@ resources:
     parameters:
       config:
         tenant-mode: dedicated
-        xsappname: sdmincidents
+        xsappname: sdmincidents-${org}-${space}
         oauth2-configuration:
           redirect-uris:
             - ~{app-api/app-url}/**
