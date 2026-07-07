@@ -12,6 +12,7 @@ modules:
       readiness-health-check-http-endpoint: /health
     properties:
       REPOSITORY_ID: REPLACE_WITH_YOUR_REPOSITORY_ID
+      CDS_LOG_LEVELS_SDM: info
       INCOMING_REQUEST_TIMEOUT: 3600000
       INCOMING_SESSION_TIMEOUT: 3600000
       INCOMING_CONNECTION_TIMEOUT: 3600000
