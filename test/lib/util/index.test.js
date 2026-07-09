@@ -23,7 +23,20 @@ jest.mock("../../../lib/persistence", () => ({
 }));
 
 jest.mock("node-cache");
-jest.mock("@sap/cds");
+jest.mock("@sap/cds", () => {
+  const mockLogger = {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+  return {
+    log: jest.fn(() => mockLogger),
+    env: { requires: {} },
+    context: null,
+    model: { definitions: {} },
+  };
+});
 jest.mock("@sap/xssec", () => ({
   v3: {
     requests: {
