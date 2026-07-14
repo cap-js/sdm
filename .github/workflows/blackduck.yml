@@ -30,7 +30,7 @@ jobs:
       - name: npm install
         run: |
           npm install
-          curl --silent -O https://detect.blackduck.com/detect9.sh
+          curl --silent -O https://detect.blackduck.com/detect.sh
 
       - name: npm install - single-tenant central-space
         working-directory: app/single-tenant/central-space/incidents-app
@@ -42,13 +42,13 @@ jobs:
 
       - name: Run BlackDuck Scan - SDM plugin
         run: |
-          bash ./detect9.sh \
+          bash ./detect.sh \
+          --logging.level.detect=DEBUG \
           --logging.level.com.synopsys.integration=WARN  \
           --blackduck.url="https://sap.blackducksoftware.com" \
           --blackduck.api.token="$BLACKDUCK_TOKEN" \
           --detect.blackduck.signature.scanner.arguments="--min-scan-interval=0" \
           --detect.npm.arguments \
-          --detect.latest.release.version="9.6.0" \
           --detect.project.version.distribution="SaaS" \
           --detect.blackduck.signature.scanner.memory=4096  \
           --detect.timeout=6000 \
