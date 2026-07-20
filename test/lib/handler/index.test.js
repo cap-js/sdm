@@ -1,5 +1,13 @@
 const { executeHttpRequest } = require("@sap-cloud-sdk/http-client");
 jest.mock("@sap-cloud-sdk/http-client");
+jest.mock("@sap/cds", () => ({
+  log: jest.fn(() => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  })),
+}));
 jest.mock("node-cache", () => {
   return jest.fn().mockImplementation(() => ({
     get: jest.fn(),

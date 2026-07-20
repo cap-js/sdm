@@ -3,6 +3,12 @@ jest.mock('@sap-cloud-sdk/http-client');
 jest.mock('../../../lib/util/index');
 const path = require('path');
 const messageConsts = require('../../../lib/util/messageConsts');
+const createMockLogger = () => ({
+    debug: (...args) => console.debug(...args),
+    info: (...args) => console.info(...args),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+});
 
 describe('SDM Plugin Onboarding and Offboarding Logic', () => {
     let mockCds, mockDeploymentService;
@@ -66,6 +72,7 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
             on: jest.fn(),
             env: MOCK_CDS_ENV,
             root: MOCK_CDS_ENV.root,
+            log: jest.fn(() => createMockLogger()),
         };
         jest.doMock(MOCK_CONFIG_PATH, () => MOCK_CONFIG, { virtual: true });
         jest.doMock('@sap/cds', () => mockCds);
@@ -83,14 +90,20 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
             require('../../../lib/mtx/server');
             const listeningCallback = mockCds.on.mock.calls.find(call => call[0] === 'listening')[1];
             await listeningCallback();
-            expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to connect to cds.xt.DeploymentService");
+            expect(consoleErrorSpy).toHaveBeenCalledWith("[ERROR] Failed to connect to cds.xt.DeploymentService");
         });
 
         it('should throw an error if SDMRepositoryConfig.js is invalid', () => {
             const MOCK_CDS_ROOT = path.resolve(__dirname, '../../..');
             const MOCK_CONFIG_PATH = path.join(MOCK_CDS_ROOT, 'SDMRepositoryConfig.js');
             jest.doMock(MOCK_CONFIG_PATH, () => ({}), { virtual: true });
-            const badCds = { env: { profile: 'mtx-sidecar' }, root: MOCK_CDS_ROOT, on: jest.fn(), connect: { to: jest.fn() } };
+            const badCds = {
+                env: { profile: 'mtx-sidecar' },
+                root: MOCK_CDS_ROOT,
+                on: jest.fn(),
+                connect: { to: jest.fn() },
+                log: jest.fn(() => createMockLogger()),
+            };
             jest.doMock('@sap/cds', () => badCds);
             expect(() => require('../../../lib/mtx/server')).toThrow(messageConsts.repositoryConfigurationMissing);
         });
@@ -144,7 +157,7 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
                 await expect(subscribeCallback({}, req)).resolves.not.toThrow();
 
                 // --- FIX: Updated the expected string to match the actual log output ---
-                const expectedLogMessage = `Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
+                const expectedLogMessage = `[INFO] Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
                 // consoleInfoSpy is now guaranteed to be defined here
                 expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
             });
@@ -161,7 +174,7 @@ describe('SDM Plugin Onboarding and Offboarding Logic', () => {
 
                 await expect(subscribeCallback({}, req)).resolves.not.toThrow();
 
-                const expectedLogMessage = `Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
+                const expectedLogMessage = `[INFO] Repository with name Repository and id ${MOCK_EXTERNAL_ID} already exists. Skipping onboarding.`;
                 expect(consoleInfoSpy).toHaveBeenCalledWith(expectedLogMessage);
             });
 
