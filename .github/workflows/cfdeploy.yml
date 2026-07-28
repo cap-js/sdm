@@ -132,7 +132,7 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz > /dev/null 2>&1
           sudo mv mbt /usr/local/bin/
           # Install cds-dk (npm output redirected)
-          npm i @sap/cds-dk -g --silent
+          npm i @sap/cds-dk@^9 -g --silent
           # Perform MTA build and deploy
           mbt build
           cf install-plugin multiapps -f
