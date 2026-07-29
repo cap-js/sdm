@@ -64,7 +64,7 @@ jobs:
           wget -P /tmp https://github.com/SAP/cloud-mta-build-tool/releases/download/v1.2.28/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz
           sudo mv mbt /usr/local/bin/
-          npm i @sap/cds-dk@^9 -g
+          npm i @sap/cds-dk -g
           mbt build
           cf install-plugin multiapps -f
           cf deploy mta_archives/capire.incidents.mtx_0.0.3.mtar -f
