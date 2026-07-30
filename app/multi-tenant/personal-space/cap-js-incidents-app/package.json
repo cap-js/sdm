@@ -56,12 +56,7 @@
   "cds": {
     "requires": {
       "cds.xt.DeploymentService": {
-        "preset": "in-sidecar",
-        "hdi": {
-          "deploy": {
-            "auto_undeploy": true
-          }
-        }
+        "preset": "in-sidecar"
       },
       "auth": {
         "[development]": {

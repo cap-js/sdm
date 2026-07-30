@@ -45,6 +45,13 @@ modules:
           command: cds-mtx upgrade '*'
     properties:
       DATABASE_ID: REPLACE_WITH_YOUR_DATABASE_ID
+      # Remove orphaned HDI artifacts during per-tenant `cds-mtx upgrade` (e.g. the
+      # per-locale ScanStates_texts import files that @cap-js/attachments 3.12.x
+      # shipped and 3.13.x consolidated). The mtx sidecar reads HDI_DEPLOY_OPTIONS
+      # at runtime (JSON.parse) and merges it into each tenant's HDI deploy.
+      # Without this, stale importers collide and HDI make fails with
+      # "include_filter ... not disjunct".
+      HDI_DEPLOY_OPTIONS: '{"auto_undeploy":true}'
     provides:
       - name: mtx-api
         properties:
