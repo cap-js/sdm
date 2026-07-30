@@ -266,6 +266,6 @@ build-parameters:
   before-all:
     - builder: custom
       commands:
-        - npm ci
+        - npm i
         - npx cds build --production
 
