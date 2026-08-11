@@ -2288,14 +2288,19 @@ describe("SDMAttachmentsService", () => {
     let mockSrv;
     let entity;
     let target;
+    let origEnvReg;
 
     beforeEach(() => {
       jest.clearAllMocks();
+      // Enable the opt-in flag so DMS handlers register in the `on` phase (the path
+      // these assertions verify). Default (flag off) registers them as `before`.
+      origEnvReg = cds.env;
+      cds.env = { ...cds.env, requires: { ...(cds.env?.requires), sdm: { settings: { uploadInOnPhase: true } } } };
       service = new SDMAttachmentsService();
       service._registeredEntityHandlers = new Set();
       service._registeredTargetHandlers = new Set();
       service._registeredGlobalActionHandlers = false;
-      
+
       mockSrv = {
         before: jest.fn(),
         after: jest.fn(),
@@ -2314,6 +2319,10 @@ describe("SDMAttachmentsService", () => {
         name: 'target',
         drafts: 'target.drafts'
       };
+    });
+
+    afterEach(() => {
+      cds.env = origEnvReg;
     });
 
     it('should register all handlers correctly', () => {
