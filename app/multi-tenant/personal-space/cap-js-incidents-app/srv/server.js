@@ -31,4 +31,29 @@ cds.once('listening', ({ server }) => {
     server.requestTimeout = 3600000; // 60 minutes in milliseconds
 });
 
+// --- FLAG TEST: customer validation reject in the `before` phase --------------------
+// With uploadInOnPhase=true in sdm settings (or SDM_UPLOAD_IN_ON_PHASE=true), the DMS
+// upload runs in the `on` phase, so this before-reject should PREVENT the upload
+// entirely (no orphan). With the flag off, SDM's before-upload completes its DMS POST
+// first -> orphan. Set REPRO_REJECT false for normal uploads.
+const REPRO_REJECT = true;
+cds.once('served', () => {
+  if (!REPRO_REJECT) { console.log('[REPRO] disabled - normal uploads'); return; }
+  const srv = cds.services.ProcessorService;
+  if (!srv) { console.log('[REPRO] ProcessorService not found'); return; }
+  const rejectUploads = async (req) => {
+    if (req.data && req.data.content) {
+      // Delay simulates real async validation. With flag OFF (before phase), this lets
+      // SDM's concurrent before-upload finish its DMS POST first -> orphan. With flag ON
+      // (on phase), the reject in before prevents the on-phase upload entirely.
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+      console.log('[FLAG-TEST] before-phase validation rejecting upload for', req.data.filename);
+      return req.reject(400, 'Simulated validation failure (before phase)');
+    }
+  };
+  srv.before(['UPDATE', 'PUT'], 'Incidents.attachments.drafts', rejectUploads);
+  srv.before(['CREATE', 'PUT'], 'Projects.references', rejectUploads);
+  console.log('[FLAG-TEST] before-phase reject handlers registered');
+});
+
 module.exports = cds.server;
