@@ -5,6 +5,37 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 
+## Version 1.11.0
+
+### Added
+- Support for large file upload (files > 400 MB) using streaming with chunked transfer to avoid out-of-memory errors.
+- Support for multiple `Composition of many Attachments` associations within a single CAP entity.
+- Support for Client Credentials authentication as an alternative to JWTBearer client credentials.
+- Map `note` field in Attachments to `cmis:description` attribute in SDM.
+- Added structured logging throughout the plugin using `cds.log('sdm')` with DEBUG/INFO/WARN/ERROR levels.
+
+### Fixed
+- Fixed 500 error when deleting an entity with an Attachments composition in environments where no SDM service instance is bound.
+- Fixed multi-tenant subscription failures caused by outdated `@sap/cds-mtxs` version and missing HANA `database_id` configuration.
+- Fixed crash when uploading attachments via programmatic CDS query when no underlying HTTP request is present.
+
+### Changed
+- Updated @cap-js/attachments to 3.13.3.
+
+### ⚠️ Migration Note
+- @cap-js/attachments 3.13.2 changed how the `ScanStates` code-list translation
+  data is packaged — the per-locale import files (`sap.attachments-ScanStates_texts_<lang>.csv/.hdbtabledata`,
+  one per locale) were consolidated into a single `sap.attachments-ScanStates_texts`
+  import that loads all locales via a `locale` column. **Redeploying an existing
+  application** (previously deployed with attachments 3.13.1 or earlier) fails during
+  HDI deployment with `HDI make failed ... "include_filter" ... not disjunct`, because
+  the stale per-locale import files remain in the container and collide with the new
+  consolidated one.
+- **Action required:** enable HDI auto-undeploy in your application so obsolete
+  artifacts are removed on redeploy. See
+  [Migration Notes](README.md#migration-notes) for the exact `mta.yaml` configuration
+  for single-tenant and multitenant applications.
+
 ## Version 1.10.0
 
 ### Fixed
