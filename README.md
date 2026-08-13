@@ -34,6 +34,7 @@ This plugin can be consumed by the CAP application deployed on BTP to store thei
 - [Support for Technical User](#support-for-technical-user)
 - [Force Client Credentials Flow via Annotation](#force-client-credentials-flow-via-annotation)
 - [Support for Multitenancy](#support-for-multitenancy)
+- [Migration Notes](#migration-notes)
 - [Deploying and testing the application](#deploying-and-testing-the-application)
 - [Running the unit tests](#running-the-unit-tests)
 - [Known Restrictions](#known-restrictions)
@@ -894,6 +895,47 @@ Refer the following example from a sample Incidents Management app which demonst
     ```
 
 When the application is deployed as a SaaS application with above code, a repository is onboarded automatically when a tenant subscribes the SaaS application. The same repository is deleted when the tenant unsubscribes from the SaaS application. The necessary params for the Repository onboarding can be found in the [documentation](https://help.sap.com/docs/document-management-service/sap-document-management-service/internal-repository).
+
+## Migration Notes
+
+### Migration: Enabling HDI auto-undeploy
+
+Starting with @cap-js/attachments 3.13.2, the `ScanStates` code-list translations are shipped as a single consolidated table-import file (loading all locales via a `locale` column) instead of one file per locale. When you **redeploy an existing application** that was previously deployed with attachments 3.13.1 or earlier, the old per-locale import files remain in the HDI container and collide with the new consolidated file, causing the database deployment to fail:
+
+```
+HDI make failed (... errors ...)
+com.sap.hana.di.tabledata: The "include_filter" definitions in the table import
+files "...ScanStates_texts_<lang>.hdbtabledata" and "...ScanStates_texts.hdbtabledata"
+use key values that are not disjunct ...
+```
+
+To let HDI remove the obsolete artifacts automatically on redeploy, enable `auto_undeploy` in your application.
+
+**Single-tenant applications** — add `HDI_DEPLOY_OPTIONS` to the `hdb` deployer module in `mta.yaml`:
+
+```yaml
+- name: <your-db-deployer>
+  type: hdb
+  path: gen/db
+  requires:
+    - name: <your-hdi-container>
+  parameters:
+    buildpack: nodejs_buildpack
+  properties:
+    HDI_DEPLOY_OPTIONS: '{"auto_undeploy":true}'
+```
+
+**Multitenant applications** — tenant databases are updated via `cds-mtx upgrade`, so set `HDI_DEPLOY_OPTIONS` on the mtx sidecar module in `mta.yaml`:
+
+```yaml
+- name: <your-mtx-sidecar>
+  type: nodejs
+  path: gen/mtx/sidecar
+  properties:
+    HDI_DEPLOY_OPTIONS: '{"auto_undeploy":true}'
+```
+
+> **Note:** `HDI_DEPLOY_OPTIONS` takes a JSON object; the `--auto-undeploy` CLI flag maps to the `auto_undeploy` key. Enabling auto-undeploy only removes design-time artifacts that the current build no longer generates (here, the obsolete code-list import definitions, which the new version re-imports). It does not delete your attachment records or business data. Because it applies to the whole container, HDI will also remove any other artifact dropped from the model on future deploys — this is standard HDI behavior.
 
 ## Deploying and testing the application
 
