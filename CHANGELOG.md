@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 ## Version 1.11.0
 
+### Added
+- Support for large file upload (files > 400 MB) using streaming with chunked transfer to avoid out-of-memory errors.
+- Support for multiple `Composition of many Attachments` associations within a single CAP entity.
+- Support for Client Credentials authentication as an alternative to JWTBearer client credentials.
+- Map `note` field in Attachments to `cmis:description` attribute in SDM.
+- Added structured logging throughout the plugin using `cds.log('sdm')` with DEBUG/INFO/WARN/ERROR levels.
+
+### Fixed
+- Fixed 500 error when deleting an entity with an Attachments composition in environments where no SDM service instance is bound.
+- Fixed multi-tenant subscription failures caused by outdated `@sap/cds-mtxs` version and missing HANA `database_id` configuration.
+- Fixed crash when uploading attachments via programmatic CDS query when no underlying HTTP request is present.
+
 ### Changed
 - Updated @cap-js/attachments to 3.13.3.
 
