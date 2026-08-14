@@ -32,6 +32,14 @@ modules:
       - name: sdi-hana
     parameters:
       buildpack: nodejs_buildpack
+    properties:
+      # Remove orphaned HDI artifacts on redeploy (e.g. the per-locale
+      # ScanStates_texts import files that @cap-js/attachments 3.12.x shipped and
+      # 3.13.x consolidated). Without this, stale importers collide with the new
+      # ones and HDI make fails with "include_filter ... not disjunct".
+      # HDI_DEPLOY_OPTIONS takes a JSON object; the CLI flag --auto-undeploy maps
+      # to the key auto_undeploy.
+      HDI_DEPLOY_OPTIONS: '{"auto_undeploy":true}'
   - name: incidents-destination-content
     type: com.sap.application.content
     requires:
