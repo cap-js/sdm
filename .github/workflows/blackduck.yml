@@ -27,12 +27,18 @@ jobs:
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-      - name: Setup SAP npm registry
+      - name: Setup npm registry and pin cds-mtxs
         run: |
-          REGISTRY="${{ secrets.SAP_NPM_REGISTRY_URL }}"
+          TARBALL="${{ secrets.SAP_CDS_MTXS_TARBALL }}"
+          TARBALL_HOST=$(printf '%s' "$TARBALL" | sed -E 's#^https?://([^/]+)/.*#\1#')
           for dir in "app/multi-tenant/central-space/cap-js-incidents-app" "app/multi-tenant/central-space/cap-js-incidents-app/mtx/sidecar"; do
-            printf '@sap:registry=%s\n' "$REGISTRY" > "$dir/.npmrc"
-            printf 'legacy-peer-deps=true\n' >> "$dir/.npmrc"
+            {
+              printf '@sap:registry=https://registry.npmjs.org/\n'
+              printf '//%s/:_authToken=%s\n' "$TARBALL_HOST" '${{ secrets.NPM_AUTH_TOKEN }}'
+              printf 'legacy-peer-deps=true\n'
+            } > "$dir/.npmrc"
+            tmp=$(mktemp)
+            jq --arg url "$TARBALL" '.dependencies["@sap/cds-mtxs"] = $url' "$dir/package.json" > "$tmp" && mv "$tmp" "$dir/package.json"
           done
 
       - name: npm install
