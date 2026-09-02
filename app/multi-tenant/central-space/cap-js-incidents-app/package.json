@@ -16,7 +16,7 @@
     "@cap-js/sdm": "^1",
     "@sap/cds": "^9",
     "@cap-js/hana": "^2",
-    "@sap/cds-mtxs": "^3",
+    "@sap/cds-mtxs": "^3.9.7",
     "@sap/cds-odata-v2-adapter-proxy": "^1.4.48",
     "@sap/xssec": "^4",
     "express": "^4",
