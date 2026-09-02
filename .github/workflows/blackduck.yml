@@ -30,10 +30,9 @@ jobs:
       - name: Setup SAP npm registry
         run: |
           REGISTRY="${{ secrets.SAP_NPM_REGISTRY_URL }}"
-          REGISTRY_HOST="${REGISTRY#https://}"
-          for dir in "app/multi-tenant/personal-space/cap-js-incidents-app" "app/multi-tenant/personal-space/cap-js-incidents-app/mtx/sidecar"; do
+          for dir in "app/multi-tenant/central-space/cap-js-incidents-app" "app/multi-tenant/central-space/cap-js-incidents-app/mtx/sidecar"; do
             printf '@sap:registry=%s\n' "$REGISTRY" > "$dir/.npmrc"
-            printf '//%s:_authToken=%s\n' "$REGISTRY_HOST" '${{ secrets.NPM_AUTH_TOKEN }}' >> "$dir/.npmrc"
+            printf 'legacy-peer-deps=true\n' >> "$dir/.npmrc"
           done
 
       - name: npm install
