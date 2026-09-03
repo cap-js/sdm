@@ -4,7 +4,7 @@
     "@cap-js/sdm": "../../../cap-js-sdm-1.11.0.tgz",
     "@sap/cds": "^9",
     "@cap-js/hana": "^2",
-    "@sap/cds-mtxs": "^3.9.7",
+    "@sap/cds-mtxs": "^3",
     "@sap/xsenv": "^5",
     "@sap/xssec": "^4",
     "express": "^4"
