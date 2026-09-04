@@ -53,6 +53,7 @@ jobs:
             jq --arg mtxs "$MTXS" --arg dk "$CDS_DK" '
               (if .dependencies["@sap/cds-mtxs"] then .dependencies["@sap/cds-mtxs"] = $mtxs else . end)
               | (if .devDependencies["@sap/cds-dk"] then .devDependencies["@sap/cds-dk"] = $dk else . end)
+              | (if $mtxs != "" then .overrides["@sap/cds-mtxs"] = $mtxs else . end)
             ' "$pkg" > "$tmp" && mv "$tmp" "$pkg"
           done
 
