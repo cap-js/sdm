@@ -46,6 +46,24 @@ jobs:
         with:
           node-version: 20.x
 
+      - name: Setup npm registry and pin SAP tarballs
+        run: |
+          CDS_DK="${{ secrets.SAP_CDS_DK_TARBALL }}"
+          TARBALL_HOST=$(printf '%s' "$CDS_DK" | sed -E 's#^https?://([^/]+)/.*#\1#')
+          # Global ~/.npmrc: @sap scope -> public npm, auth for the commons host so tarball downloads authenticate
+          {
+            printf '@sap:registry=https://registry.npmjs.org/\n'
+            printf '//%s/:_authToken=%s\n' "$TARBALL_HOST" '${{ secrets.NPM_AUTH_TOKEN }}'
+            printf 'legacy-peer-deps=true\n'
+          } > "$HOME/.npmrc"
+          # Pin internal-only packages to tarball URLs (guarded: only if the key already exists)
+          for pkg in "app/single-tenant/personal-space/incidents-app/package.json"; do
+            tmp=$(mktemp)
+            jq --arg dk "$CDS_DK" '
+              (if .devDependencies["@sap/cds-dk"] then .devDependencies["@sap/cds-dk"] = $dk else . end)
+            ' "$pkg" > "$tmp" && mv "$tmp" "$pkg"
+          done
+
       - name: Login to Cloud Foundry
         run: |
           wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key \
@@ -132,7 +150,7 @@ jobs:
           tar -xvzf /tmp/cloud-mta-build-tool_1.2.28_Linux_amd64.tar.gz > /dev/null 2>&1
           sudo mv mbt /usr/local/bin/
           # Install cds-dk (npm output redirected)
-          npm i @sap/cds-dk -g --silent
+          npm i -g --silent "${{ secrets.SAP_CDS_DK_TARBALL }}"
           # Perform MTA build and deploy
           mbt build
           cf install-plugin multiapps -f

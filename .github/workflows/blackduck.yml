@@ -26,7 +26,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-          
+
+      - name: Setup npm registry and pin SAP tarballs
+        run: |
+          MTXS="${{ secrets.SAP_CDS_MTXS_TARBALL }}"
+          CDS_DK="${{ secrets.SAP_CDS_DK_TARBALL }}"
+          TARBALL_HOST=$(printf '%s' "$MTXS" | sed -E 's#^https?://([^/]+)/.*#\1#')
+          for dir in \
+            "." \
+            "app/single-tenant/central-space/incidents-app" \
+            "app/multi-tenant/central-space/cap-js-incidents-app" \
+            "app/multi-tenant/central-space/cap-js-incidents-app/mtx/sidecar"; do
+            {
+              printf '@sap:registry=https://registry.npmjs.org/\n'
+              printf '//%s/:_authToken=%s\n' "$TARBALL_HOST" '${{ secrets.NPM_AUTH_TOKEN }}'
+              printf 'legacy-peer-deps=true\n'
+            } > "$dir/.npmrc"
+            tmp=$(mktemp)
+            jq --arg mtxs "$MTXS" --arg dk "$CDS_DK" '
+              (if .dependencies["@sap/cds-mtxs"] then .dependencies["@sap/cds-mtxs"] = $mtxs else . end)
+              | (if .devDependencies["@sap/cds-dk"] then .devDependencies["@sap/cds-dk"] = $dk else . end)
+              | (if $mtxs != "" then .overrides["@sap/cds-mtxs"] = $mtxs else . end)
+            ' "$dir/package.json" > "$tmp" && mv "$tmp" "$dir/package.json"
+          done
+
       - name: npm install
         run: |
           npm install
