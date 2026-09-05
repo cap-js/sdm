@@ -5874,6 +5874,57 @@ describe("SDMAttachmentsService", () => {
         expect(result).toEqual([compositionName]);
       });
     });
+
+    it('should recognize Attachments without namespace prefix', () => {
+      const targetEntity = { name: 'Test.EntityWithShortAttachments' };
+      
+      cds.model.definitions['Test.EntityWithShortAttachments'] = {
+        elements: {
+          attachments: {
+            type: 'cds.Composition',
+            target: 'Test.ShortAttachments'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.ShortAttachments'] = {
+        includes: ['Attachments']  // Without 'sap.attachments.' prefix
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toEqual(['attachments']);
+    });
+
+    it('should recognize both full and short Attachments includes', () => {
+      const targetEntity = { name: 'Test.EntityWithMixedIncludes' };
+      
+      cds.model.definitions['Test.EntityWithMixedIncludes'] = {
+        elements: {
+          fullAttachments: {
+            type: 'cds.Composition',
+            target: 'Test.FullAttachments'
+          },
+          shortAttachments: {
+            type: 'cds.Composition',
+            target: 'Test.ShortAttachments'
+          }
+        }
+      };
+      
+      cds.model.definitions['Test.FullAttachments'] = {
+        includes: ['sap.attachments.Attachments']
+      };
+      cds.model.definitions['Test.ShortAttachments'] = {
+        includes: ['Attachments']
+      };
+      
+      const result = service.getAttachmentCompositions(targetEntity);
+      
+      expect(result).toContain('fullAttachments');
+      expect(result).toContain('shortAttachments');
+      expect(result.length).toBe(2);
+    });
   });
 
   describe('replacePropertiesInAttachment', () => {
