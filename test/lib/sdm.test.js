@@ -922,7 +922,7 @@ describe("SDMAttachmentsService", () => {
       setupDestinationMocks();
       getDraftAttachments.mockResolvedValue([]);
   
-      await service.draftEntityRenameHandler(req);
+      await service.draftEntityRenameHandler(req, jest.fn());
   
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(getDraftAttachments).toHaveBeenCalledWith(cds.model.definitions['sampleTarget.references'], req, 'repo123');
@@ -954,7 +954,7 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
       getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
   
-      await service.draftEntityRenameHandler(req);
+      await service.draftEntityRenameHandler(req, jest.fn());
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
       expect(service.updateDraftAttachments).toHaveBeenCalledTimes(2);
@@ -987,7 +987,7 @@ describe("SDMAttachmentsService", () => {
       setupDestinationMocks();
       getDraftAttachments.mockResolvedValue(allAttachments);
   
-      await service.draftEntityRenameHandler(req);
+      await service.draftEntityRenameHandler(req, jest.fn());
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
       expect(service.updateDraftAttachments).toHaveBeenCalledTimes(1);
@@ -1024,7 +1024,7 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
       getSecondaryTypeProperties.mockReturnValue(new Map());
       
-      await expect(service.draftEntityRenameHandler(req)).rejects.toThrow('Draft update failed');
+      await expect(service.draftEntityRenameHandler(req, jest.fn())).rejects.toThrow('Draft update failed');
   
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allAttachments, req);
       expect(service.updateNonDraftAttachments).not.toHaveBeenCalled();
@@ -1055,7 +1055,7 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({ invalidProperty: "value" });
       getSecondaryTypeProperties.mockReturnValue(new Map([["property1", "value1"], ["property2", "value2"]]));
   
-      await service.draftEntityRenameHandler(req);
+      await service.draftEntityRenameHandler(req, jest.fn());
   
       expect(getDraftAttachments).toHaveBeenCalledWith(referencesEntity, req, 'repo123');
       expect(service.isFileNameDuplicateInDrafts).toHaveBeenCalledWith(allReferences, req);
@@ -1106,7 +1106,7 @@ describe("SDMAttachmentsService", () => {
       getSecondaryPropertiesWithInvalidDefinition.mockReturnValue({});
       getSecondaryTypeProperties.mockReturnValue(new Map());
   
-      await service.draftEntityRenameHandler(req);
+      await service.draftEntityRenameHandler(req, jest.fn());
   
       // Should be called 3 times, once for each composition
       expect(getDraftAttachments).toHaveBeenCalledTimes(3);
@@ -1999,6 +1999,7 @@ describe("SDMAttachmentsService", () => {
         before: jest.fn(),
         after: jest.fn(),
         on: jest.fn(),
+        prepend: jest.fn((cb) => cb()),
         entities: {}
       };
     });
@@ -2259,6 +2260,7 @@ describe("SDMAttachmentsService", () => {
         before: jest.fn(),
         after: jest.fn(),
         on: jest.fn(),
+        prepend: jest.fn((cb) => cb()),
         entities: {
           TestEntity: {
             elements: {
@@ -2286,18 +2288,26 @@ describe("SDMAttachmentsService", () => {
     let mockSrv;
     let entity;
     let target;
+    let origEnvReg;
 
     beforeEach(() => {
       jest.clearAllMocks();
+      // Enable the opt-in flag so DMS handlers register in the `on` phase (the path
+      // these assertions verify). Default (flag off) registers them as `before`.
+      origEnvReg = cds.env;
+      cds.env = { ...cds.env, requires: { ...(cds.env?.requires), sdm: { settings: { uploadInOnPhase: true } } } };
       service = new SDMAttachmentsService();
       service._registeredEntityHandlers = new Set();
       service._registeredTargetHandlers = new Set();
       service._registeredGlobalActionHandlers = false;
-      
+
       mockSrv = {
         before: jest.fn(),
         after: jest.fn(),
-        on: jest.fn()
+        on: jest.fn(),
+        // prepend runs its callback immediately so the inner srv.on(...) registrations
+        // (e.g. the draft upload handler) are recorded on the mocks below.
+        prepend: jest.fn((cb) => cb())
       };
 
       entity = {
@@ -2309,6 +2319,10 @@ describe("SDMAttachmentsService", () => {
         name: 'target',
         drafts: 'target.drafts'
       };
+    });
+
+    afterEach(() => {
+      cds.env = origEnvReg;
     });
 
     it('should register all handlers correctly', () => {
@@ -2325,39 +2339,51 @@ describe("SDMAttachmentsService", () => {
         entity.drafts, 
         expect.any(Function)
       );
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        ["DELETE"], 
-        target.drafts, 
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        ["DELETE"],
+        target.drafts,
         expect.any(Function)
       );
       expect(mockSrv.before).toHaveBeenCalledWith(
-        "DELETE", 
-        target, 
+        "DELETE",
+        target,
         expect.any(Function)
       );
       expect(mockSrv.before).toHaveBeenCalledWith(
-        "READ", 
-        [target, target.drafts], 
+        "READ",
+        [target, target.drafts],
         expect.any(Function)
       );
       expect(mockSrv.before).toHaveBeenCalledWith(
-        "SAVE", 
-        entity, 
+        "SAVE",
+        entity,
         expect.any(Function)
       );
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        "PUT", 
-        target.drafts, 
+      // draftEntityRenameHandler (SAVE) and handleDraftDiscardForLinks (DELETE on
+      // entity.drafts) are now `on` handlers.
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        "SAVE",
+        entity,
         expect.any(Function)
       );
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        "CREATE", 
-        target, 
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        "DELETE",
+        entity.drafts,
         expect.any(Function)
       );
-      expect(mockSrv.before).toHaveBeenCalledWith(
-        "UPDATE", 
-        target, 
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        "PUT",
+        target.drafts,
+        expect.any(Function)
+      );
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        "CREATE",
+        target,
+        expect.any(Function)
+      );
+      expect(mockSrv.on).toHaveBeenCalledWith(
+        "UPDATE",
+        target,
         expect.any(Function)
       );
 
@@ -2383,8 +2409,8 @@ describe("SDMAttachmentsService", () => {
       const targetWithoutDrafts = {};
       service.registerSDMHandlers(mockSrv, entity, targetWithoutDrafts);
 
-      // Verify PUT handler for non-draft target is called instead
-      const putCalls = mockSrv.before.mock.calls.filter(call => call[0] === 'PUT');
+      // Verify PUT handler for non-draft target is registered as an `on` handler
+      const putCalls = mockSrv.on.mock.calls.filter(call => call[0] === 'PUT');
       expect(putCalls.length).toBeGreaterThan(0);
       expect(putCalls[0][1]).toBe(targetWithoutDrafts);
     });
@@ -2448,13 +2474,21 @@ describe("SDMAttachmentsService", () => {
 
     it('should register all three custom action handlers', () => {
       service.registerSDMHandlers(mockSrv, entity, target);
-      
+
       const actionNames = mockSrv.on.mock.calls.map(call => call[0]);
-      
+
       expect(actionNames).toContain('openAttachment');
       expect(actionNames).toContain('createLink');
       expect(actionNames).toContain('editLink');
-      expect(mockSrv.on).toHaveBeenCalledTimes(3);
+      // 3 custom action handlers + attachment handlers now registered as `on` (via prepend):
+      // draft PUT + non-draft CREATE + non-draft UPDATE + SAVE (draft rename) +
+      // DELETE (draft discard, entity.drafts) + ["DELETE"] (draft attachment) = 9 total.
+      expect(mockSrv.on).toHaveBeenCalledTimes(9);
+      expect(actionNames).toContain('PUT');
+      expect(actionNames).toContain('CREATE');
+      expect(actionNames).toContain('UPDATE');
+      expect(actionNames).toContain('SAVE');
+      expect(actionNames).toContain('DELETE');
     });
 
     it('should handle errors thrown by openAttachment method', async () => {
@@ -2871,7 +2905,10 @@ describe("SDMAttachmentsService", () => {
   
     test('should skip when req.data.content is not provided', async () => {
       const req = { data: {} };
-      await service.draftAttachmentUploadHandler(req);
+      const next = jest.fn();
+      await service.draftAttachmentUploadHandler(req, next);
+      // No content -> hand control down the on-handler chain, do no SDM work.
+      expect(next).toHaveBeenCalled();
       expect(service.checkRepositoryType).not.toHaveBeenCalled();
     });
   
@@ -2974,9 +3011,11 @@ describe("SDMAttachmentsService", () => {
       getDraftAttachmentsForUpID.mockResolvedValue(attachment_val);
   
       req.data.content = null; // simulating content being reset to null after initial check
-  
-      await service.draftAttachmentUploadHandler(req);
-  
+
+      const next = jest.fn();
+      await service.draftAttachmentUploadHandler(req, next);
+
+      expect(next).toHaveBeenCalled();
       expect(service.isFileNameDuplicateInDrafts).not.toHaveBeenCalled();
       expect(service.create).not.toHaveBeenCalled();
     });
@@ -3461,7 +3500,7 @@ describe("SDMAttachmentsService", () => {
             const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
 
             // Call the method
-            await service.attachURLsToDeleteFromAttachmentsDraft(req);
+            await service.attachURLsToDeleteFromAttachmentsDraft(req, jest.fn());
 
             expect(req.attachmentsToDelete).toEqual([{ url: 'http://example.com/attachment1', ID: '1' }]);
 
@@ -3484,7 +3523,7 @@ describe("SDMAttachmentsService", () => {
       };
       
       const deleteAttachmentsSpy = jest.spyOn(service, 'deleteAttachmentsWithKeys');
-      await service.attachURLsToDeleteFromAttachmentsDraft(req);
+      await service.attachURLsToDeleteFromAttachmentsDraft(req, jest.fn());
   
       expect(req.attachmentsToDelete).toBeUndefined();
       expect(deleteAttachmentsSpy).not.toHaveBeenCalled();
@@ -4628,7 +4667,7 @@ describe("SDMAttachmentsService", () => {
       
       global.SELECT.where.mockResolvedValue(draftAttachments);
       
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       expect(service.revertLinkInSDM).toHaveBeenCalledWith(
         draftAttachments[0],
@@ -4650,7 +4689,7 @@ describe("SDMAttachmentsService", () => {
       
       global.SELECT.where.mockResolvedValue(draftAttachments);
       
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       expect(service.revertLinkInSDM).not.toHaveBeenCalled();
     });
@@ -4666,7 +4705,7 @@ describe("SDMAttachmentsService", () => {
       
       global.SELECT.where.mockResolvedValue(draftAttachments);
       
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       expect(service.revertLinkInSDM).not.toHaveBeenCalled();
     });
@@ -4689,7 +4728,7 @@ describe("SDMAttachmentsService", () => {
       global.SELECT.where.mockResolvedValue([]);
       
       // Should execute without crashing
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       expect(service.revertLinkInSDM).not.toHaveBeenCalled();
     });
@@ -6015,7 +6054,7 @@ describe("SDMAttachmentsService", () => {
       
       setupDestinationMocks();
       
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       // Should not throw
     });
@@ -6042,7 +6081,7 @@ describe("SDMAttachmentsService", () => {
       // Ensure entity doesn't exist
       delete cds.model.definitions['NonExistent.Entity'];
       
-      await service.handleDraftDiscardForLinks(req);
+      await service.handleDraftDiscardForLinks(req, jest.fn());
       
       // Should not throw and should not call any SDM operations
     });
@@ -6387,7 +6426,7 @@ describe("SDMAttachmentsService", () => {
           event: 'CREATE'
         };
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(service.onCreate).not.toHaveBeenCalled();
       });
@@ -6403,7 +6442,7 @@ describe("SDMAttachmentsService", () => {
           event: 'CREATE'
         };
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(service.onCreate).not.toHaveBeenCalled();
       });
@@ -6434,7 +6473,7 @@ describe("SDMAttachmentsService", () => {
           })
         });
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(service.onCreate).toHaveBeenCalledWith(
           expect.arrayContaining([
@@ -6491,7 +6530,7 @@ describe("SDMAttachmentsService", () => {
             })
         });
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(service.onCreate).toHaveBeenCalledWith(
           expect.arrayContaining([
@@ -6544,7 +6583,7 @@ describe("SDMAttachmentsService", () => {
         isRestrictedCharactersInName.mockReturnValue(false);
 
         // Should not throw — should fall back to req.data.ID when req.req is absent
-        await expect(service.nonDraftAttachmentCreateHandler(mockReq)).resolves.not.toThrow();
+        await expect(service.nonDraftAttachmentCreateHandler(mockReq, jest.fn())).resolves.not.toThrow();
 
         expect(service.onCreate).toHaveBeenCalledWith(
           expect.arrayContaining([
@@ -6569,7 +6608,7 @@ describe("SDMAttachmentsService", () => {
           where: jest.fn().mockResolvedValue(null)
         });
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(404, 'Attachment not found');
         expect(service.onCreate).not.toHaveBeenCalled();
@@ -6589,7 +6628,7 @@ describe("SDMAttachmentsService", () => {
 
         isRestrictedCharactersInName.mockReturnValue(true);
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('invalid/file.pdf'));
         expect(service.onCreate).not.toHaveBeenCalled();
@@ -6609,7 +6648,7 @@ describe("SDMAttachmentsService", () => {
 
         isRestrictedCharactersInName.mockReturnValue(false);
 
-        await service.nonDraftAttachmentCreateHandler(mockReq);
+        await service.nonDraftAttachmentCreateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(400, expect.stringContaining('empty'));
         expect(service.onCreate).not.toHaveBeenCalled();
@@ -6635,7 +6674,7 @@ describe("SDMAttachmentsService", () => {
           target: { name: 'Orders.references.drafts', isDraft: true }
         };
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).not.toHaveBeenCalled();
       });
@@ -6649,7 +6688,7 @@ describe("SDMAttachmentsService", () => {
           target: { name: 'Orders.references', isDraft: false }
         };
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).not.toHaveBeenCalled();
       });
@@ -6660,7 +6699,7 @@ describe("SDMAttachmentsService", () => {
           target: { name: 'Orders.references', isDraft: false }
         };
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).not.toHaveBeenCalled();
       });
@@ -6685,7 +6724,7 @@ describe("SDMAttachmentsService", () => {
           where: jest.fn().mockResolvedValue(mockCurrentAttachment)
         });
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).toHaveBeenCalledWith(
           mockReq,
@@ -6715,7 +6754,7 @@ describe("SDMAttachmentsService", () => {
           where: jest.fn().mockResolvedValue(null)
         });
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(404, 'Attachment not found');
       });
@@ -6736,7 +6775,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'restricted characters'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('invalid/name.pdf'));
       });
@@ -6757,7 +6796,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'empty name'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(400, expect.stringContaining('empty'));
       });
@@ -6778,7 +6817,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'duplicate'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(409, expect.stringContaining('duplicate.pdf'));
       });
@@ -6799,7 +6838,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'no sdm roles'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(403, expect.stringContaining('permissions'));
       });
@@ -6826,7 +6865,7 @@ describe("SDMAttachmentsService", () => {
           details: 'cmis:prop1,cmis:prop2'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.warn).toHaveBeenCalled();
         expect(mockReq.reject).not.toHaveBeenCalled();
@@ -6848,7 +6887,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'not found'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(404, expect.stringContaining('notfound.pdf'));
       });
@@ -6871,7 +6910,7 @@ describe("SDMAttachmentsService", () => {
           message: customErrorMessage
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(500, customErrorMessage);
       });
@@ -6892,7 +6931,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'bad request'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(500, expect.stringContaining('invalid.pdf'));
         expect(mockReq.reject).toHaveBeenCalledWith(500, expect.stringContaining('Update failed'));
@@ -6914,7 +6953,7 @@ describe("SDMAttachmentsService", () => {
           typeOfError: 'unknown error type'
         }]);
 
-        await service.nonDraftAttachmentUpdateHandler(mockReq);
+        await service.nonDraftAttachmentUpdateHandler(mockReq, jest.fn());
 
         expect(mockReq.reject).toHaveBeenCalledWith(500, 'Update failed');
       });
@@ -6941,7 +6980,7 @@ describe("SDMAttachmentsService", () => {
         // Ensure no attachments composition exists
         cds.model.definitions['Orders.attachments'] = undefined;
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(mockReq.diff).not.toHaveBeenCalled();
       });
@@ -6957,7 +6996,7 @@ describe("SDMAttachmentsService", () => {
           includes: ['sap.attachments.Attachments']
         };
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).not.toHaveBeenCalled();
       });
@@ -6978,7 +7017,7 @@ describe("SDMAttachmentsService", () => {
           includes: ['sap.attachments.Attachments']
         };
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(service._updateAttachments).not.toHaveBeenCalled();
       });
@@ -7020,7 +7059,7 @@ describe("SDMAttachmentsService", () => {
         setupDestinationMocks();
         updateAttachment.mockResolvedValue(200);
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(updateAttachment).toHaveBeenCalled();
         expect(mockReq.reject).not.toHaveBeenCalled();
@@ -7058,7 +7097,7 @@ describe("SDMAttachmentsService", () => {
 
         isRestrictedCharactersInName.mockReturnValue(true);
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(mockReq.warn).toHaveBeenCalled();
         expect(mockReq.reject).not.toHaveBeenCalled();
@@ -7096,7 +7135,7 @@ describe("SDMAttachmentsService", () => {
 
         isRestrictedCharactersInName.mockReturnValue(false);
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         // Empty filename falls back to original filename, so no update needed
         expect(mockReq.warn).not.toHaveBeenCalled();
@@ -7141,7 +7180,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Access denied');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'no sdm roles', name: 'renamed.pdf' }],
@@ -7188,7 +7227,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Duplicate file');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'duplicate', name: 'duplicate.pdf' }],
@@ -7235,7 +7274,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('File not found');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'not found', name: 'notfound.pdf' }],
@@ -7285,7 +7324,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Unsupported properties warning');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'unsupported properties', details: 'customProp is not supported' }],
@@ -7334,7 +7373,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Bad request error');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'bad request', name: 'file.pdf', message: 'Network error occurred' }],
@@ -7398,7 +7437,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Multiple errors');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [
@@ -7449,7 +7488,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith([], {});
         expect(mockReq.warn).not.toHaveBeenCalled();
@@ -7490,7 +7529,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'empty name', name: null }],
@@ -7534,7 +7573,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'empty name', name: '   ' }],
@@ -7578,7 +7617,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Empty filename error');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [{ typeOfError: 'empty name', name: '\t\n  ' }],
@@ -7616,7 +7655,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         // Should not process this attachment
         expect(getPropertiesForID).not.toHaveBeenCalled();
@@ -7654,7 +7693,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         // Should not process this attachment
         expect(getPropertiesForID).not.toHaveBeenCalled();
@@ -7710,7 +7749,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         // Should only process the valid attachment
         expect(updateAttachment).toHaveBeenCalledTimes(1);
@@ -7774,7 +7813,7 @@ describe("SDMAttachmentsService", () => {
 
         const handleWarningSpy = jest.spyOn(service, 'handleWarning').mockReturnValue('Multiple validation errors');
 
-        await service.nonDraftEntityRenameHandler(mockReq);
+        await service.nonDraftEntityRenameHandler(mockReq, jest.fn());
 
         expect(handleWarningSpy).toHaveBeenCalledWith(
           [
