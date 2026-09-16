@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
@@ -230,7 +230,7 @@ jobs:
     needs: versioned-repo-setup
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
@@ -391,7 +391,7 @@ jobs:
       DOWNLOAD_PATH: ${{ 'eicar.com.txt' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
@@ -560,7 +560,7 @@ jobs:
     if: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
