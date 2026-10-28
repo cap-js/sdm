@@ -50,6 +50,11 @@ jobs:
             ' "$dir/package.json" > "$tmp" && mv "$tmp" "$dir/package.json"
           done
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: npm install
         run: |
           npm install
