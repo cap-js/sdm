@@ -27,6 +27,9 @@
     "axios": "^1.7.4",
     "node-cache": "^5.1.2"
   },
+  "engines": {
+    "node": "^22.23.4"
+  },
   "peerDependencies": {
     "@sap/cds": ">=8"
   },
