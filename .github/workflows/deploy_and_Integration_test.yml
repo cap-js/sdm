@@ -30,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20.x
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.23.4
