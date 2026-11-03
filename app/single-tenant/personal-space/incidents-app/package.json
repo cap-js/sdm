@@ -11,6 +11,9 @@
     "@sap/ams-dev": "*",
     "dummy": 0
   },
+  "engines": {
+    "node": "^22.23.4"
+  },
   "dependencies": {
     "@cap-js/audit-logging": "^0.8.0",
     "@sap/cds": "^9",

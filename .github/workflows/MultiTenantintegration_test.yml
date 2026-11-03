@@ -41,7 +41,7 @@ jobs:
       - name: Setup Node.js environment ⚙️
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
 
       - name: Install Cloud Foundry CLI and jq
         run: |
@@ -261,7 +261,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
 
       - name: Install Cloud Foundry CLI and jq
         run: |
@@ -434,7 +434,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
 
       - name: Install Cloud Foundry CLI and jq
         run: |
@@ -615,7 +615,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
 
       - name: Install Cloud Foundry CLI and jq
         run: |
@@ -763,7 +763,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
 
       - name: Install Cloud Foundry CLI and jq
         run: |

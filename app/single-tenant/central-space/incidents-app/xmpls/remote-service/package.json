@@ -1,6 +1,9 @@
 {
     "name": "@capire/remote-service",
     "version": "1.0.0",
+    "engines": {
+        "node": "^22.23.4"
+    },
     "dependencies": {
         "@sap-cloud-sdk/connectivity": "^3.6.0",
         "@sap-cloud-sdk/http-client": "^3.6.0",
