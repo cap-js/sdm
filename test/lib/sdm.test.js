@@ -2848,6 +2848,7 @@ describe("SDMAttachmentsService", () => {
       service.checkRepositoryType = jest.fn();
       service.isFileNameDuplicateInDrafts = jest.fn();
       service.create = jest.fn();
+      service._preDeleteConflictingDeferredAttachment = jest.fn();
       service.creds = {};
 
     });
@@ -3094,6 +3095,102 @@ describe("SDMAttachmentsService", () => {
         req
       );
       expect(req.data.content).toBeNull();
+    });
+  });
+
+  describe('_preDeleteConflictingDeferredAttachment', () => {
+    let service;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.resetAllMocks();
+      service = new SDMAttachmentsService();
+      service.creds = { uri: 'http://example.com/' };
+      getConfigurations.mockReturnValue({ repositoryId: 'repo123' });
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    function makeDraftAttachments(draftEntityName) {
+      return {
+        name: draftEntityName,
+        keys: { up_: { keys: [{ $generatedFieldName: 'up__ID' }] } }
+      };
+    }
+
+    function mockSelectChain(rows) {
+      const mockWhere = jest.fn().mockResolvedValue(rows);
+      const mockColumns = jest.fn().mockReturnValue({ where: mockWhere });
+      global.SELECT.from = jest.fn().mockReturnValue({ columns: mockColumns });
+    }
+
+    test('should pre-delete CMIS object when saved attachment was deleted in the current draft session', async () => {
+      const activeEntityName = 'ProcessorService.Incidents.attachments';
+      const draftEntityName = activeEntityName + '.drafts';
+      cds.model.definitions[activeEntityName] = { name: activeEntityName };
+      cds.model.definitions[draftEntityName] = makeDraftAttachments(draftEntityName);
+
+      const req = { data: { 'up__ID': 'parent-id' }, reject: jest.fn() };
+      const currentDraftRows = [{ ID: 'new-1', filename: 'report.pdf', HasActiveEntity: false }];
+
+      mockSelectChain([{ ID: 'saved-1', url: 'cmis-url-saved' }]);
+      service.getDestination = jest.fn().mockResolvedValue({ url: 'http://example.com' });
+      deleteAttachmentsOfFolder.mockResolvedValue({ status: 200 });
+
+      await service._preDeleteConflictingDeferredAttachment(req, cds.model.definitions[draftEntityName], currentDraftRows, 'report.pdf');
+
+      expect(deleteAttachmentsOfFolder).toHaveBeenCalledWith(
+        service.creds,
+        { url: 'http://example.com' },
+        'cmis-url-saved'
+      );
+    });
+
+    test('should not delete when the saved attachment is still present in the draft', async () => {
+      const activeEntityName = 'ProcessorService.Incidents.attachments';
+      const draftEntityName = activeEntityName + '.drafts';
+      cds.model.definitions[activeEntityName] = { name: activeEntityName };
+      cds.model.definitions[draftEntityName] = makeDraftAttachments(draftEntityName);
+
+      const req = { data: { 'up__ID': 'parent-id' }, reject: jest.fn() };
+      // saved-1 appears in BOTH the active table and the current draft list (not deleted)
+      const currentDraftRows = [{ ID: 'saved-1', filename: 'report.pdf', HasActiveEntity: true }];
+
+      mockSelectChain([{ ID: 'saved-1', url: 'cmis-url-saved' }]);
+      service.getDestination = jest.fn().mockResolvedValue({ url: 'http://example.com' });
+
+      await service._preDeleteConflictingDeferredAttachment(req, cds.model.definitions[draftEntityName], currentDraftRows, 'report.pdf');
+
+      expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+    });
+
+    test('should do nothing when filename is falsy', async () => {
+      const draftAttachments = makeDraftAttachments('SomeEntity.drafts');
+      service.getDestination = jest.fn();
+
+      await service._preDeleteConflictingDeferredAttachment({ data: {} }, draftAttachments, [], null);
+
+      expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+      expect(service.getDestination).not.toHaveBeenCalled();
+    });
+
+    test('should do nothing when no active rows match the filename', async () => {
+      const activeEntityName = 'ProcessorService.Incidents.attachments';
+      const draftEntityName = activeEntityName + '.drafts';
+      cds.model.definitions[activeEntityName] = { name: activeEntityName };
+      cds.model.definitions[draftEntityName] = makeDraftAttachments(draftEntityName);
+
+      const req = { data: { 'up__ID': 'parent-id' }, reject: jest.fn() };
+
+      mockSelectChain([]); // no active rows found
+      service.getDestination = jest.fn();
+
+      await service._preDeleteConflictingDeferredAttachment(req, cds.model.definitions[draftEntityName], [], 'report.pdf');
+
+      expect(deleteAttachmentsOfFolder).not.toHaveBeenCalled();
+      expect(service.getDestination).not.toHaveBeenCalled();
     });
   });
 
